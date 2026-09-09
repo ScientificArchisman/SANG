@@ -1947,3 +1947,75 @@ They will not, on their own, produce SOTA — §28's compute argument still stan
 remains the route to publishable numbers on one GPU. But making that pivot *now*, on top of a data
 pipeline with no face crop and an evaluation with a GT leak, would carry every one of these defects
 into the new architecture. Fix, measure, then pivot.
+
+---
+
+## 33. Fix log — what has actually been applied (9 September 2026)
+
+The repository is now under version control (it was not before). Baseline snapshot is `5f79be1`;
+each fix below is a separate commit against it. `scripts/diagnose_conditioning.py` reproduces the
+D1/D2 measurements on any checkpoint — run it before and after any change to this area.
+
+| Commit | Defect | Status | Evidence |
+|---|---|---|---|
+| `2e7a853` | **D3a** SyncNet channel scramble | fixed | margin −0.019 → +0.023 (same crop) |
+| `5bc40f7` | **D0** no face crop | implemented, opt-in | margin 0.023 → **0.197** with a real face crop |
+| `5bc40f7` | **D8** audio window 0.68 s vs 0.64 s | fixed | Ta 33 → 31, verified against WavLM |
+| `a19f94f` | **D6** `expected_codes` bypassed the coupled chain | fixed | — |
+| `a19f94f` | **D10** `row_emb`/`col_emb` hardcoded 16 | fixed | bit-identical at v3; unblocks v4 |
+| `1ad0095` | **D1** bridge prior collapsed every content slice | fixed | slice spread 0.000000 → **4.13** |
+| `15cbc7d` | **D5** `evaluate()` fed the GT mesh | fixed | now off by default |
+| `15cbc7d` | **D4** perceptual losses under `known=ones` | fixed | visible fraction 1.000 → 0.571 |
+| `15cbc7d` | **D10** optimizer state lost on resume | fixed | state now rides in the checkpoint |
+| `15cbc7d` | **D10** frozen decoder accumulated gradients | fixed | 0 decoder params, 136 transformer params |
+| `15cbc7d` | **D7** window 0 ref == ctx == its own target | fixed | anchor taken from another window |
+| `0351731` | inference/test disagreed with training | fixed | `face_crop` + D8 honoured; face box round-trips |
+| `a19bddd` | **D12** sanity checks tested a phantom config | fixed | 4/4 checks green on the real config |
+| `a19bddd` | **D13** ceiling script channel-concat save | fixed | `axis=1`, plus a PNG |
+| `35d2818` | **D9** no data quality filter | added | 30-clip smoke: 20 kept, 10 dropped |
+
+### 33.1 The two measurements that mattered
+
+Both taken on `runs/stream_v3_161491/last.pt` at step 27000:
+
+```
+bridge_init="ref"  -> spread across the 5 content slices  0.000000   (all identical)
+bridge_init="prev" -> spread across the 5 content slices  4.131974
+```
+
+```
+SyncNet margin (mismatched - matched), 14 real clips, frame-major channel order:
+  blind centre crop (current data pipeline)  0.0234
+  full-resolution face crop (D0 fix)         0.1965
+```
+
+Independently re-measured face geometry on 14 clips through the real training crop: face area
+median **10.3%** of frame (min 3.6%, max 28.2%), mouth **1.63 × 0.77** cells of the 16×16 latent
+grid, and the mouth falls inside SyncNet's `H//2` crop in only **6/14** clips.
+
+### 33.2 What these fixes do and do not buy
+
+They make the existing runs *interpretable*; they are not themselves a route to SOTA. Concretely:
+
+- The model could not produce motion at all (D1) and was not using audio (D2). D1 is fixed; **D2
+  is a consequence to be re-measured, not a fix** — rerun `diagnose_conditioning.py` after
+  retraining and check whether audio sensitivity rises above ~3%.
+- Every reported `val_acc` to date is optimistic (D5) and every reported `syncnet` number was a
+  constant (D3). **There is no valid baseline yet.** Phase 0 (§30) still has to be built before
+  any claim is comparable to a published number.
+- D0 is implemented but **opt-in and unused until you re-cache**: set `face_crop: true` *and* a new
+  `cache_dir`, then rebuild. That is the single highest-leverage pending action.
+
+### 33.3 Required next actions
+
+1. **Re-cache with `face_crop: true`** into a fresh `cache_dir`. Everything else waits on this.
+   Run `scripts/filter_clips.py` first and point the run at the filtered manifest.
+2. **Retrain from scratch**, not from the v3 checkpoint: `bridge_init` semantics, the audio window
+   length (Ta 33 → 31) and the reference-anchor policy all changed, so the old weights encode a
+   different problem.
+3. **Re-run `diagnose_conditioning.py --syncnet`** on the new checkpoint. Gates: slice spread > 0,
+   audio sensitivity clearly above 3%, SyncNet margin > 0.3.
+4. Then Phase 0, then the §29 architecture decision on measured evidence.
+
+⚠️ Note on environments: mediapipe needs `libGLESv2`, absent from the login node. Use
+`LD_LIBRARY_PATH=$CONDA_PREFIX/../gl/lib` (the `gl` env has it) or run on a compute node.
