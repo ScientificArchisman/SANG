@@ -132,6 +132,27 @@ class CoupledFSQHead(FactorizedFSQHead):
             ctx = ctx + self.digit_emb[k](prev_digits[..., k])
         return self.heads[d](ctx).float() * self.logit_scale.exp()
 
+    def expected_codes(self, h: torch.Tensor) -> torch.Tensor:
+        """Differentiable expected FSQ codes through the *coupled* chain.
+
+        FactorizedFSQHead.expected_codes calls self.forward(), which reads heads[d](z) with no
+        digit-embedding context — a distribution these heads never see under the CE objective.
+        Inheriting it silently routed every pixel/SyncNet gradient through the wrong
+        parameterization. Here digit d is conditioned on the *soft* expectation over digits
+        <d — the differentiable relaxation of _step_logits' hard chain.
+        See docs/v3_improvement_plan.md Part VI, D6."""
+        z = self.norm(h)
+        ctx, codes = z, []
+        for d, levels in enumerate(self.levels):
+            lg = self.heads[d](ctx).float() * self.logit_scale.exp()
+            probs = lg.softmax(-1)
+            half = levels // 2
+            vals = (torch.arange(levels, device=lg.device, dtype=lg.dtype) - half) / half
+            codes.append((probs * vals).sum(-1))
+            if d < len(self.digit_emb):  # carry the soft digit forward, as _step_logits does
+                ctx = ctx + probs @ self.digit_emb[d].weight
+        return torch.stack(codes, dim=-1)
+
     def loss(self, h, target_idx, label_smoothing=0.0):
         tgt = self.codec.to_digits(target_idx)
         z = self.norm(h)

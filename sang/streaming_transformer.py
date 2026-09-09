@@ -97,9 +97,15 @@ class StreamingBlockTransformer(nn.Module):
         super().__init__()
         self.tv, self.r, self.cond_slices = tv, r, cond_slices
         self.audio_lookahead = audio_lookahead
+        # Spatial grid side, derived from r rather than hardcoded to 16. At r=256 (res 128) this is
+        # bit-identical to the old `r // 16` / `16` pair; at r=1024 (v4, res 256) the old code
+        # factorised a 32x32 grid as 64x16, so spatially adjacent latents stopped being positional
+        # neighbours. See docs/v3_improvement_plan.md Part VI, D10.
+        self.spatial = int(round(r ** 0.5))
+        assert self.spatial * self.spatial == r, f"r={r} is not a square spatial grid"
         self.slice_emb = nn.Embedding(tv, dim)
-        self.row_emb = nn.Embedding(r // 16, dim)
-        self.col_emb = nn.Embedding(16, dim)
+        self.row_emb = nn.Embedding(self.spatial, dim)
+        self.col_emb = nn.Embedding(self.spatial, dim)
         self.mask_token = nn.Parameter(torch.zeros(1, 1, dim))
         self.drop = nn.Dropout(dropout)
         self.layers = nn.ModuleList([StreamLayer(dim, heads, dropout) for _ in range(layers)])
@@ -108,7 +114,7 @@ class StreamingBlockTransformer(nn.Module):
         tv, r = self.tv, self.r
         slc = torch.arange(tv, device=device).repeat_interleave(r)
         intra = torch.arange(r, device=device).repeat(tv)
-        row, col = intra // 16, intra % 16
+        row, col = intra // self.spatial, intra % self.spatial
         return self.slice_emb(slc) + self.row_emb(row) + self.col_emb(col)
 
     def forward(self, e_v: torch.Tensor, e_a: torch.Tensor) -> torch.Tensor:
