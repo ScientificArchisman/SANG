@@ -1,0 +1,90 @@
+# SANG discrete track: VidTok-FSQ tokens at 128 px. Secondary; see configs/train.yaml.
+#
+# This is a FRESH run, not a resume: face cropping changes the cached pixels, the audio window
+# changed length (Ta 33 -> 31) and the bridge prior changed meaning. Old weights encode a
+# different problem.
+#
+# Before launching, optionally filter the clip list (recommended):
+#   sbatch bash_scripts/job.sh scripts/filter_clips.py --out data/clips_filtered.txt
+#   then set data_glob: data/clips_filtered.txt
+
+# ---- data ----
+data_glob: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/clips/*/*.mp4
+cache_dir: cache/face128          # discrete-track cache: face_crop changes the cached pixels
+out_dir: runs/face128_discrete
+max_clips: 12000                  # of 25,856 available (2,299 speakers). Cache build costs
+                                  # ~1.3 s/clip CPU-side (face detection), so 12k ~= 4-5 h
+                                  # one-off; 0 = use all and add ~5 h.
+windows_per_clip: 8               # spread across the whole clip, not packed from t=0
+val_frac: 0.05                    # split by SPEAKER, so val measures unseen identities
+seed: 0
+workers: 8
+
+frames: 17                        # 0.64 s at 25 fps -> 5 latent slices, Ta = 31 WavLM ticks
+res: 128
+fps: 25
+codebook: 32768
+audio_encoder: wavlm-large
+
+# ---- the two changes that matter most ----
+face_crop: true                   # detect + crop the face. Without this the mouth is ~1.6 latent
+                                  # cells and no lip-sync is learnable. Needs mediapipe.
+face_cond: false                  # the mesh is rendered from the TARGET frames, so it leaks the
+                                  # ground-truth lip shape and is absent at inference. Leaving it
+                                  # on makes the model read the mesh and ignore the audio.
+
+# ---- grid / conditioning ----
+motion_ctx: true                  # grid = [identity ref, previous-window tail, content x5]
+bridge_init: prev                 # masked slice s starts from slice s-1. "ref" collapses every
+                                  # content slice to one embedding -> a static face.
+audio_lookahead: 4                # 80 ms of future audio; the mouth pre-shapes before the phoneme
+context_corrupt: 0.1              # exposure-bias training on the carried motion context
+audio_dropout: 0.1                # null-audio training, enables classifier-free audio guidance
+
+# ---- head ----
+factorized_head: true
+coupled_fsq_head: true            # digits predicted autoregressively within a token
+learn_logit_scale: true
+mask_schedule: mixed
+p_inference_shaped: 0.3           # fraction trained on the decode-time mask pattern
+
+# ---- losses ----
+syncnet_loss: true                # needs third_party/syncnet/stable_syncnet.pt
+syncnet_weight: 0.3               # raise if lip-sync lags; the loss is only real post-fix
+pixel_weight: 1.0
+face_weight: true                 # W = 1 + M_face + 2*M_lip, geometry tuned for the face crop
+label_smoothing: 0.0
+
+# ---- model ----
+dim: 512
+layers: 8
+heads: 8
+dropout: 0.1
+
+# ---- optimisation ----
+bf16: true                        # ~2x throughput on H100; params stay fp32
+lr: 3.0e-4
+min_lr: 3.0e-5
+weight_decay: 0.1
+betas: [0.9, 0.95]
+warmup_steps: 1000
+max_steps: 50000
+grad_clip: 1.0
+batch_size: 8
+grad_accum: 8                     # effective batch 64
+patience: 10                      # stop after 10 evals with no improvement
+
+# ---- eval / decode ----
+eval_every: 2000
+eval_batch_size: 4
+eval_max_batches: 64              # cap the generative eval; full-val decode was ~30% of wall clock
+eval_with_struct: false           # evaluate the way inference actually runs
+decode_steps: 12
+decode_temperature: 0.8
+decode_gumbel: 4.5
+decode_schedule: cosine
+audio_cfg: 2.0                    # sweep 1.5-7.5 on demos afterwards
+
+resume: ""
+log_every: 50
+device: cuda

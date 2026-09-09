@@ -224,7 +224,8 @@ def cmd_overfit(cfg, device, fsq_codes, steps, lr, mask_ratio: float = 0.5):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["masks", "forward", "causality", "parity", "overfit"])
-    ap.add_argument("--config", default=str(REPO / "configs/train.yaml"))
+    ap.add_argument("--config", default=str(REPO / "configs/train_discrete.yaml"),
+                    help="token-path checks; the continuous track is covered by tests/test_continuous.py")
     ap.add_argument("--steps", type=int, default=400)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")

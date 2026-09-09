@@ -12,7 +12,8 @@
 #SBATCH --error=slurm_logs/%x_%j.err
 # Usage: sbatch bash_scripts/train.sh [--config configs/train.yaml] [--set k=v ...]
 set -euo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
+# sbatch runs a copy of this script from /var/spool, so resolve env.sh from the submit dir
+source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/bash_scripts/env.sh"
 mkdir -p results/train
 python -u scripts/train.py "${@:---config configs/train.yaml}" \
   | tee "results/train/${SLURM_JOB_ID:-manual}.txt"

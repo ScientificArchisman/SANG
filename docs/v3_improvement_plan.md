@@ -2095,7 +2095,8 @@ replaced by one. File/symbol names used earlier in this document that no longer 
 
 ### 34.2 The config, and why
 
-`configs/train.yaml` — discrete FSQ at 128 px. This is deliberately the *cheap, fast-falsifying*
+`configs/train_discrete.yaml` — discrete FSQ at 128 px (renamed; see §35 for why the continuous track
+is now primary). This is deliberately the *cheap, fast-falsifying*
 run, not the highest-ceiling one: its attention is 16× cheaper than the 256 px continuous track
 (L=1792 vs 7168), and its job is to establish whether the fixes work on a clean pipeline before
 the §29 architecture decision.
@@ -2107,7 +2108,7 @@ The two settings that matter most:
   lip shape and is absent at inference. §33.2c showed struct sensitivity jumping to 53.6% once the
   bridge was fixed; leaving it on would produce a model that scores better and listens less.
 
-`configs/train_continuous.yaml` keeps the Wan-VAE flow track reachable. It has the higher measured
+`configs/train.yaml` (formerly `train_continuous.yaml`) is now the primary run — the Wan-VAE flow track. It has the higher measured
 reconstruction ceiling (31.8 dB vs 25.3 dB on blind crops) and no quantisation error, but 4× the
 sequence length and an untested head. Measure the face-cropped ceiling of both first:
 
@@ -2124,3 +2125,47 @@ every previous run had it pinned at 0.647 ± 0.005 — the loss is live for the 
 
 Also green: `pytest tests/` 10 passed, `python -m sang.streaming_transformer` ok, and all four
 sanity checks at 0 failures on the real config.
+
+---
+
+## 35. Continuous track made primary; what had to change to make it correct (9 September 2026)
+
+Decision: the next run is **256 px, Wan2.1 VAE latents, rectified flow** (`configs/train.yaml`).
+The discrete 128 px track stays reachable as `configs/train_discrete.yaml`.
+
+The continuous path had only ever been exercised by the v4 run that plateaued at 21.69 dB. Reviewing
+it against the flow-matching literature and the fixes in §27 turned up five problems that would
+have carried into the new run.
+
+### 35.1 Defects fixed in the continuous path
+
+| # | Defect | Fix |
+|---|---|---|
+| C1 | **Sampler started from the raw reference latent at t=1.** The head is trained on `z_t = (1-t)z0 + t·ε`, so at t=1 it expects pure noise; it was handed the ref latent, a point it never sees in training. | `flow_sample` starts from noise. `bridge_t < 1` gives SDEdit-style anchoring `(1-t)·ref + t·ε`, which *is* a training-time point. |
+| C2 | **Joint decode contradicted the "prev" prior.** All content slices were denoised at once from a grid holding `ref` at every content position, so with `bridge_init: prev` slices ≥ 3 saw prior = ref at inference but prior = GT(s-1) in training. | `generate_continuous` decodes slice by slice, writing each prediction into the grid and marking it known, so the next slice's prior is the previous *prediction* — the same relation training has with the previous GT slice. |
+| C3 | **Attention materialised the full L×L matrix.** Both `nn.MultiheadAttention` calls used the default `need_weights=True`, which forces the explicit-softmax path: at L=7168 that is 1.6 GB per layer of bf16 attention weights kept for backward, ×8 layers, and it bypasses SDPA. | `need_weights=False` → SDPA memory-efficient kernel. Bit-identical outputs. |
+| C4 | **The flow head was a 3-layer MLP with the timestep added once at the input and no normalisation.** | MAR-style head (Li et al. 2024; NOVA uses the same): 6 residual MLP blocks, LayerNorm modulated by adaLN from `t_emb + h` per position, zero-initialised gates and output. 36.2M params. |
+| C5 | **No audio→lip supervision at all on this track** — the perceptual losses lived only in the discrete branch, and `decode_video` was `@no_grad`. Latent MSE alone rewards the blurry mean mouth. | Pixel L1 + SyncNet on the one-step clean estimate `ẑ0 = z_t − t·v` (what LatentSync supervises), decoded through the Wan VAE with gradient and activation checkpointing. `perceptual_batch` bounds the memory peak. |
+
+Also: `evaluate_continuous` now honours `eval_max_batches` and `eval_with_struct`, `struct_grid`
+refuses the Wan track (it encodes the mesh with VidTok), and `flow_sample` calls the unconditional
+head once per step under CFG, not twice.
+
+### 35.2 Why this track, given §28
+
+§28's compute argument still holds: this trains an appearance generator from scratch, and the
+motion-latent pivot (§29) remains the route with the best single-GPU evidence. The reason to run
+this first is that it is the *repo's own* next step (Part V), it now has every fix from §27
+applied, and its reconstruction ceiling (31.8 dB) is high enough that the result is informative
+about the conditioning rather than the tokenizer. Cost: r=1024, L=7168 — 16× the attention of the
+discrete track — so `batch_size: 2, grad_accum: 32`.
+
+### 35.3 Verified
+
+`tests/test_continuous.py` (new): head shapes and gradient, `x0_from_v` inverts `add_noise`
+exactly, the sampler ignores the anchor at `t_start=1`, sequential generate shapes with and
+without CFG. All sanity checks 0 failures; module self-check ok.
+
+**End-to-end smoke:** a100 job 162786 (real batch settings, 6 clips): cache built in ~2 min, 3 steps, sequential eval + Wan decode, checkpoint, exit 0 in 4:29; peak GPU memory 25.1 GB at batch 2 (job 162788). syncnet moved across steps (0.683 / 0.668 / 0.674). Launch config set to `batch_size: 4, grad_accum: 16` from that measurement.
+
+Also fixed on the way: the consolidated `train.sh`/`job.sh` resolved `env.sh` relative to `$BASH_SOURCE`, but sbatch runs a *copy* of the script from `/var/spool/slurmd`, so the first GPU submission died in 1 s. They now resolve it from `$SLURM_SUBMIT_DIR`. And `eval_every: 0` raised a modulo-by-zero; it now means evaluate only at the end.

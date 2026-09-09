@@ -43,9 +43,12 @@ class StreamLayer(nn.Module):
     def forward(self, x: torch.Tensor, e_a: torch.Tensor,
                 self_allow: torch.Tensor, cross_allow: torch.Tensor) -> torch.Tensor:
         sa_mask = ~self_allow if self_allow is not None else None
-        x = x + self.drop(self.self_attn(self.n1(x), self.n1(x), self.n1(x), attn_mask=sa_mask)[0])
+        # need_weights=False lets MHA use the SDPA memory-efficient kernel instead of
+        # materialising the full L x L attention matrix (1.6 GB/layer at L=7168, res 256).
+        xn = self.n1(x)
+        x = x + self.drop(self.self_attn(xn, xn, xn, attn_mask=sa_mask, need_weights=False)[0])
         ca_mask = ~cross_allow if cross_allow is not None else None
-        x = x + self.drop(self.cross_attn(self.n2(x), e_a, e_a, attn_mask=ca_mask)[0])
+        x = x + self.drop(self.cross_attn(self.n2(x), e_a, e_a, attn_mask=ca_mask, need_weights=False)[0])
         x = x + self.drop(self.ff(self.n3(x)))
         return x
 
@@ -144,8 +147,8 @@ class StreamingTalkingHead(nn.Module):
                  mask_schedule: str = "per_slice_cosine", p_inference_shaped: float = 0.0,
                  ref_slices: int = 1, audio_dim: int = 1024, audio_dropout: float = 0.0,
                  bridge_init: bool = False, audio_lookahead: int = 0,
-                 continuous: bool = False, z_ch: int = 0, diff_depth: int = 3,
-                 use_struct_emb: bool = True):
+                 continuous: bool = False, z_ch: int = 0, diff_depth: int = 6,
+                 diff_hidden: int = 1024, use_struct_emb: bool = True):
         super().__init__()
         r = spatial * spatial
         self.video_card = video_card
@@ -176,9 +179,9 @@ class StreamingTalkingHead(nn.Module):
         self.factorized = use_factorized
         if continuous:
             from sang.diffusion import DiffusionHead
-            self.latent_in = nn.Linear(z_ch, dim)          # latent patch -> model dim
+            self.latent_in = nn.Linear(z_ch, dim)
             self.norm = RMSNorm(dim)
-            self.head = DiffusionHead(z_ch, dim, depth=diff_depth)
+            self.head = DiffusionHead(z_ch, dim, hidden=diff_hidden, depth=diff_depth)
         elif use_factorized:
             codec = FSQIndexCodec.from_codebook(fsq_codes)
             codec.to(fsq_codes.device)
@@ -338,91 +341,76 @@ class StreamingTalkingHead(nn.Module):
         target = video_idx.reshape(B, tv, r)[sup]
         return h_masked, target
 
-    def forward_continuous(self, video_lat: torch.Tensor, audio: torch.Tensor,
-                           struct: torch.Tensor | None = None, cond_drop: float = 0.0,
-                           audio_drop_training: bool = True):
-        """v4 flow-matching training step. video_lat [B, tv, z_ch, h, w] continuous latents
-        (slices 0..ref_slices-1 = identity/ctx conditioning, rest = content to predict).
+    def _content_latents(self, video_lat: torch.Tensor) -> torch.Tensor:
+        """[B, tv, z_ch, h, w] -> content positions as [B, Lc, z_ch] (slice-major, then spatial)."""
+        B, _, z_ch, _, _ = video_lat.shape
+        z = video_lat[:, self.ref_slices:]
+        return z.reshape(B, -1, z_ch, self.r).permute(0, 1, 3, 2).reshape(B, -1, z_ch)
 
-        The grid fed to the backbone uses the bridge prior for content positions (ref latent),
-        so the backbone sees clean conditioning + ref-anchored content; the diffusion head then
-        learns to denoise the *content* latents from the conditioning hidden state. Returns
-        (loss, parts)."""
-        from sang.diffusion import add_noise
+    def forward_continuous(self, video_lat: torch.Tensor, audio: torch.Tensor,
+                           struct: torch.Tensor | None = None, cond_drop: float = 0.0):
+        """Flow-matching training step on content latents.
+
+        video_lat [B, tv, z_ch, h, w]: conditioning slices then content. The backbone sees the
+        conditioning slices clean and, at each content position, the bridge prior (with "prev",
+        the previous slice's latent -- teacher-forced, matching the sequential decoder in
+        generate_continuous). Returns (loss, parts, z0_hat) where z0_hat [B, ctv, z_ch, h, w] is
+        the one-step clean estimate, with graph, for pixel-space losses."""
+        from sang.diffusion import flow_loss
         B, tv, z_ch, h, w = video_lat.shape
         r, dev = self.r, video_lat.device
-        L = tv * r
 
         if struct is not None and cond_drop > 0 and self.training:
             keep = torch.rand(B, device=dev) >= cond_drop
             struct = torch.where(keep.view(B, 1, 1, 1), struct, torch.zeros_like(struct))
         audio_drop = None
-        if self.training and audio_drop_training and self.audio_dropout > 0:
+        if self.training and self.audio_dropout > 0:
             audio_drop = torch.rand(B, device=dev) < self.audio_dropout
 
-        # Backbone input: conditioning slices clean, content slices = bridge prior (ref latent).
-        # known marks conditioning as visible; content positions use the prior via _embed_grid.
-        known = torch.zeros(B, L, dtype=torch.bool, device=dev)
+        known = torch.zeros(B, tv * r, dtype=torch.bool, device=dev)
         known[:, : self.ref_slices * r] = True
         hs = self.hidden_states(video_lat, audio, known, struct=struct, audio_drop=audio_drop)
-
-        # Diffusion target: content latents only (exclude ref/ctx conditioning slices).
-        # hs is [B, tv, r, dim] (slice-major); drop the conditioning slices on the tv axis.
-        h_content = hs[:, self.ref_slices:].reshape(B, -1, hs.shape[-1])  # [B, Lc, dim]
-        z0 = video_lat[:, self.ref_slices:]                           # [B, ctv, z_ch, h, w]
-        z0 = z0.reshape(B, -1, z_ch, r).permute(0, 1, 3, 2).reshape(B, -1, z_ch)  # [B, Lc, z_ch]
-        t = torch.rand(B, device=dev)
-        z_t, v_target = add_noise(z0, t)
-        v_pred = self.head(z_t, t, self.norm(h_content))
-        loss = F.mse_loss(v_pred, v_target)
-        with torch.no_grad():
-            err = (v_pred - v_target).pow(2).mean(dim=(1, 2))
-            parts = {"diff": loss.detach(),
-                     "diff_lo": err[t < 0.5].mean() if (t < 0.5).any() else torch.tensor(0.0, device=dev),
-                     "diff_hi": err[t >= 0.5].mean() if (t >= 0.5).any() else torch.tensor(0.0, device=dev),
-                     "loss": loss.detach()}
-        return loss, parts
+        h_content = self.norm(hs[:, self.ref_slices:].reshape(B, -1, hs.shape[-1]))
+        loss, parts, z0_hat = flow_loss(self.head, h_content, self._content_latents(video_lat))
+        parts["loss"] = loss.detach()
+        ctv = tv - self.ref_slices
+        z0_hat = z0_hat.reshape(B, ctv, r, z_ch).permute(0, 1, 3, 2).reshape(B, ctv, z_ch, h, w)
+        return loss, parts, z0_hat
 
     @torch.no_grad()
     def generate_continuous(self, audio: torch.Tensor, ref: torch.Tensor,
                             struct: torch.Tensor | None = None, ctx: torch.Tensor | None = None,
-                            steps: int = 8, audio_cfg: float = 1.0):
-        """v4 few-step flow decode. ref [B, z_ch, h, w] identity latent; ctx [B, z_ch, h, w] motion
-        context (defaults to ref = static start). Returns content latent grid [B, ctv, z_ch, h, w]."""
+                            steps: int = 12, audio_cfg: float = 1.0, bridge_t: float = 1.0):
+        """Sequential flow decode, one content slice at a time.
+
+        ref / ctx [B, z_ch, h, w]. Each generated slice is written into the grid and marked known
+        before the next is predicted, so with bridge_init "prev" the next slice's prior is the
+        previous *prediction* -- the same relationship training has with the previous GT slice.
+        (Decoding all slices jointly left the prior = ref for slices >= 3 at inference only.)
+        bridge_t < 1 anchors each slice on the reference latent SDEdit-style; 1.0 = from noise.
+        Returns content latents [B, ctv, z_ch, h, w]."""
         from sang.diffusion import flow_sample
         B, dev = ref.shape[0], ref.device
-        tv, r, z_ch = self.tv, self.r, self.z_ch
-        h = w = self.spatial
-        ctv = tv - self.ref_slices
-
-        # Build the conditioning grid: [ref, ctx?, content-prior...]. Content prior = ref (bridge).
-        grid = ref.reshape(B, 1, z_ch, h, w).repeat(1, tv, 1, 1, 1)
+        tv, r, z_ch, sp = self.tv, self.r, self.z_ch, self.spatial
+        grid = ref.reshape(B, 1, z_ch, sp, sp).repeat(1, tv, 1, 1, 1).clone()
         if self.ref_slices > 1:
-            grid[:, 1] = (ref if ctx is None else ctx).reshape(B, z_ch, h, w)
+            grid[:, 1] = (ref if ctx is None else ctx).reshape(B, z_ch, sp, sp)
         known = torch.zeros(B, tv * r, dtype=torch.bool, device=dev)
         known[:, : self.ref_slices * r] = True
-        ta = audio.shape[1]
+        anchor = ref.reshape(B, z_ch, r).permute(0, 2, 1) if bridge_t < 1.0 else None
+        null = torch.ones(B, dtype=torch.bool, device=dev) if audio_cfg != 1.0 else None
 
-        hs = self.hidden_states(grid, audio, known, struct=struct)
-        h_content = self.norm(hs[:, self.ref_slices:].reshape(B, -1, hs.shape[-1]))  # [B, Lc, dim]
-
-        # Bridge start: content prior = ref latent (t_start<1 -> less to denoise than pure noise).
-        z_init = grid[:, self.ref_slices:].reshape(B, ctv, z_ch, r).permute(0, 1, 3, 2).reshape(B, -1, z_ch)
-        if audio_cfg != 1.0:
-            # CFG: denoise with guided velocity = uncond + cfg*(cond - uncond)
-            null_audio = torch.ones(B, dtype=torch.bool, device=dev)
-            hs_u = self.hidden_states(grid, audio, known, struct=struct, audio_drop=null_audio)
-            h_u = self.norm(hs_u[:, self.ref_slices:].reshape(B, -1, hs_u.shape[-1]))
-            z = z_init
-            t_start, dt = 1.0, 1.0 / steps
-            for i in range(steps):
-                t_cur = torch.full((B,), t_start - i * dt, device=dev)
-                v_c = self.head(z, t_cur, h_content)
-                v_u = self.head(z, t_cur, h_u)
-                z = z - dt * (v_u + audio_cfg * (v_c - v_u))
-        else:
-            z = flow_sample(self.head, h_content, z_init, steps=steps, t_start=1.0)
-        return z.reshape(B, ctv, r, z_ch).permute(0, 1, 3, 2).reshape(B, ctv, z_ch, h, w)
+        for si in range(self.ref_slices, tv):
+            hs = self.hidden_states(grid, audio, known, struct=struct)
+            h_si = self.norm(hs[:, si])
+            h_u = None
+            if null is not None:
+                h_u = self.norm(self.hidden_states(grid, audio, known, struct=struct, audio_drop=null)[:, si])
+            z = flow_sample(self.head, h_si, (r, z_ch), steps=steps, anchor=anchor,
+                            t_start=bridge_t, h_uncond=h_u, cfg=audio_cfg)
+            grid[:, si] = z.permute(0, 2, 1).reshape(B, z_ch, sp, sp)
+            known[:, si * r:(si + 1) * r] = True
+        return grid[:, self.ref_slices:]
 
     @torch.no_grad()
     def logits_full(self, video_idx: torch.Tensor, audio: torch.Tensor,

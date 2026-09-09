@@ -30,7 +30,8 @@ def val_clips(cfg: dict) -> list[str]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default=str(REPO / "configs/train.yaml"))
+    ap.add_argument("--config", default=str(REPO / "configs/train_discrete.yaml"),
+                    help="token-track eval (VidTok decode + MaskGIT generate); the flow track is evaluated in-run by evaluate_continuous")
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--n", type=int, default=None)
     ap.add_argument("--out", default=str(REPO / "results/test/test.json"))

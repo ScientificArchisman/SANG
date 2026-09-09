@@ -20,6 +20,7 @@ from tqdm import tqdm
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 from sang.data import audio_samples, clip_windows
+from sang.losses import build_losses, face_lip_weight
 from sang.masking import per_slice_cosine_mask
 from sang.model import build_talking_head
 from sang.video import load_vidtok
@@ -36,8 +37,6 @@ def load_visual(cfg: dict, device: str):
     for p in model.parameters():
         p.requires_grad_(False)
     return model
-
-from sang.losses import build_losses
 
 
 def mel_spectrogram(wav: torch.Tensor, sr: int = 16000, n_mels: int = 80) -> torch.Tensor:
@@ -90,6 +89,22 @@ def patch_mel_for_clip(clip_path, cached_files, cfg: dict) -> None:
             win = F.pad(win, (0, n - win.shape[-1]))
         d["mel"] = mel_spectrogram(win, sr).squeeze(0).half()
         torch.save(d, f)
+
+
+def perceptual_losses(loss, pred_px, gt_px, mel, losses, cfg, parts):
+    """Pixel L1 (face/lip-weighted) and SyncNet on decoded frames; shared by both tracks."""
+    if cfg.get("pixel_weight", 0.0) > 0:
+        if cfg.get("face_weight", False):
+            p_loss = (face_lip_weight(pred_px.shape, pred_px.device) * (pred_px - gt_px).abs()).mean()
+        else:
+            p_loss = F.l1_loss(pred_px, gt_px)
+        loss = loss + cfg["pixel_weight"] * p_loss
+        parts["pixel"] = p_loss.detach()
+    if "syncnet" in losses and mel is not None:
+        s_loss = losses["syncnet"](pred_px, mel)
+        loss = loss + cfg.get("syncnet_weight", 0.1) * s_loss
+        parts["syncnet"] = s_loss.detach()
+    return loss
 
 
 def _clip_cache_complete(cache_dir: Path, key: str, nwin: int) -> list[Path] | None:
@@ -254,14 +269,20 @@ def evaluate_continuous(model, loader, device, face_cond, cfg, vidtok, syncnet=F
     model.eval()
     mse = psnr_sum = n = 0
     n_cond = getattr(model, "ref_slices", 1)
-    steps = cfg.get("decode_steps", 8)
+    steps = cfg.get("decode_steps", 12)
     audio_cfg = cfg.get("audio_cfg", 1.0)
-    for batch in loader:
+    max_batches = cfg.get("eval_max_batches", 0)
+    use_struct = cfg.get("eval_with_struct", False)
+    for bi, batch in enumerate(loader):
+        if max_batches and bi >= max_batches:
+            break
         video, audio, struct, _ = unpack(batch, device, face_cond, syncnet)
-        B, tv, z_ch, hh, ww = video.shape
+        if not use_struct:
+            struct = None
         gen = model.generate_continuous(audio, video[:, 0], struct=struct,
                                         ctx=video[:, 1] if n_cond > 1 else None,
-                                        steps=steps, audio_cfg=audio_cfg)  # [B, ctv, z_ch, hh, ww]
+                                        steps=steps, audio_cfg=audio_cfg,
+                                        bridge_t=cfg.get("bridge_t", 1.0))  # [B, ctv, z_ch, hh, ww]
         gt = video[:, n_cond:]
         mse += F.mse_loss(gen, gt).item()
         pred_px = vidtok.decode_video(gen.permute(0, 2, 1, 3, 4).contiguous())
@@ -472,7 +493,18 @@ def main() -> None:
             with amp():
                 continuous = getattr(model, "continuous", False)
                 if continuous:
-                    loss, parts = model.forward_continuous(video, audio, struct=struct, cond_drop=cond_drop)
+                    loss, parts, z0_hat = model.forward_continuous(video, audio, struct=struct,
+                                                                   cond_drop=cond_drop)
+                    if losses or cfg.get("pixel_weight", 0.0) > 0:
+                        # Pixel-space losses on the one-step clean estimate (LatentSync applies
+                        # SyncNet to exactly this). Decoding through the Wan VAE at 256 px is
+                        # the memory peak, so only the first perceptual_batch examples are decoded.
+                        k = cfg.get("perceptual_batch", 1)
+                        n_cond = model.ref_slices
+                        pred_px = vidtok.decode_video_grad(z0_hat[:k].permute(0, 2, 1, 3, 4).contiguous())
+                        gt_px = vidtok.decode_video(video[:k, n_cond:].permute(0, 2, 1, 3, 4).contiguous())
+                        loss = perceptual_losses(loss, pred_px, gt_px,
+                                                 mel[:k] if mel is not None else None, losses, cfg, parts)
                 else:
                     # One mask shared with the perceptual losses below, so they see the same masked
                     # regime as the CE loss rather than a fully-visible (copyable) grid.
@@ -493,19 +525,7 @@ def main() -> None:
                         gt_idx = video[:, n_cond:].reshape(B, (tv - n_cond), h, w)
                         with torch.no_grad():
                             gt_px = vidtok.decode(gt_idx, decode_from_indices=True)
-                        if cfg.get("pixel_weight", 0.0) > 0:
-                            if cfg.get("face_weight", False):
-                                from sang.losses import face_lip_weight
-                                wmap = face_lip_weight(pred_px.shape, pred_px.device)
-                                p_loss = (wmap * (pred_px - gt_px).abs()).mean()
-                            else:
-                                p_loss = F.l1_loss(pred_px, gt_px)
-                            loss = loss + cfg["pixel_weight"] * p_loss
-                            parts["pixel"] = p_loss.detach()
-                        if "syncnet" in losses and mel is not None:
-                            s_loss = losses["syncnet"](pred_px, mel)
-                            loss = loss + cfg.get("syncnet_weight", 0.1) * s_loss
-                            parts["syncnet"] = s_loss.detach()
+                        loss = perceptual_losses(loss, pred_px, gt_px, mel, losses, cfg, parts)
 
             (loss / accum).backward()
             for k, v in parts.items():
@@ -515,6 +535,7 @@ def main() -> None:
 
         gnorm = torch.nn.utils.clip_grad_norm_(model.parameters(), cfg["grad_clip"])
         opt.step()
+        mem = f" mem {torch.cuda.max_memory_allocated() / 2**30:.1f}G" if device == "cuda" else ""
 
         if step % log_every == 0:
             m = {k: v / max(meter_n, 1) for k, v in meter.items()}
@@ -524,7 +545,7 @@ def main() -> None:
                 extra = " ".join(f"{k} {m[k]:.4f}" for k in ("pixel", "syncnet") if k in m)
                 tqdm.write(f"step {step:7d} lr {opt.param_groups[0]['lr']:.2e} "
                            f"diff {m.get('diff', 0):.4f} (lo {m.get('diff_lo', 0):.4f} hi {m.get('diff_hi', 0):.4f}) "
-                           f"gnorm {gnorm:.3f}" + (f" | {extra}" if extra else ""))
+                           f"gnorm {gnorm:.3f}{mem}" + (f" | {extra}" if extra else ""))
             else:
                 chance = math.log(cfg["codebook"])
                 pbar.set_postfix(ce=f"{m.get('ce', 0):.3f}", acc_d=f"{m.get('acc_dim_mean', 0):.3f}",
@@ -534,11 +555,11 @@ def main() -> None:
                 tqdm.write(f"step {step:7d} lr {opt.param_groups[0]['lr']:.2e} "
                            f"ce {m.get('ce', 0):.4f} (chance {chance:.4f}, gap {chance - m.get('ce', 0):+.4f}) "
                            f"acc_dim {m.get('acc_dim_mean', 0):.4f} acc_tok {m.get('acc_token', 0):.5f} "
-                           f"gnorm {gnorm:.3f}" + (f" | {extra}" if extra else ""))
+                           f"gnorm {gnorm:.3f}{mem}" + (f" | {extra}" if extra else ""))
             meter.clear()
             meter_n = 0
 
-        if val_loader and (step % cfg["eval_every"] == 0 or step == total):
+        if val_loader and ((cfg["eval_every"] > 0 and step % cfg["eval_every"] == 0) or step == total):
             if getattr(model, "continuous", False):
                 vloss, vacc = evaluate_continuous(model, val_loader, device, face_cond, cfg, vidtok, syncnet)
                 diag = {}

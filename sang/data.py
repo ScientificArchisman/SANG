@@ -45,6 +45,8 @@ def struct_grid(vidtok, video: torch.Tensor) -> torch.Tensor:
     """Clip [1,3,T,res,res] in [-1,1] -> VidTok-encoded face-mesh structure grid [1,Tv,h,w] on the same crop."""
     from sang import face  
 
+    if not hasattr(vidtok, "regularization"):
+        raise RuntimeError("struct conditioning encodes the mesh with VidTok; not available on the Wan VAE track")
     dev = next(vidtok.parameters()).device
     struct_img = face.render_structure(to_uint8_frames(video))
     return encode(vidtok, frames_to_input(struct_img).to(dev))
