@@ -20,7 +20,7 @@ from tqdm import tqdm
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 from sang.codec import load_mimi
-from sang.data import clip_windows
+from sang.data import audio_samples, clip_windows
 from sang.masking import per_slice_cosine_mask
 from sang.model import build_talking_head, token_loss
 from sang.video import load_vidtok
@@ -55,7 +55,7 @@ def _mel_audio_ctx(clip_path, cfg: dict):
     fps, frames = cfg["fps"], cfg["frames"]
     span = int(round((frames - 1) * (native / fps))) + 1
     sr = 16000
-    n = round(frames / fps * sr)
+    n = audio_samples(frames, fps, sr)  # D8: frames-1 intervals, not frames
     wav = torch.from_numpy(AudioReader(str(path.with_suffix(".m4a")), sample_rate=sr, mono=True)[:].asnumpy())
     return native, span, sr, n, wav
 
@@ -120,7 +120,8 @@ def build_cache(clips, vidtok, mimi, cfg, cache_dir: Path, split: str):
         try:
             wins = clip_windows(c, vidtok, mimi, frames=cfg["frames"], res=cfg["res"], fps=cfg["fps"],
                                 audio_codebooks=cfg["audio_codebooks"], max_windows=cfg["windows_per_clip"],
-                                face_cond=cfg.get("face_cond", False), continuous=continuous)
+                                face_cond=cfg.get("face_cond", False), continuous=continuous,
+                                face_crop=cfg.get("face_crop", False))
         except Exception as e:
             print(f"skip {Path(c).name}: {type(e).__name__} {e}", file=sys.stderr)
             continue
@@ -134,6 +135,8 @@ def build_cache(clips, vidtok, mimi, cfg, cache_dir: Path, split: str):
                      "audio": a.cpu().half() if a.is_floating_point() else a.to(torch.int16).cpu()}
             if "struct" in d:
                 entry["struct"] = d["struct"][0].to(torch.int16).cpu()
+            if "face_found" in d:
+                entry["face_found"] = bool(d["face_found"])
             if motion_ctx:
                 # identity anchor = clip frame 0 (matches the static image at inference);
                 # motion context = previous window's last slice (window 0: static start = ref).
