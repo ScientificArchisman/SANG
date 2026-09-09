@@ -211,10 +211,8 @@ class StreamingTalkingHead(nn.Module):
                 s = F.pad(s, (0, 0, L - s.shape[1], 0)) if s.shape[1] < L else s
                 e = e + s
             if self.bridge_init:
-                # Bridge prior: masked content positions start from the ref *latent* embedding
-                # (slice 0) at the same spatial position — the model edits ref -> target.
-                prior = e[:, :r].repeat(1, self.tv, 1)
-                return torch.where(known.reshape(B, L).unsqueeze(-1), e, prior)
+                return torch.where(known.reshape(B, L).unsqueeze(-1), e,
+                                   self._bridge_prior(e, r, self.tv))
             mask_tok = self.backbone.mask_token.to(e.dtype)
             return torch.where(known.reshape(B, L).unsqueeze(-1), e, mask_tok)
         B, tv, h, w = grid.shape
@@ -228,12 +226,26 @@ class StreamingTalkingHead(nn.Module):
                 s[:, :r] = 0.0
             e = e + s
         if self.bridge_init:
-            # Masked content positions start from the identity-ref embedding at the same spatial
-            # position (slice 0), not from [MASK]: MaskGIT edits the reference into the target.
-            prior = e[:, :r].repeat(1, tv, 1)
-            return torch.where(known.reshape(B, L).unsqueeze(-1), e, prior)
+            return torch.where(known.reshape(B, L).unsqueeze(-1), e, self._bridge_prior(e, r, tv))
         mask_tok = self.backbone.mask_token.to(e.dtype)
         return torch.where(known.reshape(B, L).unsqueeze(-1), e, mask_tok)
+
+    def _bridge_prior(self, e: torch.Tensor, r: int, tv: int) -> torch.Tensor:
+        """Embedding that masked positions start from, instead of [MASK].
+
+        "prev" (recommended): slice s starts from slice s-1, i.e. the previous frame. For the
+        first content slice that is the motion-context slice, so the window starts from where the
+        last one ended. generate() commits slices in order and block-causal attention only looks
+        backwards, so slice s-1 is always already decoded when slice s is predicted.
+
+        "ref" (the v3.1 setting, kept for reproducibility): every slice starts from slice 0.
+        Measured on runs/stream_v3_161491: this makes ALL content slices byte-identical at
+        generation time (spread 0.000000), so the model can only differentiate output frames
+        through slice_emb and audio cross-attention -- and audio moves the hidden states by ~3%.
+        That is the static, melting output. See docs/v3_improvement_plan.md Part VI, D1."""
+        if str(self.bridge_init) == "prev":
+            return torch.cat([e[:, :r], e[:, :-r]], dim=1)
+        return e[:, :r].repeat(1, tv, 1)
 
     def _embed_audio(self, audio: torch.Tensor, n_ticks: int | None = None,
                      drop: torch.Tensor | None = None) -> torch.Tensor:
@@ -249,6 +261,17 @@ class StreamingTalkingHead(nn.Module):
         if drop is not None and drop.any():
             return torch.where(drop.view(-1, 1, 1), pos.expand_as(e), e + pos)
         return e + pos
+
+    def sample_mask(self, B: int, device: torch.device) -> torch.Tensor:
+        """Draw the training mask [B, tv*r] that forward() would draw.
+
+        Exposed so auxiliary losses (pixel / SyncNet / TREPA) can share the CE pass's mask instead
+        of running a fully-visible forward, which they could satisfy by copying the ground-truth
+        token embedded at each position. See docs/v3_improvement_plan.md Part VI, D4."""
+        if self.mask_schedule == "per_slice_cosine":
+            return per_slice_cosine_mask(B, self.tv, self.r, device, ref_slices=self.ref_slices)
+        return mixed_mask(B, self.tv, self.r, device, p_inference_shaped=self.p_inference_shaped,
+                          ref_slices=self.ref_slices)
 
     def hidden_states(self, video_idx: torch.Tensor, audio: torch.Tensor, known: torch.Tensor,
                       struct: torch.Tensor | None = None, n_ticks: int | None = None,
