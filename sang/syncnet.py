@@ -161,25 +161,17 @@ class StableSyncNet(nn.Module):
         return F.normalize(v, p=2, dim=1), F.normalize(a, p=2, dim=1)
 
     def loss(self, frames: torch.Tensor, audio_mels: torch.Tensor) -> torch.Tensor:
-        """frames [B,3,T,H,W] in [-1,1], audio_mels [B,80,T] -> cosine sync loss.
+        """frames [B,3,T,H,W] in [-1,1], mels [B,80,T] -> cosine sync loss.
 
-        The 48 input channels are (frame, colour) pairs in FRAME-MAJOR order, ch = t*3 + c.
-        Getting this wrong silently destroys the loss: the pretrained conv_in sees a permuted
-        stack and the embedding becomes input-independent, pinning the loss at its ~0.65 floor.
-        Measured discriminative margin (mismatched - matched) on real clips:
-            channel-major / previous reshape : -0.019   (worse than chance)
-            frame-major (this)               : +0.023   with the legacy whole-frame crop
-            frame-major + data-level face crop: +0.197
-        See docs/v3_improvement_plan.md Part VI, D3."""
+        The 48 channels must be FRAME-MAJOR (ch = t*3 + c). Any other order silently pins the
+        loss at its ~0.65 floor: the pretrained conv_in sees a permuted stack."""
         B, C, T, H, W = frames.shape
         n = T // 16
         if n < 1:
             return torch.tensor(0.0, device=frames.device, requires_grad=True)
-        # lower half of the frame. NOTE: this is only a mouth ROI if the frame is a face crop —
-        # see D0. With a blind centre crop the mouth falls outside it in ~8 of 12 clips.
+        # Only a mouth ROI when the frame is a face crop (face_crop: true).
         crop = frames[:, :, : n * 16, H // 2 :, :]
-        # [B,C,T,h,W] -> [B,T,C,h,W] BEFORE flattening, so the reshape below is frame-major.
-        crop = crop.permute(0, 2, 1, 3, 4).reshape(B * n * 16, C, H // 2, W)
+        crop = crop.permute(0, 2, 1, 3, 4).reshape(B * n * 16, C, H // 2, W)  # frame-major
         crop = F.interpolate(crop, size=(128, 256), mode="bilinear", align_corners=False)
         img = crop.reshape(B * n, 16 * C, 128, 256)
         aud = F.interpolate(

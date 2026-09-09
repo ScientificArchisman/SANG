@@ -1,21 +1,18 @@
 #!/bin/bash
-#SBATCH --job-name=sang_train
+#SBATCH --job-name=sang
 #SBATCH --partition=ifn
 #SBATCH --account=ifn
 #SBATCH --qos=normal
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=48gb
-#SBATCH --time=24:00:00
-#SBATCH --gres=gpu:a100:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=120gb
+#SBATCH --time=72:00:00
+#SBATCH --gres=gpu:h100:1
 #SBATCH --output=slurm_logs/%x_%j.out
 #SBATCH --error=slurm_logs/%x_%j.err
-
+# Usage: sbatch bash_scripts/train.sh [--config configs/train.yaml] [--set k=v ...]
 set -euo pipefail
-REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-cd "$REPO_ROOT"
-mkdir -p slurm_logs results/train
-source "$HOME/miniconda3/etc/profile.d/conda.sh"
-conda activate avcodec
-export LD_LIBRARY_PATH="$HOME/miniconda3/envs/gl/lib:${LD_LIBRARY_PATH:-}"  # libGLESv2 for mediapipe (E2 face cond)
-python scripts/train.py "$@" | tee "results/train/train_${SLURM_JOB_ID:-manual}.txt"
+source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
+mkdir -p results/train
+python -u scripts/train.py "${@:---config configs/train.yaml}" \
+  | tee "results/train/${SLURM_JOB_ID:-manual}.txt"

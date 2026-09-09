@@ -12,7 +12,6 @@ import yaml
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
-from sang.codec import load_mimi
 from sang.data import clip_tokens
 from sang.metrics import video_metrics
 from sang.masking import per_slice_cosine_mask
@@ -31,7 +30,7 @@ def val_clips(cfg: dict) -> list[str]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default=str(REPO / "configs/train_stream_v3.yaml"))
+    ap.add_argument("--config", default=str(REPO / "configs/train.yaml"))
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--n", type=int, default=None)
     ap.add_argument("--out", default=str(REPO / "results/test/test.json"))
@@ -50,9 +49,7 @@ def main() -> None:
     vidtok = load_vidtok(codebook=cfg["codebook"], device=device)
     if cfg.get("audio_encoder"):
         from sang.codec import load_wavlm
-        mimi = load_wavlm(cfg["audio_encoder"], device=device)
-    else:
-        mimi = load_mimi(device=device)
+        audio_enc = load_wavlm(cfg["audio_encoder"], device=device)
     fsq_codes = getattr(vidtok.regularization, "implicit_codebook", None)
     if fsq_codes is not None:
         fsq_codes = fsq_codes.to(device).float()
@@ -63,9 +60,8 @@ def main() -> None:
     rows = []
     for path in clips:
         try:
-            d = clip_tokens(path, vidtok, mimi, frames=cfg["frames"], res=cfg["res"], start=0,
-                            fps=cfg["fps"], audio_codebooks=cfg.get("audio_codebooks", 32),
-                            face_cond=cfg.get("face_cond", False),
+            d = clip_tokens(path, vidtok, audio_enc, frames=cfg["frames"], res=cfg["res"],
+                            start=0, fps=cfg["fps"], face_cond=cfg.get("face_cond", False),
                             face_crop=cfg.get("face_crop", False))
         except Exception as e:
             print(f"skip {Path(path).name}: {type(e).__name__} {e}", flush=True)

@@ -46,11 +46,8 @@ def crop_box(h: int, w: int) -> tuple[int, int, int]:
 
 def upscale_to_original(frames: np.ndarray, orig_h: int, orig_w: int,
                         box: tuple[int, int, int] | None = None) -> np.ndarray:
-    """Paste model output [T, res, res, 3] back into [T, orig_h, orig_w, 3] (black letterbox).
-
-    `box` is the (top, left, side) the input was cropped from — pass the same box used by
-    crop_resize so a face-cropped generation lands where the face actually was. Defaults to the
-    centre crop, which is only correct when the input was centre-cropped."""
+    """Paste output [T,res,res,3] into [T,orig_h,orig_w,3]. Pass the same `box` crop_resize used,
+    or the generation lands in the centre instead of where the face was."""
     top, left, side = box if box is not None else crop_box(orig_h, orig_w)
     x = torch.from_numpy(np.ascontiguousarray(frames)).permute(0, 3, 1, 2).float()
     patch = F.interpolate(x, size=(side, side), mode="bilinear", align_corners=False).round().byte()
@@ -59,22 +56,17 @@ def upscale_to_original(frames: np.ndarray, orig_h: int, orig_w: int,
     return out
 
 
-def face_box(frames: np.ndarray, margin: float = 1.6, probe: int = 3) -> tuple[int, int, int] | None:
+def face_box(frames: np.ndarray, margin: float = 1.6, probe: int = 1) -> tuple[int, int, int] | None:
     """Square face crop (top, left, side) for a whole window, or None if no face is found.
 
-    One box per window, from the union of landmark bboxes over `probe` evenly spaced frames, so
-    the crop does not jitter frame to frame. `margin` scales the face bbox (1.6 keeps forehead,
-    chin and some head motion). The box is shifted — not shrunk — when it hits an edge, so the
-    apparent face scale stays constant across clips.
-
-    Why this exists: the source clips are `*_NA_*` (no face crop) 16:9 scenes, so the previous
-    blind centre crop left the face at ~10% of frame area and the mouth at ~1.6 x 0.8 cells of a
-    16x16 latent grid. Measured SyncNet discriminative margin: 0.023 blind vs 0.197 face-cropped.
-    See docs/v3_improvement_plan.md Part VI, D0."""
+    One box per window (union over `probe` frames) so the crop does not jitter. `margin` scales
+    the face bbox and absorbs intra-window motion, so a single mid-window probe is enough for a
+    0.64 s window; detection costs ~93 ms, which dominates cache build. The box is shifted, not
+    shrunk, at frame edges so face scale stays constant across clips."""
     from sang import face as _face  # local: mediapipe needs libGLESv2, not present everywhere
 
     T, H, W = frames.shape[:3]
-    idx = sorted({0, T // 2, T - 1}) if probe >= 3 else [0]
+    idx = [T // 2] if probe <= 1 else sorted({0, T // 2, T - 1})
     xs0, ys0, xs1, ys1 = [], [], [], []
     for i in idx[:probe]:
         pts = _face.landmarks_px(np.ascontiguousarray(frames[i]))

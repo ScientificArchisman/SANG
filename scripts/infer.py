@@ -18,7 +18,6 @@ from PIL import Image
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from sang.codec import load_mimi
 from sang.data import audio_samples, video_struct_windows
 from sang.model import build_talking_head
 from sang.video import (crop_resize, encode, encode_latent, face_box, load_vidtok,
@@ -32,9 +31,8 @@ def ref_grid(vidtok, img: np.ndarray, frames: int, res: int, continuous: bool = 
     """Single RGB image [H,W,3] -> VidTok identity tokens [1,h,w] (discrete) or latent [1,z_ch,h,w]
     (continuous). Static ref: replicate over time, take frame 0.
 
-    `face_crop` must match how the checkpoint was trained. A model trained on detected face crops
-    fed a blind centre crop at inference sees a completely different framing -- the reference face
-    would sit at ~10% of the frame instead of filling it. See docs/v3_improvement_plan.md D0."""
+    `face_crop` must match how the checkpoint was trained, or the reference face is framed
+    completely differently from anything the model saw."""
     stack = np.repeat(img[None], frames, axis=0)
     box = face_box(stack) if face_crop else None
     if face_crop and box is None:
@@ -86,9 +84,8 @@ def main() -> None:
         ckpt = REPO / ckpt
     state = torch.load(ckpt, map_location=DEVICE, weights_only=False)
     # ckpt carries its own training cfg (v3 token or v4 continuous); fall back to v3 yaml for old ckpts
-    base = "train_stream_v4.yaml" if state["cfg"].get("continuous") else "train_stream_v3.yaml"
-    cfg = yaml.safe_load(open(REPO / "configs" / base))
-    cfg = {**cfg, **state["cfg"]}
+    # the checkpoint carries its own training cfg; fall back to the default for older ones
+    cfg = {**yaml.safe_load(open(REPO / "configs" / "train.yaml")), **state["cfg"]}
 
     continuous = cfg.get("continuous", False)
     if continuous:
@@ -100,11 +97,8 @@ def main() -> None:
         fsq_codes = getattr(vidtok.regularization, "implicit_codebook", None)
         if fsq_codes is not None:
             fsq_codes = fsq_codes.to(DEVICE).float()
-    if cfg.get("audio_encoder"):
-        from sang.codec import load_wavlm
-        mimi = load_wavlm(cfg["audio_encoder"], device=DEVICE)
-    else:
-        mimi = load_mimi(device=DEVICE)
+    from sang.codec import load_wavlm
+    audio_enc = load_wavlm(cfg["audio_encoder"], device=DEVICE)
     model = build_talking_head(cfg, fsq_codes=fsq_codes).to(DEVICE).eval()
     model.load_state_dict(state["model"])
     t0 = time.time()
@@ -112,13 +106,11 @@ def main() -> None:
     orig_h, orig_w = img.shape[:2]
     ref, ref_box = ref_grid(vidtok, img, cfg["frames"], cfg["res"], continuous,
                             face_crop=cfg.get("face_crop", False))
-    wav = torch.from_numpy(AudioReader(args.audio, sample_rate=mimi.sample_rate, mono=True)[:].asnumpy())
-    # D8: N frames span N-1 intervals. Must match sang.data.audio_samples used when caching,
-    # otherwise the WavLM tick count differs from training and the cross-attention mask is wrong.
+    wav = torch.from_numpy(AudioReader(args.audio, sample_rate=audio_enc.sample_rate, mono=True)[:].asnumpy())
+    # Must match sang.data.audio_samples used at cache time, or Ta differs from training.
     win_sec = (cfg["frames"] - 1) / cfg["fps"]
-    n = audio_samples(cfg["frames"], cfg["fps"], mimi.sample_rate)
+    n = audio_samples(cfg["frames"], cfg["fps"], audio_enc.sample_rate)
     wins = audio_windows(wav, n)[: max(1, round(args.seconds / win_sec))]
-    mimi.set_num_codebooks(cfg.get("audio_codebooks", 32))
     struct = None
     if args.drive_video:
         struct = video_struct_windows(args.drive_video, vidtok, cfg["frames"], cfg["res"], cfg["fps"], max_windows=len(wins))
@@ -129,7 +121,7 @@ def main() -> None:
     if continuous:
         gen_kw = dict(steps=cfg.get("decode_steps", 8), audio_cfg=audio_cfg)
         for i, c in enumerate(wins):
-            lat = model.generate_continuous(mimi.encode(c[None].to(DEVICE)), ref,
+            lat = model.generate_continuous(audio_enc.encode(c[None].to(DEVICE)), ref,
                                             struct=struct[i] if struct else None, ctx=ctx, **gen_kw)
             # lat [1, ctv, z_ch, h, w] -> [1, z_ch, ctv, h, w] -> pixels
             ctx = lat[:, -1]
@@ -139,7 +131,7 @@ def main() -> None:
         gen_kw = dict(steps=cfg.get("decode_steps", 8), temperature=cfg.get("decode_temperature", 1.0),
                       gumbel_temp=cfg.get("decode_gumbel", 4.5), audio_cfg=audio_cfg)
         for i, c in enumerate(wins):
-            grid = model.generate(mimi.encode(c[None].to(DEVICE)), ref,
+            grid = model.generate(audio_enc.encode(c[None].to(DEVICE)), ref,
                                   struct=struct[i] if struct else None, ctx=ctx, **gen_kw)
             ctx = grid[:, -1:]  # motion context handed to the next window (no 0.68s reset)
             raw.append(to_uint8_frames(vidtok.decode(grid[:, grid.shape[1] - ctv:], decode_from_indices=True)))

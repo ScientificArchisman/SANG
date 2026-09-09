@@ -2056,3 +2056,71 @@ produce a model that looks better on `val_acc` and is *more* audio-blind than th
 
 ⚠️ Note on environments: mediapipe needs `libGLESv2`, absent from the login node. Use
 `LD_LIBRARY_PATH=$CONDA_PREFIX/../gl/lib` (the `gl` env has it) or run on a compute node.
+
+---
+
+## 34. Repo cleanup and the config for the next run (9 September 2026)
+
+The tree was pruned to what the pipeline actually executes, and the two stale configs were
+replaced by one. File/symbol names used earlier in this document that no longer exist:
+
+| Was | Now |
+|---|---|
+| `configs/train_stream_v3.yaml`, `train_stream_v4.yaml` | `configs/train.yaml`, `configs/train_continuous.yaml` |
+| `scripts/vidtok_ceiling.py`, `scripts/wan_ceiling.py` | `scripts/ceiling.py` (adds the face-crop axis) |
+| 11 `bash_scripts/*.sh` | `train.sh`, `job.sh`, `env.sh` |
+| `sang/model.py:TalkingHead`, `token_loss` | deleted — the flat-AR path was unused |
+| Mimi codec path (`load_mimi`, `audio_codebooks`, `audio_emb`) | deleted — WavLM only |
+| `TREPALoss`, `trepa_*` | deleted — measured gradient was ~0 while costing a VideoMAE fwd+bwd |
+| `sang/metrics.py:si_sdr`, `audio_metrics` | deleted — never imported |
+
+**Model: 79.3M → 59.9M parameters**, all dead weight: `struct_emb` (16.8M, only built when
+`face_cond` is on), `audio_emb` (1.05M, the Mimi embedding), and `audio_pos` sized 4096 rows for a
+31-tick window (1.6M).
+
+### 34.1 Pipeline changes beyond the defect fixes
+
+- **bf16 autocast** (`bf16: true`) — roughly 2× throughput on H100; parameters stay fp32 so the
+  optimizer and gradient clipping are unaffected, and bf16's fp32 range means no GradScaler.
+- **Speaker-level train/val split.** The split was per clip, but each speaker owns ~11 clips, so
+  the same identity appeared in both and `val_acc` partly measured memorisation. Now split on the
+  per-video directory.
+- **Windows spread across the clip.** They were packed from t=0, so only the first `8 × 0.68 s` of
+  every clip was ever used and a 130 s clip contributed as much as a 6 s one.
+- **`eval_max_batches`** caps the generative eval, which was ~30% of wall clock at full val.
+- **Manifest support**: `data_glob` accepts a `.txt` file, so `scripts/filter_clips.py` output can
+  be used directly.
+- **`face_box` probes one mid-window frame** rather than three. Detection is ~93 ms and dominates
+  cache build; over 0.64 s the 1.6× margin absorbs the motion.
+
+### 34.2 The config, and why
+
+`configs/train.yaml` — discrete FSQ at 128 px. This is deliberately the *cheap, fast-falsifying*
+run, not the highest-ceiling one: its attention is 16× cheaper than the 256 px continuous track
+(L=1792 vs 7168), and its job is to establish whether the fixes work on a clean pipeline before
+the §29 architecture decision.
+
+The two settings that matter most:
+
+- `face_crop: true` — without it the mouth is ~1.6 latent cells and lip-sync is not learnable.
+- `face_cond: false` — the mesh is rendered from the target frames, so it leaks the ground-truth
+  lip shape and is absent at inference. §33.2c showed struct sensitivity jumping to 53.6% once the
+  bridge was fixed; leaving it on would produce a model that scores better and listens less.
+
+`configs/train_continuous.yaml` keeps the Wan-VAE flow track reachable. It has the higher measured
+reconstruction ceiling (31.8 dB vs 25.3 dB on blind crops) and no quantisation error, but 4× the
+sequence length and an untested head. Measure the face-cropped ceiling of both first:
+
+```bash
+sbatch bash_scripts/job.sh scripts/ceiling.py --n 32
+```
+
+### 34.3 Verified before handover
+
+End-to-end smoke run of the real script (6 clips, CPU, 3 steps): cache built with face cropping,
+speaker split applied ("4 train / 2 val speakers"), 59.9M params, training stepped, eval ran,
+checkpoint written, exit 0. Notably **`syncnet` varied across steps (0.457 / 0.653 / 0.636)** where
+every previous run had it pinned at 0.647 ± 0.005 — the loss is live for the first time.
+
+Also green: `pytest tests/` 10 passed, `python -m sang.streaming_transformer` ok, and all four
+sanity checks at 0 failures on the real config.

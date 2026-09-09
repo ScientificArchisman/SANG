@@ -51,15 +51,17 @@ def batch(cache_glob: str, n: int, seed: int):
         d = torch.load(f, map_location="cpu", weights_only=False)
         vids.append(torch.cat([d["ref"][None].long(), d["ctx"][None].long(), d["video"].long()], 0))
         auds.append(d["audio"].float())
-        strs.append(d["struct"].long())
-    return torch.stack(vids), torch.stack(auds), torch.stack(strs)
+        if "struct" in d:
+            strs.append(d["struct"].long())
+    return (torch.stack(vids), torch.stack(auds),
+            torch.stack(strs) if len(strs) == len(vids) else None)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True)
-    ap.add_argument("--config", default="configs/train_stream_v3.yaml")
-    ap.add_argument("--cache", default=str(REPO / "cache/v3_128_32768_ctx_wavlm/*.pt"))
+    ap.add_argument("--config", default="configs/train.yaml")
+    ap.add_argument("--cache", default=str(REPO / "cache/face128/*.pt"))
     ap.add_argument("--n", type=int, default=8, help="windows to average over")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--syncnet", action="store_true",
@@ -100,13 +102,15 @@ def main() -> None:
         ref_h = hs(audio)
         perm = torch.stack([a[torch.randperm(a.shape[0])] for a in audio])
         variants = {"shuffled audio": hs(perm), "zeroed audio": hs(torch.zeros_like(audio)),
-                    "struct removed": hs(audio, st=None)}
+                    "struct removed": hs(audio, st=None) if struct is not None else ref_h}
 
     def rel(x):
         a = ref_h.reshape(B, tv, r, -1)[:, n_cond:]
         b = x.reshape(B, tv, r, -1)[:, n_cond:]
         return ((a - b).norm() / a.norm()).item() * 100
 
+    if struct is None:
+        variants.pop("struct removed")
     for name, hv in variants.items():
         print(f"  relative change in content hidden states, {name:<15}: {rel(hv):7.3f} %")
     print("  (shuffled ~= zeroed means the model reads presence, not content)\n")

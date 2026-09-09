@@ -1,13 +1,12 @@
-"""Runnable checks for face-mesh structure conditioning (E2): render shape + model forward/generate with struct."""
+"""Face mesh rendering and the face-crop box."""
 import sys
 from pathlib import Path
 
 import numpy as np
-import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sang.face import render_structure
-from sang.model import TalkingHead
+from sang.video import face_box
 
 
 def test_render_shape_and_empty_on_black():
@@ -18,31 +17,24 @@ def test_render_shape_and_empty_on_black():
     assert out.sum() == 0
 
 
-def test_model_struct_forward_and_generate():
-    """Struct is optional and shape-preserving; motion positions get conditioning, frame 0 does not."""
-    torch.manual_seed(0)
-    B, tv, h, w, V = 2, 5, 4, 4, 64
-    r, motion = h * w, (tv - 1) * h * w
-    model = TalkingHead(V, dim=32, num_heads=2, num_layers=2).eval()
-    video = torch.randint(0, V, (B, tv, h, w))
-    audio = torch.randint(0, 2048, (B, 32, 3))
-    struct = torch.randint(0, V, (B, tv, h, w))
+def test_face_box_none_without_a_face():
+    """face_box returns None so callers can fall back to the centre crop and flag the window."""
+    assert face_box(np.zeros((4, 120, 200, 3), np.uint8)) is None
 
-    l0, t0 = model(video, audio)
-    l1, t1 = model(video, audio, struct=struct)
-    assert l0.shape == l1.shape == (B, motion, V)
-    assert t0.shape == t1.shape == (B, motion)
-    assert not torch.allclose(l0, l1), "structure must change the motion predictions"
 
-    # frame 0 is identity: its additive conditioning is zeroed
-    add = model.struct_add(struct, r)
-    assert add[:, :r].abs().sum() == 0 and add[:, r:].abs().sum() > 0
-
-    g = model.generate(audio[:1], video[:1, 0], (tv, h, w), struct=struct[:1])
-    assert g.shape == (1, tv, h, w)
+def test_face_box_is_square_and_inside_the_frame():
+    """Synthetic frames have no detectable face, so this exercises the geometry contract only
+    when a box is produced; it must always be square and fully inside the frame."""
+    frames = (np.random.default_rng(0).random((4, 120, 200, 3)) * 255).astype(np.uint8)
+    box = face_box(frames)
+    if box is None:
+        return
+    top, left, side = box
+    assert top >= 0 and left >= 0 and top + side <= 120 and left + side <= 200
 
 
 if __name__ == "__main__":
     test_render_shape_and_empty_on_black()
-    test_model_struct_forward_and_generate()
+    test_face_box_none_without_a_face()
+    test_face_box_is_square_and_inside_the_frame()
     print("ok")
