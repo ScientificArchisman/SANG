@@ -36,8 +36,16 @@ for res in (128, 256):
         rec_u8 = to_uint8_frames(rec)[0]
         print(f"{cb:>9} {res:>5} {psnr(gt_u8, rec_u8):>8.2f}")
         if res == 256 and cb == 262144:
-            side = np.concatenate([gt_u8, rec_u8], axis=2)
+            # D13: gt_u8/rec_u8 are [H,W,3]; axis=2 concatenated CHANNELS (a 6-channel
+            # array), not a side-by-side image. Older .npy files in results/extras use that
+            # broken layout -- split them on channels to recover the pair.
+            side = np.concatenate([gt_u8, rec_u8], axis=1)
             np.save(REPO / "results" / "extras" / "ceiling_256_262144.npy", side)
+            try:
+                from PIL import Image
+                Image.fromarray(side).save(REPO / "results" / "extras" / "ceiling_256_262144.png")
+            except Exception:
+                pass
         del vt
         torch.cuda.empty_cache() if DEV == "cuda" else None
 print("saved results/extras/ceiling_256_262144.npy (left=GT right=recon)")
