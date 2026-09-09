@@ -27,11 +27,19 @@ from sang.video import load_vidtok
 
 
 def load_visual(cfg: dict, device: str):
-    """VidTok FSQ (discrete) or frozen Wan2.1 VAE (continuous v4)."""
+    """VidTok FSQ (discrete) or frozen Wan2.1 VAE (continuous v4).
+
+    D10: the tokenizer is frozen, but its parameters kept requires_grad=True (VidTok's
+    fix_decoder defaults to False), so every differentiable decode_pixels call accumulated
+    gradients on the decoder that were never in the optimizer and never zeroed."""
     if cfg.get("continuous"):
         from sang.vae import load_wan_vae
-        return load_wan_vae(device=device)
-    return load_vidtok(codebook=cfg["codebook"], device=device)
+        model = load_wan_vae(device=device)
+    else:
+        model = load_vidtok(codebook=cfg["codebook"], device=device)
+    for p in model.parameters():
+        p.requires_grad_(False)
+    return model
 
 from sang.losses import build_losses
 
@@ -144,8 +152,14 @@ def build_cache(clips, vidtok, mimi, cfg, cache_dir: Path, split: str):
                 def frame(vid, t):  # -> [z_ch,h,w] (continuous) | [h,w] (discrete)
                     return vid[:, t] if continuous else vid[t]
                 cast = (lambda x: x.half()) if continuous else (lambda x: x.to(torch.int16))
-                entry["ref"] = cast(frame(wins[0]["video"][0], 0)).cpu()
-                prev = frame(wins[w - 1]["video"][0], -1) if w > 0 else frame(wins[0]["video"][0], 0)
+                # D7: the anchor must come from a window OTHER than this one. Window 0 previously
+                # took ref = ctx = its own content slice 0, handing the model one of its five
+                # supervised slices verbatim (~20% of supervised tokens solvable with no audio).
+                # Windows are non-overlapping, so window 1's slice 0 is never a target of window 0.
+                ref_w = 0 if w != 0 else min(1, len(wins) - 1)
+                entry["ref"] = cast(frame(wins[ref_w]["video"][0], 0)).cpu()
+                prev = (frame(wins[w - 1]["video"][0], -1) if w > 0
+                        else frame(wins[ref_w]["video"][0], 0))  # window 0: static start = ref
                 entry["ctx"] = cast(prev).cpu()
             if syncnet:
                 entry["mel"] = mel_for_window(c, w, cfg)
@@ -278,8 +292,16 @@ def evaluate(model, loader, device, face_cond, cfg, syncnet=False):
         audio_cfg=cfg.get("audio_cfg", 1.0),
     )
     n_cond = getattr(model, "ref_slices", 1)
+    # D5: `struct` is the MediaPipe mesh rendered from the TARGET frames, so it carries the exact
+    # ground-truth lip shape. Real audio-driven inference has none (scripts/infer.py passes
+    # struct=None without --drive_video), so feeding it here measured val_acc under conditioning
+    # that inference never has. Default off; set eval_with_struct: true for the old, optimistic
+    # number or when evaluating the reenactment path. See docs/v3_improvement_plan.md Part VI, D5.
+    use_struct = cfg.get("eval_with_struct", False)
     for batch in loader:
         video, audio, struct, _ = unpack(batch, device, face_cond, syncnet)
+        if not use_struct:
+            struct = None
         if streaming:
             gen = model.generate(audio, video[:, 0], struct=struct,
                                  ctx=video[:, 1] if n_cond > 1 else None, **gen_kw)
@@ -395,20 +417,36 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     best, best_step, bad = float("inf"), 0, 0
     start = 1
+    resumed = None
     if cfg.get("resume"):
         path = Path(cfg["resume"])
         if not path.is_absolute():
             path = REPO / path
-        ckpt = torch.load(path, map_location=device, weights_only=False)
-        model.load_state_dict(ckpt["model"], strict=False)
-        start = ckpt["step"] + 1
-        meta = out_dir / "best.json"
-        if meta.exists():
-            b = json.loads(meta.read_text())
-            best, best_step = b["val_loss"], b["step"]
-        print(f"resume {path.name}: step {ckpt['step']} -> {start}, best {best:.4f}@{best_step}")
+        resumed = torch.load(path, map_location=device, weights_only=False)
+        model.load_state_dict(resumed["model"], strict=False)
+        start = resumed["step"] + 1
+        # D10: best-so-far now travels inside the checkpoint. It used to be read from
+        # out_dir/best.json, but out_dir gets a fresh SLURM job suffix on every launch, so that
+        # file never existed on resume and `best` always restarted at inf ("best inf@0").
+        best = resumed.get("best", float("inf"))
+        best_step = resumed.get("best_step", 0)
+        if "best" not in resumed:  # pre-fix checkpoint: fall back to its own directory
+            meta = path.parent / "best.json"
+            if meta.exists():
+                b = json.loads(meta.read_text())
+                best, best_step = b["val_loss"], b["step"]
+        print(f"resume {path.name}: step {resumed['step']} -> {start}, best {best:.4f}@{best_step}")
 
     opt = torch.optim.AdamW(optim_groups(model, cfg["weight_decay"]), lr=cfg["lr"], betas=tuple(cfg["betas"]), eps=1e-8)
+    if resumed is not None:
+        # D10: AdamW moments used to be discarded on every resume because opt was constructed
+        # after the load. The v3 run restarted >=8 times, re-warming the optimizer each time.
+        if "opt" in resumed:
+            opt.load_state_dict(resumed["opt"])
+            print("  restored optimizer state")
+        else:
+            print("  WARNING: checkpoint predates optimizer-state saving; AdamW moments start at zero")
+        del resumed
     print(f"model={cfg.get('model_type', 'flat')} factorized={getattr(model, 'factorized', False)} "
           f"params={sum(p.numel() for p in model.parameters()) / 1e6:.1f}M device={device}")
     if streaming:
@@ -438,7 +476,11 @@ def main() -> None:
             if continuous:
                 loss, parts = model.forward_continuous(video, audio, struct=struct, cond_drop=cond_drop)
             else:
+                # D4: draw the mask once and reuse it below, so the perceptual losses are
+                # computed in the same masked regime as the CE loss rather than fully visible.
+                shared_mask = model.sample_mask(video.shape[0], device) if streaming else None
                 h_masked, target = model(video, audio, struct=struct, cond_drop=cond_drop,
+                                         mask=shared_mask,
                                          p_corrupt=cfg.get("context_corrupt", 0.0))
                 if streaming:
                     loss, parts = model.compute_loss(h_masked, target, label_smoothing=ls)
@@ -451,7 +493,10 @@ def main() -> None:
                     B, tv, h, w = video.shape
                     r = h * w
                     n_cond = model.ref_slices
-                    known = torch.ones(B, tv * r, dtype=torch.bool, device=device)
+                    # D4: same mask as the CE pass. Previously known=ones made every position
+                    # visible, so the decoded pixels were reachable by an identity map and
+                    # bridge_init never fired -- pixel loss fell while syncnet stayed flat.
+                    known = ~shared_mask
                     hs = model.hidden_states(video, audio, known, struct=struct)
                     h_content = hs[:, n_cond:].reshape(B * (tv - n_cond) * r, -1)
                     pred_px = model.decode_pixels(h_content, vidtok, (tv - n_cond, h, w))
@@ -518,22 +563,27 @@ def main() -> None:
                     tqdm.write(f"  [diag] val_ce {diag.get('ce', 0):.4f} acc_dim {diag.get('acc_dim_mean', 0):.4f} "
                                f"acc_tok {diag.get('acc_token', 0):.5f}")
                 vloss, vacc = evaluate(model, val_loader, device, face_cond, cfg, syncnet)
-            ckpt = {"model": model.state_dict(), "cfg": cfg, "step": step, "val_loss": vloss, "val_acc": vacc}
-            torch.save(ckpt, out_dir / "last.pt")
-            if vloss < best - 1e-4:
+            improved = vloss < best - 1e-4
+            if improved:
                 best, best_step, bad = vloss, step, 0
+            else:
+                bad += 1
+            # D10: optimizer state and best-so-far ride along so a resume is lossless.
+            ckpt = {"model": model.state_dict(), "opt": opt.state_dict(), "cfg": cfg, "step": step,
+                    "val_loss": vloss, "val_acc": vacc, "best": best, "best_step": best_step}
+            torch.save(ckpt, out_dir / "last.pt")
+            if improved:
                 torch.save(ckpt, out_dir / "best.pt")
                 (out_dir / "best.json").write_text(json.dumps({"step": step, "val_loss": vloss, "val_acc": vacc,
                                                                 "diag": diag}, indent=2))
-            else:
-                bad += 1
             metric = "val_psnr" if getattr(model, "continuous", False) else "val_acc"
             tqdm.write(f"step {step} val_loss {vloss:.4f} {metric} {vacc:.4f} | best {best:.4f}@{best_step}")
             if patience > 0 and bad >= patience:
                 tqdm.write(f"early stop at step {step} (best val_loss {best:.4f}@{best_step})")
                 break
         elif step == total:
-            ckpt = {"model": model.state_dict(), "cfg": cfg, "step": step}
+            ckpt = {"model": model.state_dict(), "opt": opt.state_dict(), "cfg": cfg, "step": step,
+                    "best": best, "best_step": best_step}
             torch.save(ckpt, out_dir / "last.pt")
             torch.save(ckpt, out_dir / "best.pt")
     print(f"done. best val_loss {best:.4f}@{best_step} -> {out_dir / 'best.pt'} (best.json)")
