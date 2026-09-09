@@ -1,5 +1,5 @@
 data_glob: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/clips/*/*.mp4
-cache_dir: cache/v4_256_wan_wavlm
+cache_dir: cache/v4_256_wan_wavlm   # face_crop below changes the pixels: use a NEW dir when enabling it
 out_dir: runs/stream_v4
 max_clips: 8000
 windows_per_clip: 8
@@ -20,7 +20,7 @@ continuous: true          # Wan2.1 continuous latent + flow-matching head (no FS
 diff_depth: 3
 motion_ctx: true
 frame0_loss_weight: 0
-bridge_init: true         # content prior = identity-ref latent
+bridge_init: prev         # prior = previous slice ("ref" collapses all slices; Part VI D1)
 audio_lookahead: 4
 
 factorized_head: false
@@ -38,6 +38,8 @@ decode_gumbel: 4.5
 decode_schedule: cosine
 
 face_cond: false          # struct grid is still VidTok tokens; don't mix tokenizers in v4
+face_crop: false          # D0: face detect+crop (needs a fresh cache_dir)
+eval_with_struct: false
 cond_dropout: 0.0
 
 syncnet_loss: false

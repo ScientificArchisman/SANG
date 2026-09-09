@@ -1,5 +1,5 @@
 data_glob: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/clips/*/*.mp4
-cache_dir: cache/v3_128_32768_ctx_wavlm
+cache_dir: cache/v3_128_32768_ctx_wavlm   # face_crop below changes the pixels: use a NEW dir when enabling it
 out_dir: runs/stream_v3
 max_clips: 8000
 windows_per_clip: 8
@@ -17,7 +17,8 @@ audio_encoder: wavlm-large   # cached WavLM features: 50 Hz, 1024-d (Hallo3/VASA
 model_type: streaming
 motion_ctx: true             # grid = [identity ref, prev-window tail, content x5]
 frame0_loss_weight: 0
-bridge_init: true            # LeapTalk token-space bridge: content decoded by *editing* the identity ref, not from [MASK]
+bridge_init: prev            # bridge prior = PREVIOUS slice. "ref" (the old `true`) made every
+                             # content slice byte-identical at decode -> static output (Part VI D1)
 audio_lookahead: 4           # EMO-style future-audio window (4 WavLM ticks = 80ms) for lip pre-shaping
 
 factorized_head: true
@@ -35,7 +36,11 @@ decode_temperature: 0.8
 decode_gumbel: 4.5
 decode_schedule: cosine
 
-face_cond: true
+face_cond: true       # NOTE: struct is the mesh of the TARGET frames. It is a driving signal for
+                      # reenactment, not available in audio-driven inference (Part VI D5).
+face_crop: false      # D0: detect+crop the face instead of a blind centre crop. Needs a fresh
+                      # cache_dir and mediapipe (LD_LIBRARY_PATH=$CONDA_PREFIX/../gl/lib).
+eval_with_struct: false  # D5: evaluate the way inference actually runs (no GT mesh)
 cond_dropout: 0.2
 
 # Perceptual losses (third_party/syncnet/stable_syncnet.pt)
