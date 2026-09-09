@@ -2016,6 +2016,33 @@ The architecture can fit data through the masked path. That points the blame at 
 data — D0, D1, D2, D3 — rather than at model capacity, which is consistent with everything else in
 this section.
 
+### 33.2c ⚠️ Fixing D1 un-blocks the D5 leak — read this before retraining
+
+Re-running the diagnostic on the *old* checkpoint with the *fixed* code shows the interaction:
+
+| signal | before (bridge "ref") | after (bridge "prev") |
+|---|---|---|
+| spread across content slices | 0.000000 | **4.13** |
+| shuffled-audio sensitivity | 2.7% | 8.0% |
+| zeroed-audio sensitivity | 2.7% | 6.4% |
+| **struct removed** | 0.000% | **53.6%** |
+
+The struct term went from *completely discarded* to the single strongest signal in the model. That
+is arithmetically correct — the old bridge prior overwrote struct at every masked position — but it
+means the ground-truth-mesh shortcut (D5) is now **live at exactly the positions being supervised**,
+where before it was only reachable through visible neighbours.
+
+So D1 and D5 must be handled together. For the audio-driven objective (any audio + any reference
+image), the mesh is not available at inference and should be treated as a leak:
+
+- set `face_cond: false`, or
+- raise `cond_dropout` substantially so the model cannot rely on it, and keep
+  `eval_with_struct: false` so the reported number reflects inference.
+
+Keep `face_cond: true` only for the reenactment path, where a driving video really does supply the
+mesh. Retraining with `bridge_init: prev` **and** `face_cond: true` **and** low `cond_dropout` would
+produce a model that looks better on `val_acc` and is *more* audio-blind than the current one.
+
 ### 33.3 Required next actions
 
 1. **Re-cache with `face_crop: true`** into a fresh `cache_dir`. Everything else waits on this.
