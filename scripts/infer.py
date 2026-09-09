@@ -19,20 +19,31 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from sang.codec import load_mimi
-from sang.data import video_struct_windows
+from sang.data import audio_samples, video_struct_windows
 from sang.model import build_talking_head
-from sang.video import crop_resize, encode, encode_latent, load_vidtok, to_uint8_frames, upscale_to_original
+from sang.video import (crop_resize, encode, encode_latent, face_box, load_vidtok,
+                        to_uint8_frames, upscale_to_original)
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def ref_grid(vidtok, img: np.ndarray, frames: int, res: int, continuous: bool = False):
+def ref_grid(vidtok, img: np.ndarray, frames: int, res: int, continuous: bool = False,
+             face_crop: bool = False):
     """Single RGB image [H,W,3] -> VidTok identity tokens [1,h,w] (discrete) or latent [1,z_ch,h,w]
-    (continuous). Static ref: replicate over time, take frame 0."""
-    vid = crop_resize(np.repeat(img[None], frames, axis=0), res).to(DEVICE)
+    (continuous). Static ref: replicate over time, take frame 0.
+
+    `face_crop` must match how the checkpoint was trained. A model trained on detected face crops
+    fed a blind centre crop at inference sees a completely different framing -- the reference face
+    would sit at ~10% of the frame instead of filling it. See docs/v3_improvement_plan.md D0."""
+    stack = np.repeat(img[None], frames, axis=0)
+    box = face_box(stack) if face_crop else None
+    if face_crop and box is None:
+        print("WARNING: face_crop is on but no face was detected in the reference image; "
+              "falling back to the centre crop (identity framing will not match training)")
+    vid = crop_resize(stack, res, box=box).to(DEVICE)
     if continuous:
-        return encode_latent(vidtok, vid)[:, :, 0], vid  # [1, z_ch, h, w]
-    return encode(vidtok, vid)[:, 0], vid
+        return encode_latent(vidtok, vid)[:, :, 0], box  # [1, z_ch, h, w]
+    return encode(vidtok, vid)[:, 0], box
 
 
 def audio_windows(wav: torch.Tensor, n: int) -> list[torch.Tensor]:
@@ -99,10 +110,13 @@ def main() -> None:
     t0 = time.time()
     img = np.array(Image.open(args.image).convert("RGB"))
     orig_h, orig_w = img.shape[:2]
-    ref, _ = ref_grid(vidtok, img, cfg["frames"], cfg["res"], continuous)
+    ref, ref_box = ref_grid(vidtok, img, cfg["frames"], cfg["res"], continuous,
+                            face_crop=cfg.get("face_crop", False))
     wav = torch.from_numpy(AudioReader(args.audio, sample_rate=mimi.sample_rate, mono=True)[:].asnumpy())
-    win_sec = cfg["frames"] / cfg["fps"]
-    n = round(win_sec * mimi.sample_rate)
+    # D8: N frames span N-1 intervals. Must match sang.data.audio_samples used when caching,
+    # otherwise the WavLM tick count differs from training and the cross-attention mask is wrong.
+    win_sec = (cfg["frames"] - 1) / cfg["fps"]
+    n = audio_samples(cfg["frames"], cfg["fps"], mimi.sample_rate)
     wins = audio_windows(wav, n)[: max(1, round(args.seconds / win_sec))]
     mimi.set_num_codebooks(cfg.get("audio_codebooks", 32))
     struct = None
@@ -129,7 +143,7 @@ def main() -> None:
                                   struct=struct[i] if struct else None, ctx=ctx, **gen_kw)
             ctx = grid[:, -1:]  # motion context handed to the next window (no 0.68s reset)
             raw.append(to_uint8_frames(vidtok.decode(grid[:, grid.shape[1] - ctv:], decode_from_indices=True)))
-    frames = upscale_to_original(np.concatenate(raw, 0), orig_h, orig_w)
+    frames = upscale_to_original(np.concatenate(raw, 0), orig_h, orig_w, box=ref_box)
     tmp = Path(args.out).with_suffix(".tmp.mp4")
     tmp.parent.mkdir(parents=True, exist_ok=True)
     write_mp4(frames, cfg["fps"], args.audio, str(tmp))

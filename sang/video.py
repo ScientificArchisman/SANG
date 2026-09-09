@@ -44,9 +44,14 @@ def crop_box(h: int, w: int) -> tuple[int, int, int]:
     return (h - side) // 2, (w - side) // 2, side
 
 
-def upscale_to_original(frames: np.ndarray, orig_h: int, orig_w: int) -> np.ndarray:
-    """Paste model output [T, res, res, 3] into centre of [T, orig_h, orig_w, 3] (black letterbox)."""
-    top, left, side = crop_box(orig_h, orig_w)
+def upscale_to_original(frames: np.ndarray, orig_h: int, orig_w: int,
+                        box: tuple[int, int, int] | None = None) -> np.ndarray:
+    """Paste model output [T, res, res, 3] back into [T, orig_h, orig_w, 3] (black letterbox).
+
+    `box` is the (top, left, side) the input was cropped from — pass the same box used by
+    crop_resize so a face-cropped generation lands where the face actually was. Defaults to the
+    centre crop, which is only correct when the input was centre-cropped."""
+    top, left, side = box if box is not None else crop_box(orig_h, orig_w)
     x = torch.from_numpy(np.ascontiguousarray(frames)).permute(0, 3, 1, 2).float()
     patch = F.interpolate(x, size=(side, side), mode="bilinear", align_corners=False).round().byte()
     out = np.zeros((frames.shape[0], orig_h, orig_w, 3), dtype=np.uint8)
