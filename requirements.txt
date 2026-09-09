@@ -1,7 +1,15 @@
 --extra-index-url https://download.pytorch.org/whl/cu121
 torch==2.4.1+cu121
 torchaudio==2.4.1+cu121
-moshi==0.2.13
-pesq>=0.0.4
-pystoi>=0.4
-easydict  # VideoMAE-v2 custom code dependency (TREPA loss)
+transformers        # WavLM audio encoder
+mediapipe           # face detection for the face crop (needs libGLESv2; see bash_scripts/env.sh)
+decord              # video/audio decoding
+diffusers==0.33.1   # Wan2.1 VAE, continuous track only
+omegaconf           # VidTok config
+pyyaml
+tqdm
+numpy
+pillow
+imageio[ffmpeg]     # inference mp4 writing
+huggingface_hub     # scripts/fetch_loss_weights.py
+pytest
