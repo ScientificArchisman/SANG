@@ -54,11 +54,50 @@ def upscale_to_original(frames: np.ndarray, orig_h: int, orig_w: int) -> np.ndar
     return out
 
 
-def crop_resize(frames, res: int) -> torch.Tensor:
-    """Square centre-crop then resize [T, H, W, 3] uint8 -> [1, 3, T, res, res] in [-1, 1]."""
+def face_box(frames: np.ndarray, margin: float = 1.6, probe: int = 3) -> tuple[int, int, int] | None:
+    """Square face crop (top, left, side) for a whole window, or None if no face is found.
+
+    One box per window, from the union of landmark bboxes over `probe` evenly spaced frames, so
+    the crop does not jitter frame to frame. `margin` scales the face bbox (1.6 keeps forehead,
+    chin and some head motion). The box is shifted — not shrunk — when it hits an edge, so the
+    apparent face scale stays constant across clips.
+
+    Why this exists: the source clips are `*_NA_*` (no face crop) 16:9 scenes, so the previous
+    blind centre crop left the face at ~10% of frame area and the mouth at ~1.6 x 0.8 cells of a
+    16x16 latent grid. Measured SyncNet discriminative margin: 0.023 blind vs 0.197 face-cropped.
+    See docs/v3_improvement_plan.md Part VI, D0."""
+    from sang import face as _face  # local: mediapipe needs libGLESv2, not present everywhere
+
+    T, H, W = frames.shape[:3]
+    idx = sorted({0, T // 2, T - 1}) if probe >= 3 else [0]
+    xs0, ys0, xs1, ys1 = [], [], [], []
+    for i in idx[:probe]:
+        pts = _face.landmarks_px(np.ascontiguousarray(frames[i]))
+        if pts is None:
+            continue
+        xs0.append(pts[:, 0].min()); xs1.append(pts[:, 0].max())
+        ys0.append(pts[:, 1].min()); ys1.append(pts[:, 1].max())
+    if not xs0:
+        return None
+    x0, x1, y0, y1 = min(xs0), max(xs1), min(ys0), max(ys1)
+    side = int(round(max(x1 - x0, y1 - y0) * margin))
+    side = max(16, min(side, H, W))
+    cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    left = int(round(min(max(0.0, cx - side / 2.0), W - side)))
+    top = int(round(min(max(0.0, cy - side / 2.0), H - side)))
+    return top, left, side
+
+
+def crop_resize(frames, res: int, box: tuple[int, int, int] | None = None) -> torch.Tensor:
+    """Square crop then resize [T, H, W, 3] uint8 -> [1, 3, T, res, res] in [-1, 1].
+
+    `box` is (top, left, side) — e.g. from `face_box`. When None, falls back to the centre crop."""
     x = torch.from_numpy(frames).permute(3, 0, 1, 2).float()
-    c = min(x.shape[-2], x.shape[-1])
-    top, left = (x.shape[-2] - c) // 2, (x.shape[-1] - c) // 2
+    if box is None:
+        c = min(x.shape[-2], x.shape[-1])
+        top, left = (x.shape[-2] - c) // 2, (x.shape[-1] - c) // 2
+    else:
+        top, left, c = box
     x = x[..., top : top + c, left : left + c]
     x = F.interpolate(x, size=(res, res), mode="bilinear", align_corners=False)
     return (x / 127.5 - 1.0).unsqueeze(0)

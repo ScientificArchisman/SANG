@@ -3,12 +3,22 @@ from pathlib import Path
 import torch
 from decord import AudioReader, VideoReader
 
-from sang.video import crop_resize, decode_frames, encode, encode_latent, frames_to_input, to_uint8_frames
+from sang.video import (crop_resize, decode_frames, encode, encode_latent, face_box, frames_to_input,
+                        to_uint8_frames)
+
+
+def audio_samples(frames: int, fps: float, sr: int) -> int:
+    """Samples spanned by `frames` frames at `fps`.
+
+    `frames` frames span `frames - 1` inter-frame intervals, so 17 frames at 25 fps is 0.64 s, not
+    0.68 s. The old `frames / fps` stretched every window's audio by 6% against its video.
+    See docs/v3_improvement_plan.md Part VI, D8."""
+    return round((frames - 1) / fps * sr)
 
 
 @torch.no_grad()
 def clip_tokens(path, vidtok, mimi, frames: int = 17, res: int = 128, start=None, fps: float = 25,
-                audio_codebooks: int = 32, face_cond: bool = False) -> dict:
+                audio_codebooks: int = 32, face_cond: bool = False, face_crop: bool = False) -> dict:
     """One TalkVid clip -> aligned dict(video idx [1,Tv,h,w], audio codes [1,K,Ta], ref [1,3,res,res], native fps).
 
     Frames are resampled to `fps` and the audio window is a fixed `frames/fps` seconds, so Ta is
@@ -16,10 +26,10 @@ def clip_tokens(path, vidtok, mimi, frames: int = 17, res: int = 128, start=None
     structure grid `struct [1,Tv,h,w]` on the exact same crop."""
     dev = next(vidtok.parameters()).device
     fr, native, start = decode_frames(str(path), frames, start, fps=fps)
-    video = crop_resize(fr, res).to(dev)
+    video = crop_resize(fr, res, box=face_box(fr) if face_crop else None).to(dev)
 
     sr = mimi.sample_rate
-    n = round(frames / fps * sr)
+    n = audio_samples(frames, fps, sr)
     a0 = int(start / native * sr)
     wav = torch.from_numpy(AudioReader(str(Path(path).with_suffix(".m4a")), sample_rate=sr, mono=True)[:].asnumpy())
     win = wav[:, a0:a0 + n]
@@ -65,7 +75,7 @@ def video_struct_windows(path, vidtok, frames: int = 17, res: int = 128, fps: fl
 @torch.no_grad()
 def clip_windows(path, vidtok, mimi, frames: int = 17, res: int = 128, fps: float = 25,
                  audio_codebooks: int = 32, max_windows: int = 8, face_cond: bool = False,
-                 continuous: bool = False) -> list[dict]:
+                 continuous: bool = False, face_crop: bool = False) -> list[dict]:
     """One clip -> up to `max_windows` non-overlapping windows.
 
     Each window is time-aligned like clip_tokens: dict(video, audio codes [1,K,Ta]); with `face_cond`
@@ -83,7 +93,7 @@ def clip_windows(path, vidtok, mimi, frames: int = 17, res: int = 128, fps: floa
     starts = [w * span for w in range(nwin)]
 
     sr = mimi.sample_rate
-    n = round(frames / fps * sr)
+    n = audio_samples(frames, fps, sr)
     wav = torch.from_numpy(AudioReader(str(Path(path).with_suffix(".m4a")), sample_rate=sr, mono=True)[:].asnumpy())
     mimi.set_num_codebooks(audio_codebooks)
     enc = encode_latent if continuous else encode
@@ -91,7 +101,12 @@ def clip_windows(path, vidtok, mimi, frames: int = 17, res: int = 128, fps: floa
     for w in range(nwin):
         idxs = [starts[w] + int(round(i * stride)) for i in range(frames)]
         fr = vr.get_batch(idxs).asnumpy()
-        video = crop_resize(fr, res).to(dev)
+        # face_crop: one detected box per window (see video.face_box). Falls back to the centre
+        # crop when no face is found, and records that so filtering can drop the window later —
+        # dropping here would leave holes in the window indices build_cache relies on.
+        box = face_box(fr) if face_crop else None
+        found = box is not None
+        video = crop_resize(fr, res, box=box).to(dev)
         del fr
         a0 = int(starts[w] / native * sr)
         win = wav[:, a0:a0 + n]
@@ -100,6 +115,8 @@ def clip_windows(path, vidtok, mimi, frames: int = 17, res: int = 128, fps: floa
         lat = enc(vidtok, video)
         aud = mimi.encode(win[None].to(dev))
         d = {"video": lat.cpu(), "audio": aud.cpu()}
+        if face_crop:
+            d["face_found"] = found
         if face_cond:
             d["struct"] = struct_grid(vidtok, video).cpu()
         del video, lat, aud
