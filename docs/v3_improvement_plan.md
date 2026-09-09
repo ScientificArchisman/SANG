@@ -2166,6 +2166,6 @@ discrete track — so `batch_size: 2, grad_accum: 32`.
 exactly, the sampler ignores the anchor at `t_start=1`, sequential generate shapes with and
 without CFG. All sanity checks 0 failures; module self-check ok.
 
-**End-to-end smoke:** a100 job 162786 (real batch settings, 6 clips): cache built in ~2 min, 3 steps, sequential eval + Wan decode, checkpoint, exit 0 in 4:29; peak GPU memory 25.1 GB at batch 2 (job 162788). syncnet moved across steps (0.683 / 0.668 / 0.674). Launch config set to `batch_size: 4, grad_accum: 16` from that measurement.
+**End-to-end smoke:** a100 job 162786 (real batch settings, 6 clips): cache built in ~2 min, 3 steps, sequential eval + Wan decode, checkpoint, exit 0 in 4:29; peak GPU memory 25.1 GB at batch 2 (job 162788). syncnet moved across steps (0.683 / 0.668 / 0.674). **Correction:** `gpu:a100` on this cluster is the *40 GB* card (the v3 OOM logs all say `total capacity of 39.49 GiB`); the 80 GB cards are `a100_80gb` (gpu08 ×8) and `h100` (gpu09 ×2). The 25.1 GB figure was measured on the 40 GB card, so batch 2 is the 40 GB setting; batch 4 is for 80 GB cards and is measured below rather than extrapolated.
 
 Also fixed on the way: the consolidated `train.sh`/`job.sh` resolved `env.sh` relative to `$BASH_SOURCE`, but sbatch runs a *copy* of the script from `/var/spool/slurmd`, so the first GPU submission died in 1 s. They now resolve it from `$SLURM_SUBMIT_DIR`. And `eval_every: 0` raised a modulo-by-zero; it now means evaluate only at the end.
