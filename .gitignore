@@ -30,3 +30,6 @@ slurm_logs/
 *.npy
 *.mp4
 *.tar
+
+# --- local tooling state ---
+.claude/
