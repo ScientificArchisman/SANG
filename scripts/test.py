@@ -65,7 +65,8 @@ def main() -> None:
         try:
             d = clip_tokens(path, vidtok, mimi, frames=cfg["frames"], res=cfg["res"], start=0,
                             fps=cfg["fps"], audio_codebooks=cfg.get("audio_codebooks", 32),
-                            face_cond=cfg.get("face_cond", False))
+                            face_cond=cfg.get("face_cond", False),
+                            face_crop=cfg.get("face_crop", False))
         except Exception as e:
             print(f"skip {Path(path).name}: {type(e).__name__} {e}", flush=True)
             continue
