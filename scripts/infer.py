@@ -119,7 +119,8 @@ def main() -> None:
     ctv = (cfg["frames"] - 1) // 4 + 1  # content slices per window
     ctx, raw = None, []
     if continuous:
-        gen_kw = dict(steps=cfg.get("decode_steps", 8), audio_cfg=audio_cfg)
+        gen_kw = dict(steps=cfg.get("decode_steps", 12), audio_cfg=audio_cfg,
+                      bridge_t=cfg.get("bridge_t", 1.0))
         for i, c in enumerate(wins):
             lat = model.generate_continuous(audio_enc.encode(c[None].to(DEVICE)), ref,
                                             struct=struct[i] if struct else None, ctx=ctx, **gen_kw)

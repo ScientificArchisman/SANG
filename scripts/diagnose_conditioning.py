@@ -60,7 +60,7 @@ def batch(cache_glob: str, n: int, seed: int):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True)
-    ap.add_argument("--config", default="configs/train.yaml")
+    ap.add_argument("--config", default="configs/train_discrete.yaml")
     ap.add_argument("--cache", default=str(REPO / "cache/face128/*.pt"))
     ap.add_argument("--n", type=int, default=8, help="windows to average over")
     ap.add_argument("--seed", type=int, default=0)

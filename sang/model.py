@@ -33,5 +33,5 @@ def build_talking_head(cfg: dict, fsq_codes=None) -> nn.Module:
         audio_lookahead=cfg.get("audio_lookahead", 0),
         use_struct_emb=cfg.get("face_cond", False),
         continuous=continuous, z_ch=int(cfg.get("z_ch", 16)) if continuous else 0,
-        diff_depth=cfg.get("diff_depth", 3),
+        diff_depth=cfg.get("diff_depth", 6), diff_hidden=cfg.get("diff_hidden", 1024),
     )

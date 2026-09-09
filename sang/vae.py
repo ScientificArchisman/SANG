@@ -1,10 +1,7 @@
-"""Frozen Wan2.1 3D KL-VAE (LeapTalk / EARTalking tokenizer). Continuous latents, no FSQ.
+"""Frozen Wan2.1 3D KL-VAE. Continuous latents, mean/std-normalised to ~unit scale.
 
-diffusers is vendored at third_party/pydeps (conda envs are root-owned). Latents are stored
-mean/std-normalized so the diffusion head sees ~unit-scale channels.
+diffusers is vendored at third_party/pydeps (the conda envs are root-owned).
 """
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 
@@ -20,7 +17,7 @@ WAN_DIR = REPO / "checkpoints" / "wan_vae"
 
 
 class WanVAE(nn.Module):
-    """encode_video / decode_video: pixels [-1,1] <-> normalized latents [B, 16, Tv, H/8, W/8]."""
+    """pixels [B,3,T,H,W] in [-1,1] <-> normalised latents [B,16,Tv,H/8,W/8]."""
 
     z_ch = 16
     spatial = 8
@@ -41,8 +38,19 @@ class WanVAE(nn.Module):
 
     @torch.no_grad()
     def decode_video(self, z: torch.Tensor) -> torch.Tensor:
-        z = z * self.latents_std + self.latents_mean
-        return self.vae.decode(z).sample
+        return self._decode(z)
+
+    def decode_video_grad(self, z: torch.Tensor, checkpoint: bool = True) -> torch.Tensor:
+        """Differentiable decode for pixel-space losses on a predicted latent. The VAE is frozen,
+        so gradient only flows to z. Activation checkpointing recomputes the decoder in backward
+        instead of storing it -- the decoder at 256 px is the memory peak of the step."""
+        if checkpoint:
+            from torch.utils.checkpoint import checkpoint as ckpt
+            return ckpt(self._decode, z, use_reentrant=False)
+        return self._decode(z)
+
+    def _decode(self, z: torch.Tensor) -> torch.Tensor:
+        return self.vae.decode(z * self.latents_std + self.latents_mean).sample
 
 
 def load_wan_vae(weights: str | None = None, device: str = "cpu") -> WanVAE:
