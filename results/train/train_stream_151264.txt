@@ -1,0 +1,24 @@
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+train clips=60479 val clips=3178
+model=streaming params=78.7M device=cuda
+step 500 val_loss 0.1776 val_acc 0.9842 | best 0.1776@500
+step 1000 val_loss 0.0752 val_acc 1.0000 | best 0.0752@1000
+step 1500 val_loss 0.0699 val_acc 1.0000 | best 0.0699@1500
+step 2000 val_loss 0.0818 val_acc 1.0000 | best 0.0699@1500
+step 2500 val_loss 0.1185 val_acc 1.0000 | best 0.0699@1500
+step 3000 val_loss 0.1147 val_acc 1.0000 | best 0.0699@1500
+step 3500 val_loss 0.1749 val_acc 1.0000 | best 0.0699@1500
+step 4000 val_loss 0.2226 val_acc 1.0000 | best 0.0699@1500
+step 4500 val_loss 0.2656 val_acc 1.0000 | best 0.0699@1500
+step 5000 val_loss 0.4959 val_acc 1.0000 | best 0.0699@1500
+step 5500 val_loss 0.2090 val_acc 1.0000 | best 0.0699@1500
+step 6000 val_loss 0.2588 val_acc 1.0000 | best 0.0699@1500
+step 6500 val_loss 0.5196 val_acc 1.0000 | best 0.0699@1500
+step 7000 val_loss 0.3425 val_acc 1.0000 | best 0.0699@1500
+step 7500 val_loss 0.3269 val_acc 1.0000 | best 0.0699@1500
+early stop at step 7500 (best val_loss 0.0699@1500)
+done. best val_loss 0.0699@1500 -> /beegfs/work/achakraborti/SANG/runs/stream/best.pt (best.json)

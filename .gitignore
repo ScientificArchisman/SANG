@@ -1,0 +1,32 @@
+# --- python ---
+__pycache__/
+*.pyc
+.pytest_cache/
+.vidtok_src/
+
+# --- secrets: never commit ---
+.env
+
+# --- model weights and large vendored payloads ---
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+checkpoints/
+third_party/pydeps/
+third_party/syncnet/
+third_party/videomaev2/
+# third_party/vidtok/ IS tracked: vendored source needed to run the tokenizer
+
+# --- datasets and derived caches ---
+data/
+cache/
+
+# --- run outputs and logs ---
+runs/
+slurm_logs/
+
+# --- large regenerable artefacts ---
+*.npy
+*.mp4
+*.tar

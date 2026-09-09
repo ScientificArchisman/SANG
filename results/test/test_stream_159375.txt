@@ -1,0 +1,6 @@
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+oqlwVd6flb4_NA_552.068_598.247.mp4 tf=0.004 gen=0.202 mot=0.002 top1=0.004 top5=0.019 top10=0.038 PSNR 18.10/24.06 SSIM 0.537/0.807

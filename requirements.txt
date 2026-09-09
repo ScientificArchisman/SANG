@@ -1,0 +1,7 @@
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.4.1+cu121
+torchaudio==2.4.1+cu121
+moshi==0.2.13
+pesq>=0.0.4
+pystoi>=0.4
+easydict  # VideoMAE-v2 custom code dependency (TREPA loss)

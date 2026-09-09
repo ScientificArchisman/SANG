@@ -1,0 +1,20 @@
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+[FSQIndexCodec] V=32768 levels=(8, 8, 8, 8, 8) roundtrip=True sum(ln levels)=10.3972 ln(V)=10.3972
+=== sanity: masks ===
+
+== self-attention ==
+  self_allow: shape=(1280, 1280) allowed/row min=256 max=1280 density=0.6000
+  [PASS] self_allow: no fully-masked query rows
+  [PASS] self_allow == block-causal spec
+  [PASS] slice 0 cannot see slice 1
+
+== cross-attention ==
+  cross_allow: shape=(1280, 9) allowed/row min=2 max=9 density=0.6444
+  [PASS] cross_allow: no fully-masked query rows
+  tau(s) = [2, 4, 6, 8, 9]  (Ta=9, Tv=5)
+
+=== 0 failures ===

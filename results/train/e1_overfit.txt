@@ -1,0 +1,14 @@
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+clip=-04ZSRBGcsk_NA_1150.624_1155.846.mp4 tokens=1280 shape=(5, 16, 16) params=70.3M
+step   500 loss 0.0021 tf_acc 1.0000
+step  1000 loss 0.0007 tf_acc 1.0000
+step  1500 loss 0.0004 tf_acc 1.0000
+step  2000 loss 0.0002 tf_acc 1.0000
+step  2500 loss 0.0002 tf_acc 1.0000
+step  3000 loss 0.0001 tf_acc 1.0000
+AR generate: tok_acc 1.0000 PSNR 23.94 SSIM 0.7687
+overfit OK

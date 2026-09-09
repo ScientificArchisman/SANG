@@ -1,0 +1,16 @@
+clips=16027 train_windows=121291 val_windows=6378
+params=45.7M device=cuda
+step 500 val_loss 4.8479 val_acc 0.0152 | best_acc 0.0152@500
+step 1000 val_loss 4.8480 val_acc 0.0152 | best_acc 0.0152@500
+step 1500 val_loss 4.8479 val_acc 0.0156 | best_acc 0.0156@1500
+step 2000 val_loss 4.8478 val_acc 0.0148 | best_acc 0.0156@1500
+step 2500 val_loss 4.8478 val_acc 0.0159 | best_acc 0.0159@2500
+step 3000 val_loss 4.8478 val_acc 0.0148 | best_acc 0.0159@2500
+step 3500 val_loss 4.8478 val_acc 0.0154 | best_acc 0.0159@2500
+step 4000 val_loss 4.8478 val_acc 0.0148 | best_acc 0.0159@2500
+step 4500 val_loss 4.8478 val_acc 0.0151 | best_acc 0.0159@2500
+step 5000 val_loss 4.8478 val_acc 0.0152 | best_acc 0.0159@2500
+step 5500 val_loss 4.8478 val_acc 0.0143 | best_acc 0.0159@2500
+step 6000 val_loss 4.8478 val_acc 0.0159 | best_acc 0.0159@2500
+step 6500 val_loss 4.8478 val_acc 0.0152 | best_acc 0.0159@2500
+step 7000 val_loss 4.8478 val_acc 0.0152 | best_acc 0.0159@2500

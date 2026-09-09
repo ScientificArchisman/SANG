@@ -1,0 +1,74 @@
+data_glob: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/clips/*/*.mp4
+cache_dir: cache/v4_256_wan_wavlm
+out_dir: runs/stream_v4
+max_clips: 8000
+windows_per_clip: 8
+val_frac: 0.05
+seed: 0
+workers: 4
+
+frames: 17
+res: 256                  # Wan VAE is 8x spatial; 256 -> 32x32 latent (same grid as VidTok at 256)
+fps: 25
+codebook: 32768           # unused in continuous mode (kept so discrete knobs stay valid)
+z_ch: 16                  # Wan2.1 AutoencoderKLWan z_dim
+audio_codebooks: 32
+audio_encoder: wavlm-large
+
+model_type: streaming
+continuous: true          # Wan2.1 continuous latent + flow-matching head (no FSQ, no CE)
+diff_depth: 3
+motion_ctx: true
+frame0_loss_weight: 0
+bridge_init: true         # content prior = identity-ref latent
+audio_lookahead: 4
+
+factorized_head: false
+coupled_fsq_head: false
+learn_logit_scale: true
+mask_schedule: mixed
+p_inference_shaped: 0.3
+context_corrupt: 0.0
+audio_dropout: 0.1
+audio_cfg: 1.6            # LeapTalk default
+
+decode_steps: 8
+decode_temperature: 1.0
+decode_gumbel: 4.5
+decode_schedule: cosine
+
+face_cond: false          # struct grid is still VidTok tokens; don't mix tokenizers in v4
+cond_dropout: 0.0
+
+syncnet_loss: false
+trepa_loss: false
+syncnet_weight: 0.2
+pixel_weight: 0.0
+face_weight: true
+
+resume: ""                # new architecture — train from scratch
+
+dim: 512
+layers: 8
+heads: 8
+dropout: 0.1
+
+label_smoothing: 0.0
+z_loss_weight: 0.0
+fsq_loss_weight: 0.0
+
+lr: 3.0e-4
+min_lr: 3.0e-5
+weight_decay: 0.1
+betas: [0.9, 0.95]
+warmup_steps: 300
+max_steps: 120000
+grad_clip: 1.0
+batch_size: 1
+grad_accum: 32
+eval_batch_size: 1
+
+log_every: 50
+eval_every: 1500
+patience: 0
+device: cuda
