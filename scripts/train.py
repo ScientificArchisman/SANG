@@ -19,19 +19,15 @@ from tqdm import tqdm
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from sang.codec import load_mimi
 from sang.data import audio_samples, clip_windows
 from sang.masking import per_slice_cosine_mask
-from sang.model import build_talking_head, token_loss
+from sang.model import build_talking_head
 from sang.video import load_vidtok
 
 
 def load_visual(cfg: dict, device: str):
-    """VidTok FSQ (discrete) or frozen Wan2.1 VAE (continuous v4).
-
-    D10: the tokenizer is frozen, but its parameters kept requires_grad=True (VidTok's
-    fix_decoder defaults to False), so every differentiable decode_pixels call accumulated
-    gradients on the decoder that were never in the optimizer and never zeroed."""
+    """VidTok FSQ (discrete) or frozen Wan2.1 VAE (continuous). Params are frozen explicitly:
+    VidTok's fix_decoder defaults to False, so decode_pixels would accumulate decoder grads."""
     if cfg.get("continuous"):
         from sang.vae import load_wan_vae
         model = load_wan_vae(device=device)
@@ -111,7 +107,7 @@ def _clip_cache_complete(cache_dir: Path, key: str, nwin: int) -> list[Path] | N
     return None
 
 
-def build_cache(clips, vidtok, mimi, cfg, cache_dir: Path, split: str):
+def build_cache(clips, vidtok, audio_enc, cfg, cache_dir: Path, split: str):
     cache_dir.mkdir(parents=True, exist_ok=True)
     motion_ctx = cfg.get("motion_ctx", False)
     syncnet = cfg.get("syncnet_loss", False)
@@ -126,8 +122,8 @@ def build_cache(clips, vidtok, mimi, cfg, cache_dir: Path, split: str):
             out.extend(done)
             continue
         try:
-            wins = clip_windows(c, vidtok, mimi, frames=cfg["frames"], res=cfg["res"], fps=cfg["fps"],
-                                audio_codebooks=cfg["audio_codebooks"], max_windows=cfg["windows_per_clip"],
+            wins = clip_windows(c, vidtok, audio_enc, frames=cfg["frames"], res=cfg["res"],
+                                fps=cfg["fps"], max_windows=cfg["windows_per_clip"],
                                 face_cond=cfg.get("face_cond", False), continuous=continuous,
                                 face_crop=cfg.get("face_crop", False))
         except Exception as e:
@@ -152,10 +148,8 @@ def build_cache(clips, vidtok, mimi, cfg, cache_dir: Path, split: str):
                 def frame(vid, t):  # -> [z_ch,h,w] (continuous) | [h,w] (discrete)
                     return vid[:, t] if continuous else vid[t]
                 cast = (lambda x: x.half()) if continuous else (lambda x: x.to(torch.int16))
-                # D7: the anchor must come from a window OTHER than this one. Window 0 previously
-                # took ref = ctx = its own content slice 0, handing the model one of its five
-                # supervised slices verbatim (~20% of supervised tokens solvable with no audio).
-                # Windows are non-overlapping, so window 1's slice 0 is never a target of window 0.
+                # Anchor from a DIFFERENT window: window 0 must not get its own content slice 0
+                # as ref/ctx, which would hand over a supervised slice verbatim.
                 ref_w = 0 if w != 0 else min(1, len(wins) - 1)
                 entry["ref"] = cast(frame(wins[ref_w]["video"][0], 0)).cpu()
                 prev = (frame(wins[w - 1]["video"][0], -1) if w > 0
@@ -282,7 +276,6 @@ def evaluate_continuous(model, loader, device, face_cond, cfg, vidtok, syncnet=F
 @torch.no_grad()
 def evaluate(model, loader, device, face_cond, cfg, syncnet=False):
     model.eval()
-    streaming = getattr(model, "arch_version", None) == "block_ar_v1"
     loss = acc = n = 0
     gen_kw = dict(
         steps=cfg.get("decode_steps", 8),
@@ -292,28 +285,23 @@ def evaluate(model, loader, device, face_cond, cfg, syncnet=False):
         audio_cfg=cfg.get("audio_cfg", 1.0),
     )
     n_cond = getattr(model, "ref_slices", 1)
-    # D5: `struct` is the MediaPipe mesh rendered from the TARGET frames, so it carries the exact
-    # ground-truth lip shape. Real audio-driven inference has none (scripts/infer.py passes
-    # struct=None without --drive_video), so feeding it here measured val_acc under conditioning
-    # that inference never has. Default off; set eval_with_struct: true for the old, optimistic
-    # number or when evaluating the reenactment path. See docs/v3_improvement_plan.md Part VI, D5.
+    # struct is the mesh of the TARGET frames, so it leaks the ground-truth lip shape and is
+    # unavailable in audio-driven inference. On only for the reenactment path.
     use_struct = cfg.get("eval_with_struct", False)
-    for batch in loader:
+    max_batches = cfg.get("eval_max_batches", 0)  # full-val MaskGIT decode is ~30% of wall clock
+    for bi, batch in enumerate(loader):
+        if max_batches and bi >= max_batches:
+            break
         video, audio, struct, _ = unpack(batch, device, face_cond, syncnet)
         if not use_struct:
             struct = None
-        if streaming:
-            gen = model.generate(audio, video[:, 0], struct=struct,
-                                 ctx=video[:, 1] if n_cond > 1 else None, **gen_kw)
-            r = video.shape[-2] * video.shape[-1]
-            hit = (gen.reshape(video.shape[0], -1)[:, n_cond * r:] ==
-                   video.reshape(video.shape[0], -1)[:, n_cond * r:]).float().mean().item()
-            acc += hit
-            loss += 1.0 - hit
-        else:
-            logits, target = model(video, audio, struct=struct)
-            loss += F.cross_entropy(logits.reshape(-1, logits.shape[-1]), target.reshape(-1)).item()
-            acc += (logits.argmax(-1) == target).float().mean().item()
+        gen = model.generate(audio, video[:, 0], struct=struct,
+                             ctx=video[:, 1] if n_cond > 1 else None, **gen_kw)
+        r = video.shape[-2] * video.shape[-1]
+        hit = (gen.reshape(video.shape[0], -1)[:, n_cond * r:] ==
+               video.reshape(video.shape[0], -1)[:, n_cond * r:]).float().mean().item()
+        acc += hit
+        loss += 1.0 - hit
         n += 1
     model.train()
     return loss / max(1, n), acc / max(1, n)
@@ -321,7 +309,7 @@ def evaluate(model, loader, device, face_cond, cfg, syncnet=False):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default=str(REPO / "configs/train_stream_v2.yaml"))
+    ap.add_argument("--config", default=str(REPO / "configs/train.yaml"))
     ap.add_argument("--set", nargs="*", default=[])
     args = ap.parse_args()
     cfg = yaml.safe_load(open(args.config))
@@ -334,10 +322,23 @@ def main() -> None:
     device = cfg["device"] if (cfg["device"] == "cpu" or torch.cuda.is_available()) else "cpu"
     torch.manual_seed(cfg["seed"])
 
-    clips = sorted(glob.glob(cfg["data_glob"]))
+    # data_glob may be a glob or a manifest file (one clip path per line, e.g. from
+    # scripts/filter_clips.py).
+    src = Path(cfg["data_glob"])
+    clips = ([l.strip() for l in src.read_text().splitlines() if l.strip()]
+             if src.suffix == ".txt" and src.exists() else sorted(glob.glob(cfg["data_glob"])))
     random.Random(cfg["seed"]).shuffle(clips)
     if cfg.get("max_clips"):
         clips = clips[: cfg["max_clips"]]
+    # Split by SPEAKER (the per-video directory), not by clip: each speaker owns ~11 clips, so a
+    # clip-level split puts the same identity in train and val and val measures memorisation.
+    speakers = sorted({Path(c).parent.name for c in clips})
+    random.Random(cfg["seed"]).shuffle(speakers)
+    n_val_spk = max(1, int(len(speakers) * cfg["val_frac"])) if cfg["val_frac"] > 0 else 0
+    val_spk = set(speakers[:n_val_spk])
+    clips = [c for c in clips if Path(c).parent.name not in val_spk] \
+            + [c for c in clips if Path(c).parent.name in val_spk]
+    n_train = sum(1 for c in clips if Path(c).parent.name not in val_spk)
     cache_dir = REPO / cfg["cache_dir"]
     nwin = cfg["windows_per_clip"]
     need_encode = any(
@@ -348,32 +349,25 @@ def main() -> None:
         vidtok = load_visual(cfg, device)
         if cfg.get("audio_encoder"):
             from sang.codec import load_wavlm
-            mimi = load_wavlm(cfg["audio_encoder"], device=device)
-        else:
-            mimi = load_mimi(device=device)
+            audio_enc = load_wavlm(cfg["audio_encoder"], device=device)
     else:
         print("cache exists — patching mel before loading models")
-        vidtok = mimi = None
+        vidtok = audio_enc = None
 
     nclips = len(clips)
-    if nclips <= 1:
-        nval = 0
-    else:
-        nval = max(1, int(nclips * cfg["val_frac"]))
-        nval = min(nval, nclips - 1)
-    val_files = build_cache(clips[:nval], vidtok, mimi, cfg, cache_dir, "val")
-    train_files = build_cache(clips[nval:], vidtok, mimi, cfg, cache_dir, "train")
-    print(f"train clips={len(train_files)} val clips={len(val_files)}")
+    val_files = build_cache(clips[n_train:], vidtok, audio_enc, cfg, cache_dir, "val")
+    train_files = build_cache(clips[:n_train], vidtok, audio_enc, cfg, cache_dir, "train")
+    print(f"{len(speakers) - len(val_spk)} train / {len(val_spk)} val speakers "
+          f"({n_train} / {nclips - n_train} clips)")
+    print(f"train windows={len(train_files)} val windows={len(val_files)}")
     if not train_files:
-        raise ValueError(f"no training windows: {nclips} clips, nval={nval} — use val_frac=0 for 1-clip overfit")
+        raise ValueError(f"no training windows from {n_train} clips — lower val_frac or check data_glob")
 
     if vidtok is None:
         vidtok = load_visual(cfg, device)
         if cfg.get("audio_encoder"):
             from sang.codec import load_wavlm
-            mimi = load_wavlm(cfg["audio_encoder"], device=device)
-        else:
-            mimi = load_mimi(device=device)
+            audio_enc = load_wavlm(cfg["audio_encoder"], device=device)
     fsq_codes = None
     if not cfg.get("continuous"):
         fsq_codes = getattr(vidtok.regularization, "implicit_codebook", None)
@@ -384,10 +378,10 @@ def main() -> None:
                 FSQIndexCodec.from_codebook(fsq_codes).self_check()
     # Keep vidtok alive if perceptual losses need differentiable decode, or continuous mode needs
     # the decoder for pixel losses + PSNR eval
-    keep_vidtok = (cfg.get("syncnet_loss", False) or cfg.get("trepa_loss", False)
+    keep_vidtok = (cfg.get("syncnet_loss", False)
                    or cfg.get("pixel_weight", 0.0) > 0 or cfg.get("continuous", False))
     if not keep_vidtok:
-        del vidtok, mimi
+        del vidtok, audio_enc
         if device == "cuda":
             torch.cuda.empty_cache()
     else:
@@ -409,7 +403,6 @@ def main() -> None:
                                 num_workers=cfg["workers"])
 
     model = build_talking_head(cfg, fsq_codes=fsq_codes).to(device)
-    streaming = getattr(model, "arch_version", None) == "block_ar_v1"
     losses = build_losses(cfg, device)
     if losses:
         print(f"perceptual losses: {list(losses.keys())}")
@@ -425,9 +418,8 @@ def main() -> None:
         resumed = torch.load(path, map_location=device, weights_only=False)
         model.load_state_dict(resumed["model"], strict=False)
         start = resumed["step"] + 1
-        # D10: best-so-far now travels inside the checkpoint. It used to be read from
-        # out_dir/best.json, but out_dir gets a fresh SLURM job suffix on every launch, so that
-        # file never existed on resume and `best` always restarted at inf ("best inf@0").
+        # best travels inside the checkpoint: out_dir gets a fresh job suffix each launch, so
+        # out_dir/best.json never existed on resume.
         best = resumed.get("best", float("inf"))
         best_step = resumed.get("best_step", 0)
         if "best" not in resumed:  # pre-fix checkpoint: fall back to its own directory
@@ -439,18 +431,23 @@ def main() -> None:
 
     opt = torch.optim.AdamW(optim_groups(model, cfg["weight_decay"]), lr=cfg["lr"], betas=tuple(cfg["betas"]), eps=1e-8)
     if resumed is not None:
-        # D10: AdamW moments used to be discarded on every resume because opt was constructed
-        # after the load. The v3 run restarted >=8 times, re-warming the optimizer each time.
         if "opt" in resumed:
             opt.load_state_dict(resumed["opt"])
             print("  restored optimizer state")
         else:
             print("  WARNING: checkpoint predates optimizer-state saving; AdamW moments start at zero")
         del resumed
-    print(f"model={cfg.get('model_type', 'flat')} factorized={getattr(model, 'factorized', False)} "
-          f"params={sum(p.numel() for p in model.parameters()) / 1e6:.1f}M device={device}")
-    if streaming:
-        print("val_acc = generate motion-token accuracy (MaskGIT decode); val_loss = 1-val_acc")
+    print(f"params={sum(p.numel() for p in model.parameters()) / 1e6:.1f}M "
+          f"factorized={getattr(model, 'factorized', False)} device={device}")
+    print("val_acc = decoded-pixel PSNR (dB)" if getattr(model, "continuous", False)
+          else "val_acc = generated motion-token accuracy (MaskGIT decode); val_loss = 1 - val_acc")
+
+    # bf16 autocast: ~2x throughput on H100 and no GradScaler needed (bf16 has fp32 range).
+    # Params stay fp32, so the optimizer and grad clipping are unaffected.
+    use_amp = bool(cfg.get("bf16", True)) and device == "cuda"
+    amp = ((lambda: torch.autocast("cuda", dtype=torch.bfloat16)) if use_amp
+           else __import__("contextlib").nullcontext)
+    print(f"precision: {'bf16 autocast' if use_amp else 'fp32'}")
 
     total, accum, warmup = cfg["max_steps"], cfg["grad_accum"], cfg["warmup_steps"]
     log_every = cfg.get("log_every", 50)
@@ -472,54 +469,43 @@ def main() -> None:
                 it = iter(train_loader)
                 batch = next(it)
             video, audio, struct, mel = unpack(batch, device, face_cond, syncnet)
-            continuous = getattr(model, "continuous", False)
-            if continuous:
-                loss, parts = model.forward_continuous(video, audio, struct=struct, cond_drop=cond_drop)
-            else:
-                # D4: draw the mask once and reuse it below, so the perceptual losses are
-                # computed in the same masked regime as the CE loss rather than fully visible.
-                shared_mask = model.sample_mask(video.shape[0], device) if streaming else None
-                h_masked, target = model(video, audio, struct=struct, cond_drop=cond_drop,
-                                         mask=shared_mask,
-                                         p_corrupt=cfg.get("context_corrupt", 0.0))
-                if streaming:
-                    loss, parts = model.compute_loss(h_masked, target, label_smoothing=ls)
+            with amp():
+                continuous = getattr(model, "continuous", False)
+                if continuous:
+                    loss, parts = model.forward_continuous(video, audio, struct=struct, cond_drop=cond_drop)
                 else:
-                    logits, target = model(video, audio, struct=struct, cond_drop=cond_drop)
-                    loss, parts = token_loss(logits, target, None, ls, cfg.get("z_loss_weight", 0.0),
-                                             cfg.get("fsq_loss_weight", 0.0))
+                    # One mask shared with the perceptual losses below, so they see the same masked
+                    # regime as the CE loss rather than a fully-visible (copyable) grid.
+                    shared_mask = model.sample_mask(video.shape[0], device)
+                    h_masked, target = model(video, audio, struct=struct, cond_drop=cond_drop,
+                                             mask=shared_mask,
+                                             p_corrupt=cfg.get("context_corrupt", 0.0))
+                    loss, parts = model.compute_loss(h_masked, target, label_smoothing=ls)
 
-                if (losses or cfg.get("pixel_weight", 0.0) > 0) and streaming and model.factorized:
-                    B, tv, h, w = video.shape
-                    r = h * w
-                    n_cond = model.ref_slices
-                    # D4: same mask as the CE pass. Previously known=ones made every position
-                    # visible, so the decoded pixels were reachable by an identity map and
-                    # bridge_init never fired -- pixel loss fell while syncnet stayed flat.
-                    known = ~shared_mask
-                    hs = model.hidden_states(video, audio, known, struct=struct)
-                    h_content = hs[:, n_cond:].reshape(B * (tv - n_cond) * r, -1)
-                    pred_px = model.decode_pixels(h_content, vidtok, (tv - n_cond, h, w))
-                    gt_idx = video[:, n_cond:].reshape(B, (tv - n_cond), h, w)
-                    with torch.no_grad():
-                        gt_px = vidtok.decode(gt_idx, decode_from_indices=True)
-                    if cfg.get("pixel_weight", 0.0) > 0:
-                        if cfg.get("face_weight", False):
-                            from sang.losses import face_lip_weight
-                            wmap = face_lip_weight(pred_px.shape, pred_px.device)
-                            p_loss = (wmap * (pred_px - gt_px).abs()).mean()
-                        else:
-                            p_loss = F.l1_loss(pred_px, gt_px)
-                        loss = loss + cfg["pixel_weight"] * p_loss
-                        parts["pixel"] = p_loss.detach()
-                    if "syncnet" in losses and mel is not None:
-                        s_loss = losses["syncnet"](pred_px, mel)
-                        loss = loss + cfg.get("syncnet_weight", 0.1) * s_loss
-                        parts["syncnet"] = s_loss.detach()
-                    if "trepa" in losses:
-                        t_loss = losses["trepa"](pred_px, gt_px)
-                        loss = loss + cfg.get("trepa_weight", 0.05) * t_loss
-                        parts["trepa"] = t_loss.detach()
+                    if (losses or cfg.get("pixel_weight", 0.0) > 0) and model.factorized:
+                        B, tv, h, w = video.shape
+                        r = h * w
+                        n_cond = model.ref_slices
+                        known = ~shared_mask  # NOT ones: that makes pred_px reachable by a copy
+                        hs = model.hidden_states(video, audio, known, struct=struct)
+                        h_content = hs[:, n_cond:].reshape(B * (tv - n_cond) * r, -1)
+                        pred_px = model.decode_pixels(h_content, vidtok, (tv - n_cond, h, w))
+                        gt_idx = video[:, n_cond:].reshape(B, (tv - n_cond), h, w)
+                        with torch.no_grad():
+                            gt_px = vidtok.decode(gt_idx, decode_from_indices=True)
+                        if cfg.get("pixel_weight", 0.0) > 0:
+                            if cfg.get("face_weight", False):
+                                from sang.losses import face_lip_weight
+                                wmap = face_lip_weight(pred_px.shape, pred_px.device)
+                                p_loss = (wmap * (pred_px - gt_px).abs()).mean()
+                            else:
+                                p_loss = F.l1_loss(pred_px, gt_px)
+                            loss = loss + cfg["pixel_weight"] * p_loss
+                            parts["pixel"] = p_loss.detach()
+                        if "syncnet" in losses and mel is not None:
+                            s_loss = losses["syncnet"](pred_px, mel)
+                            loss = loss + cfg.get("syncnet_weight", 0.1) * s_loss
+                            parts["syncnet"] = s_loss.detach()
 
             (loss / accum).backward()
             for k, v in parts.items():
@@ -543,9 +529,8 @@ def main() -> None:
                 chance = math.log(cfg["codebook"])
                 pbar.set_postfix(ce=f"{m.get('ce', 0):.3f}", acc_d=f"{m.get('acc_dim_mean', 0):.3f}",
                                  pixel=f"{m.get('pixel', 0):.3f}", sync=f"{m.get('syncnet', 0):.3f}",
-                                 trepa=f"{m.get('trepa', 0):.4f}",
                                  lr=f"{opt.param_groups[0]['lr']:.1e}")
-                extra = " ".join(f"{k} {m[k]:.4f}" for k in ("pixel", "syncnet", "trepa") if k in m)
+                extra = " ".join(f"{k} {m[k]:.4f}" for k in ("pixel", "syncnet") if k in m)
                 tqdm.write(f"step {step:7d} lr {opt.param_groups[0]['lr']:.2e} "
                            f"ce {m.get('ce', 0):.4f} (chance {chance:.4f}, gap {chance - m.get('ce', 0):+.4f}) "
                            f"acc_dim {m.get('acc_dim_mean', 0):.4f} acc_tok {m.get('acc_token', 0):.5f} "
@@ -558,7 +543,7 @@ def main() -> None:
                 vloss, vacc = evaluate_continuous(model, val_loader, device, face_cond, cfg, vidtok, syncnet)
                 diag = {}
             else:
-                diag = token_diagnostic(model, val_loader, device, face_cond, syncnet) if streaming else {}
+                diag = token_diagnostic(model, val_loader, device, face_cond, syncnet)
                 if diag:
                     tqdm.write(f"  [diag] val_ce {diag.get('ce', 0):.4f} acc_dim {diag.get('acc_dim_mean', 0):.4f} "
                                f"acc_tok {diag.get('acc_token', 0):.5f}")
@@ -568,7 +553,7 @@ def main() -> None:
                 best, best_step, bad = vloss, step, 0
             else:
                 bad += 1
-            # D10: optimizer state and best-so-far ride along so a resume is lossless.
+            # optimizer state + best ride along so a resume is lossless
             ckpt = {"model": model.state_dict(), "opt": opt.state_dict(), "cfg": cfg, "step": step,
                     "val_loss": vloss, "val_acc": vacc, "best": best, "best_step": best_step}
             torch.save(ckpt, out_dir / "last.pt")

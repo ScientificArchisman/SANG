@@ -178,3 +178,8 @@ step    8400 lr 2.97e-04 diff 0.2606 (lo 0.2093 hi 0.0512) gnorm 0.688
 step    8450 lr 2.97e-04 diff 0.2627 (lo 0.2128 hi 0.0499) gnorm 0.767
 step    8500 lr 2.97e-04 diff 0.2625 (lo 0.2120 hi 0.0505) gnorm 0.724
 step    8550 lr 2.97e-04 diff 0.2531 (lo 0.2030 hi 0.0501) gnorm 0.694
+step    8600 lr 2.97e-04 diff 0.2605 (lo 0.2103 hi 0.0502) gnorm 0.527
+step    8650 lr 2.97e-04 diff 0.2663 (lo 0.2133 hi 0.0530) gnorm 0.591
+step    8700 lr 2.97e-04 diff 0.2547 (lo 0.2011 hi 0.0536) gnorm 0.696
+step    8750 lr 2.97e-04 diff 0.2590 (lo 0.2094 hi 0.0496) gnorm 0.674
+step    8800 lr 2.97e-04 diff 0.2753 (lo 0.2251 hi 0.0502) gnorm 0.624

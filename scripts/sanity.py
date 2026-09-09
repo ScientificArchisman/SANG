@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 
 import torch
-import torch.nn.functional as F
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
@@ -43,12 +42,7 @@ def _bool_mask_stats(name, allow):
 
 
 def model_tv(cfg: dict) -> int:
-    """Slice count the model is actually built with.
-
-    cfg["tv"] is the count of *content* slices; motion_ctx adds 2 conditioning slices and
-    ref_slices adds ref_slices-1. Every check below used cfg["tv"], so with the v3 config they
-    built a tv=5 grid for a tv=7 model -- cmd_forward and cmd_overfit died on a reshape and
-    cmd_masks validated attention masks of the wrong shape. See Part VI, D4/D12."""
+    """Slice count the model is actually built with: cfg["tv"] counts only content slices."""
     tv = cfg["tv"]
     if cfg.get("motion_ctx"):
         return tv + 2
@@ -56,15 +50,9 @@ def model_tv(cfg: dict) -> int:
 
 
 def dummy_audio(cfg: dict, B: int, ta: int, device):
-    """Audio in the shape the configured encoder actually produces.
-
-    The checks hardcoded Mimi discrete codes [B, K, Ta], but v3/v4 run WavLM continuous features
-    [B, Ta, D] -- so audio_proj (Linear(1024, 512)) got a [B, 32, Ta] tensor and every check that
-    ran a forward pass died in a matmul. See Part VI, D12."""
-    dim = {"wavlm-base": 768, "wavlm-large": 1024}.get(cfg.get("audio_encoder"))
-    if dim:
-        return torch.randn(B, ta, dim, device=device)
-    return torch.randint(0, 2048, (B, cfg["audio_codebooks"], ta), device=device)
+    """WavLM-shaped features [B, Ta, D]."""
+    return torch.randn(B, ta, {"wavlm-base": 768, "wavlm-large": 1024}[cfg["audio_encoder"]],
+                       device=device)
 
 
 def cmd_masks(cfg, device):
@@ -116,13 +104,8 @@ def cmd_forward(cfg, device, fsq_codes):
         _ok("loss is finite")
 
     loss.backward()
-    # Some parameters are legitimately inactive for a given config: audio_emb is the Mimi
-    # code embedding, unused whenever a continuous audio encoder is set (it is still allocated
-    # and weight-decayed -- ~1.05M dead params); mask_token is unused when bridge_init supplies
-    # the prior instead. Report those, fail on anything else.
+    # mask_token is unused when bridge_init supplies the prior. Report, do not fail.
     inactive = set()
-    if cfg.get("audio_encoder"):
-        inactive.add("audio_emb.weight")
     if cfg.get("bridge_init"):
         inactive.add("backbone.mask_token")
     dead = [n for n, p in model.named_parameters()
@@ -144,11 +127,8 @@ def cmd_causality(cfg, device, fsq_codes):
     video = torch.randint(0, V, (B, tv, h, w), device=device)
     audio = dummy_audio(cfg, B, ta, device)
 
-    # Measure on the continuous hidden states. logits_full() returns argmax token IDs, so the
-    # old comparison thresholded integers at 1e-4: any leak too small to flip a token read as
-    # zero and the check passed vacuously. Also, the perturbation indexed [:, :, -1], which is
-    # the last TIME step only for Mimi [B,K,Ta] -- for WavLM [B,Ta,D] it is the last FEATURE,
-    # perturbing every timestep at once and reporting a leak that was not there. Part VI, D12.
+    # Measured on continuous hidden states: logits_full() returns argmax token IDs, so any leak
+    # too small to flip a token would read as zero.
     known = torch.ones(B, model.tv * model.r, dtype=torch.bool, device=device)
     continuous_audio = model.audio_proj is not None
 
@@ -217,8 +197,7 @@ def cmd_overfit(cfg, device, fsq_codes, steps, lr, mask_ratio: float = 0.5):
     audio = dummy_audio(cfg, B, ta, device)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95), weight_decay=0.0)
 
-    # D4: mask_ratio=0.0 leaves every position visible, so the model reaches CE 0 by copying the
-    # token embedded at that position. That version of this check could not fail. Use a real mask.
+    # mask_ratio must be > 0: at 0 every position is visible and CE reaches 0 by copying.
     print(f"\n  overfit 1 clip, lr={lr}, mask_ratio={mask_ratio}, supervise_all_motion=True")
     loss = None
     for step in range(1, steps + 1):
@@ -245,7 +224,7 @@ def cmd_overfit(cfg, device, fsq_codes, steps, lr, mask_ratio: float = 0.5):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["masks", "forward", "causality", "parity", "overfit"])
-    ap.add_argument("--config", default=str(REPO / "configs/train_stream_v3.yaml"))
+    ap.add_argument("--config", default=str(REPO / "configs/train.yaml"))
     ap.add_argument("--steps", type=int, default=400)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")

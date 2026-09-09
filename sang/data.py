@@ -8,17 +8,14 @@ from sang.video import (crop_resize, decode_frames, encode, encode_latent, face_
 
 
 def audio_samples(frames: int, fps: float, sr: int) -> int:
-    """Samples spanned by `frames` frames at `fps`.
-
-    `frames` frames span `frames - 1` inter-frame intervals, so 17 frames at 25 fps is 0.64 s, not
-    0.68 s. The old `frames / fps` stretched every window's audio by 6% against its video.
-    See docs/v3_improvement_plan.md Part VI, D8."""
+    """Samples spanned by `frames` frames at `fps`. N frames span N-1 intervals, so 17 @ 25 fps
+    is 0.64 s; using frames/fps stretches the audio 6% against the video."""
     return round((frames - 1) / fps * sr)
 
 
 @torch.no_grad()
-def clip_tokens(path, vidtok, mimi, frames: int = 17, res: int = 128, start=None, fps: float = 25,
-                audio_codebooks: int = 32, face_cond: bool = False, face_crop: bool = False) -> dict:
+def clip_tokens(path, vidtok, audio_enc, frames: int = 17, res: int = 128, start=None,
+                fps: float = 25, face_cond: bool = False, face_crop: bool = False) -> dict:
     """One TalkVid clip -> aligned dict(video idx [1,Tv,h,w], audio codes [1,K,Ta], ref [1,3,res,res], native fps).
 
     Frames are resampled to `fps` and the audio window is a fixed `frames/fps` seconds, so Ta is
@@ -28,15 +25,14 @@ def clip_tokens(path, vidtok, mimi, frames: int = 17, res: int = 128, start=None
     fr, native, start = decode_frames(str(path), frames, start, fps=fps)
     video = crop_resize(fr, res, box=face_box(fr) if face_crop else None).to(dev)
 
-    sr = mimi.sample_rate
+    sr = audio_enc.sample_rate
     n = audio_samples(frames, fps, sr)
     a0 = int(start / native * sr)
     wav = torch.from_numpy(AudioReader(str(Path(path).with_suffix(".m4a")), sample_rate=sr, mono=True)[:].asnumpy())
     win = wav[:, a0:a0 + n]
     if win.shape[-1] < n:
         win = torch.nn.functional.pad(win, (0, n - win.shape[-1]))
-    mimi.set_num_codebooks(audio_codebooks)
-    audio = mimi.encode(win[None].to(dev))
+    audio = audio_enc.encode(win[None].to(dev))
 
     out = {"video": encode(vidtok, video), "audio": audio, "ref": video[:, :, 0], "fps": native, "pixels": video}
     if face_cond:
@@ -73,8 +69,8 @@ def video_struct_windows(path, vidtok, frames: int = 17, res: int = 128, fps: fl
 
 
 @torch.no_grad()
-def clip_windows(path, vidtok, mimi, frames: int = 17, res: int = 128, fps: float = 25,
-                 audio_codebooks: int = 32, max_windows: int = 8, face_cond: bool = False,
+def clip_windows(path, vidtok, audio_enc, frames: int = 17, res: int = 128, fps: float = 25,
+                 max_windows: int = 8, face_cond: bool = False,
                  continuous: bool = False, face_crop: bool = False) -> list[dict]:
     """One clip -> up to `max_windows` non-overlapping windows.
 
@@ -90,19 +86,20 @@ def clip_windows(path, vidtok, mimi, frames: int = 17, res: int = 128, fps: floa
     nwin = min(max_windows, len(vr) // span)
     if nwin < 1:
         raise ValueError(f"{path}: {len(vr)} frames < {span}")
-    starts = [w * span for w in range(nwin)]
+    # Spread windows over the whole clip. Packing them from t=0 used only the first
+    # max_windows*span frames, so a 130 s clip contributed as much as a 6 s one.
+    last = len(vr) - span
+    starts = [round(w * last / (nwin - 1)) for w in range(nwin)] if nwin > 1 else [0]
 
-    sr = mimi.sample_rate
+    sr = audio_enc.sample_rate
     n = audio_samples(frames, fps, sr)
     wav = torch.from_numpy(AudioReader(str(Path(path).with_suffix(".m4a")), sample_rate=sr, mono=True)[:].asnumpy())
-    mimi.set_num_codebooks(audio_codebooks)
     enc = encode_latent if continuous else encode
     out = []
     for w in range(nwin):
         idxs = [starts[w] + int(round(i * stride)) for i in range(frames)]
         fr = vr.get_batch(idxs).asnumpy()
-        # face_crop: one detected box per window (see video.face_box). Falls back to the centre
-        # crop when no face is found, and records that so filtering can drop the window later —
+        # Falls back to the centre crop when no face is found and flags it for filtering;
         # dropping here would leave holes in the window indices build_cache relies on.
         box = face_box(fr) if face_crop else None
         found = box is not None
@@ -113,7 +110,7 @@ def clip_windows(path, vidtok, mimi, frames: int = 17, res: int = 128, fps: floa
         if win.shape[-1] < n:
             win = torch.nn.functional.pad(win, (0, n - win.shape[-1]))
         lat = enc(vidtok, video)
-        aud = mimi.encode(win[None].to(dev))
+        aud = audio_enc.encode(win[None].to(dev))
         d = {"video": lat.cpu(), "audio": aud.cpu()}
         if face_crop:
             d["face_found"] = found

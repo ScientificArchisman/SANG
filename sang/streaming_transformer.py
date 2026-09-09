@@ -136,15 +136,16 @@ class StreamingTalkingHead(nn.Module):
 
     arch_version = "block_ar_v1"
 
-    def __init__(self, video_card: int = 32768, audio_card: int = 2048, dim: int = 512,
+    def __init__(self, video_card: int = 32768, dim: int = 512,
                  tv: int = 5, spatial: int = 16, num_heads: int = 8, num_layers: int = 8,
-                 dropout: float = 0.0, frame0_loss_weight: float = 0.0,
+                 dropout: float = 0.0,
                  factorized_head: bool = True, coupled_fsq_head: bool = False,
                  learn_logit_scale: bool = True, fsq_codes: torch.Tensor | None = None,
                  mask_schedule: str = "per_slice_cosine", p_inference_shaped: float = 0.0,
-                 ref_slices: int = 1, audio_dim: int = 0, audio_dropout: float = 0.0,
+                 ref_slices: int = 1, audio_dim: int = 1024, audio_dropout: float = 0.0,
                  bridge_init: bool = False, audio_lookahead: int = 0,
-                 continuous: bool = False, z_ch: int = 0, diff_depth: int = 3):
+                 continuous: bool = False, z_ch: int = 0, diff_depth: int = 3,
+                 use_struct_emb: bool = True):
         super().__init__()
         r = spatial * spatial
         self.video_card = video_card
@@ -152,28 +153,21 @@ class StreamingTalkingHead(nn.Module):
         self.tv = tv
         self.spatial = spatial
         self.ref_slices = ref_slices
-        # v4 (Track 2): continuous-latent mode. video grid holds continuous VidTok latents
-        # [B, tv, z_ch, h, w] instead of FSQ indices; the head is a diffusion/flow MLP, not CE.
+        # continuous (v4): the grid holds VAE latents [B, tv, z_ch, h, w] and the head is a flow
+        # MLP; otherwise it holds FSQ indices and the head is a factorized softmax.
         self.continuous = continuous
         self.z_ch = z_ch
-        # LeapTalk Bridge Forcing in token space: masked content positions are initialised from
-        # the identity-reference embedding (the model *edits* ref -> target) instead of a null
-        # [MASK] token (the model must *hallucinate* appearance). Anchors identity, cuts the
-        # token entropy the transformer must model to motion-only.
-        self.bridge_init = bridge_init
+        self.bridge_init = bridge_init  # False | "prev" | "ref"; see _bridge_prior
         self.audio_lookahead = audio_lookahead
-        # identity slice 0 is always clean at inference; ctx/motion context may carry generation
-        # errors, so corruption training protects slice 0 only (Live Avatar noisy-KV analogue).
-        self.corrupt_from = 1
+        self.corrupt_from = 1  # slice 0 (identity) stays clean; ctx may carry generation error
         self.audio_dropout = audio_dropout
-        self.frame0_loss_weight = frame0_loss_weight
         self.mask_schedule = mask_schedule
         self.p_inference_shaped = p_inference_shaped
         self.video_emb = nn.Embedding(video_card, dim)
-        self.struct_emb = nn.Embedding(video_card, dim)
-        self.audio_proj = nn.Linear(audio_dim, dim) if audio_dim else None
-        self.audio_emb = nn.Embedding(audio_card, dim)
-        self.audio_pos = nn.Embedding(4096, dim)
+        # 16.8M params at video_card=32768; only built when structure conditioning is used.
+        self.struct_emb = nn.Embedding(video_card, dim) if use_struct_emb else None
+        self.audio_proj = nn.Linear(audio_dim, dim)
+        self.audio_pos = nn.Embedding(1024, dim)  # 1024 ticks = 20 s at 50 Hz
         self.backbone = StreamingBlockTransformer(dim, tv, r, num_layers, num_heads, dropout,
                                                   cond_slices=ref_slices,
                                                   audio_lookahead=audio_lookahead)
@@ -181,7 +175,6 @@ class StreamingTalkingHead(nn.Module):
         use_factorized = factorized_head and fsq_codes is not None
         self.factorized = use_factorized
         if continuous:
-            # v4: continuous latent in/out. video_emb unused for content (kept for struct only).
             from sang.diffusion import DiffusionHead
             self.latent_in = nn.Linear(z_ch, dim)          # latent patch -> model dim
             self.norm = RMSNorm(dim)
@@ -206,7 +199,7 @@ class StreamingTalkingHead(nn.Module):
             B = grid.shape[0]
             # [B, tv, z_ch, h, w] -> [B, tv*r, z_ch] -> project to dim
             e = self.latent_in(grid.reshape(B, self.tv, self.z_ch, r).permute(0, 1, 3, 2).reshape(B, L, self.z_ch).float())
-            if struct is not None:
+            if struct is not None and self.struct_emb is not None:
                 s = self.struct_emb(struct.reshape(B, -1).long())
                 s = F.pad(s, (0, 0, L - s.shape[1], 0)) if s.shape[1] < L else s
                 e = e + s
@@ -217,7 +210,7 @@ class StreamingTalkingHead(nn.Module):
             return torch.where(known.reshape(B, L).unsqueeze(-1), e, mask_tok)
         B, tv, h, w = grid.shape
         e = self.video_emb(grid.reshape(B, L))
-        if struct is not None:
+        if struct is not None and self.struct_emb is not None:
             s = self.struct_emb(struct.reshape(B, -1).long())
             if s.shape[1] < L:  # v3: struct covers content slices only; cond slices get no struct
                 s = F.pad(s, (0, 0, L - s.shape[1], 0))
@@ -249,12 +242,8 @@ class StreamingTalkingHead(nn.Module):
 
     def _embed_audio(self, audio: torch.Tensor, n_ticks: int | None = None,
                      drop: torch.Tensor | None = None) -> torch.Tensor:
-        """audio: mimi codes [B,K,Ta] (codebook 0 = semantic) or continuous features [B,Ta,D].
-        drop: bool [B] — replace content with position only (CFG null condition)."""
-        if self.audio_proj is not None:
-            e = self.audio_proj(audio.float())
-        else:
-            e = self.audio_emb(audio[:, 0].long())
+        """audio: WavLM features [B,Ta,D]. drop: bool [B] — null condition for audio CFG."""
+        e = self.audio_proj(audio.float())
         if n_ticks is not None:
             e = e[:, :n_ticks]
         pos = self.audio_pos(torch.arange(e.shape[1], device=e.device)).unsqueeze(0)
@@ -412,7 +401,7 @@ class StreamingTalkingHead(nn.Module):
             grid[:, 1] = (ref if ctx is None else ctx).reshape(B, z_ch, h, w)
         known = torch.zeros(B, tv * r, dtype=torch.bool, device=dev)
         known[:, : self.ref_slices * r] = True
-        ta = audio.shape[1] if self.audio_proj is not None else audio.shape[-1]
+        ta = audio.shape[1]
 
         hs = self.hidden_states(grid, audio, known, struct=struct)
         h_content = self.norm(hs[:, self.ref_slices:].reshape(B, -1, hs.shape[-1]))  # [B, Lc, dim]
@@ -466,7 +455,7 @@ class StreamingTalkingHead(nn.Module):
             grid[:, 1] = (ref if ctx is None else ctx).reshape(B, h, w)
         known = torch.zeros(B, tv, r, dtype=torch.bool, device=dev)
         known[:, :self.ref_slices] = True
-        ta = audio.shape[1] if self.audio_proj is not None else audio.shape[-1]
+        ta = audio.shape[1]
         ticks = slice_ticks(tv, ta, self.ref_slices, dev, lookahead=self.audio_lookahead)
         null_audio = torch.ones(B, dtype=torch.bool, device=dev) if audio_cfg != 1.0 else None
 
@@ -523,12 +512,12 @@ def _self_check():
     torch.manual_seed(0)
     B, h, w, V = 2, 16, 16, 128
 
-    # v2 layout: ref_slices=1, mimi codes
+    # single-ref layout
     tv = 5
     m = StreamingTalkingHead(V, dim=64, tv=tv, spatial=h, num_heads=4, num_layers=2,
-                             factorized_head=False).train()
+                             factorized_head=False, audio_dim=32).train()
     video = torch.randint(0, V, (B, tv, h, w))
-    audio = torch.randint(0, 2048, (B, 32, 9))
+    audio = torch.randn(B, 9, 32)
     h_masked, tgt = m(video, audio)
     assert h_masked.ndim == 2 and tgt.ndim == 1 and h_masked.shape[0] == tgt.shape[0]
     loss, parts = m.compute_loss(h_masked, tgt)
@@ -543,7 +532,7 @@ def _self_check():
     d = (m.hidden_states(video, audio, known) - m.hidden_states_for_decode(video, audio, known)).abs().max()
     assert d.item() < 1e-5
 
-    # v3 layout: grid = [identity, ctx, content...], continuous audio, content-only struct
+    # motion_ctx layout: grid = [identity, ctx, content...], content-only struct
     tv3 = 7
     m3 = StreamingTalkingHead(V, dim=64, tv=tv3, spatial=h, num_heads=4, num_layers=2,
                               factorized_head=False, ref_slices=2, audio_dim=32,
