@@ -2006,6 +2006,16 @@ They make the existing runs *interpretable*; they are not themselves a route to 
 - D0 is implemented but **opt-in and unused until you re-cache**: set `face_crop: true` *and* a new
   `cache_dir`, then rebuild. That is the single highest-leverage pending action.
 
+### 33.2b One encouraging datapoint
+
+With the sanity checks repaired, `scripts/sanity.py overfit` is meaningful for the first time
+(it previously ran `mask_ratio=0.0`, so it only proved the model could copy its input). At 50% of
+positions masked it now drives CE from 10.40 to **0.0204** with `acc_dim` 1.0 in 120 steps.
+
+The architecture can fit data through the masked path. That points the blame at conditioning and
+data — D0, D1, D2, D3 — rather than at model capacity, which is consistent with everything else in
+this section.
+
 ### 33.3 Required next actions
 
 1. **Re-cache with `face_crop: true`** into a fresh `cache_dir`. Everything else waits on this.
