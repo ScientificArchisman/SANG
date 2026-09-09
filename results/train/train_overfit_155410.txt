@@ -1,0 +1,7 @@
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+[FSQIndexCodec] V=32768 levels=(8, 8, 8, 8, 8) roundtrip=True sum(ln levels)=10.3972 ln(V)=10.3972
+train clips=0 val clips=1

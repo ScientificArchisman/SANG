@@ -1,0 +1,12 @@
+checkpoints -> runs/stream_v3_161089
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+train clips=60479 val clips=3186
+[FSQIndexCodec] V=32768 levels=(8, 8, 8, 8, 8) roundtrip=True sum(ln levels)=10.3972 ln(V)=10.3972
+perceptual losses: ['syncnet', 'trepa']
+resume last.pt: step 19000 -> 19001, best inf@0
+model=streaming factorized=True params=79.3M device=cuda
+val_acc = generate motion-token accuracy (MaskGIT decode); val_loss = 1-val_acc

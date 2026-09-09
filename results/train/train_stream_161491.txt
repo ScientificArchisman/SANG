@@ -1,0 +1,97 @@
+checkpoints -> runs/stream_v3_161491
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+train clips=60479 val clips=3186
+[FSQIndexCodec] V=32768 levels=(8, 8, 8, 8, 8) roundtrip=True sum(ln levels)=10.3972 ln(V)=10.3972
+perceptual losses: ['syncnet']
+resume last.pt: step 24500 -> 24501, best inf@0
+model=streaming factorized=True params=79.3M device=cuda
+val_acc = generate motion-token accuracy (MaskGIT decode); val_loss = 1-val_acc
+step   24550 lr 2.74e-04 ce 7.0125 (chance 10.3972, gap +3.3847) acc_dim 0.4276 acc_tok 0.07194 gnorm 0.811 | pixel 0.0940 syncnet 0.6472
+step   24600 lr 2.73e-04 ce 6.9476 (chance 10.3972, gap +3.4496) acc_dim 0.4326 acc_tok 0.07764 gnorm 0.827 | pixel 0.0750 syncnet 0.6516
+step   24650 lr 2.73e-04 ce 6.9188 (chance 10.3972, gap +3.4785) acc_dim 0.4346 acc_tok 0.07752 gnorm 0.913 | pixel 0.0733 syncnet 0.6513
+step   24700 lr 2.73e-04 ce 6.9675 (chance 10.3972, gap +3.4297) acc_dim 0.4305 acc_tok 0.07400 gnorm 0.746 | pixel 0.0723 syncnet 0.6501
+step   24750 lr 2.73e-04 ce 6.9519 (chance 10.3972, gap +3.4453) acc_dim 0.4314 acc_tok 0.07285 gnorm 1.066 | pixel 0.0722 syncnet 0.6499
+step   24800 lr 2.73e-04 ce 6.9599 (chance 10.3972, gap +3.4373) acc_dim 0.4310 acc_tok 0.07433 gnorm 0.775 | pixel 0.0709 syncnet 0.6457
+step   24850 lr 2.73e-04 ce 6.9511 (chance 10.3972, gap +3.4461) acc_dim 0.4317 acc_tok 0.07417 gnorm 1.031 | pixel 0.0723 syncnet 0.6414
+step   24900 lr 2.73e-04 ce 6.9468 (chance 10.3972, gap +3.4504) acc_dim 0.4320 acc_tok 0.07613 gnorm 0.874 | pixel 0.0705 syncnet 0.6470
+step   24950 lr 2.73e-04 ce 6.9581 (chance 10.3972, gap +3.4392) acc_dim 0.4310 acc_tok 0.07421 gnorm 0.915 | pixel 0.0729 syncnet 0.6527
+step   25000 lr 2.73e-04 ce 6.9518 (chance 10.3972, gap +3.4454) acc_dim 0.4317 acc_tok 0.07510 gnorm 0.894 | pixel 0.0720 syncnet 0.6514
+step   25050 lr 2.73e-04 ce 6.9554 (chance 10.3972, gap +3.4418) acc_dim 0.4318 acc_tok 0.07509 gnorm 0.735 | pixel 0.0716 syncnet 0.6518
+step   25100 lr 2.72e-04 ce 6.9397 (chance 10.3972, gap +3.4575) acc_dim 0.4326 acc_tok 0.07536 gnorm 0.846 | pixel 0.0697 syncnet 0.6505
+step   25150 lr 2.72e-04 ce 6.9674 (chance 10.3972, gap +3.4298) acc_dim 0.4302 acc_tok 0.07407 gnorm 0.779 | pixel 0.0688 syncnet 0.6495
+step   25200 lr 2.72e-04 ce 6.9621 (chance 10.3972, gap +3.4351) acc_dim 0.4310 acc_tok 0.07516 gnorm 0.787 | pixel 0.0690 syncnet 0.6496
+step   25250 lr 2.72e-04 ce 6.9577 (chance 10.3972, gap +3.4395) acc_dim 0.4311 acc_tok 0.07633 gnorm 1.367 | pixel 0.0709 syncnet 0.6486
+step   25300 lr 2.72e-04 ce 6.9417 (chance 10.3972, gap +3.4555) acc_dim 0.4319 acc_tok 0.07447 gnorm 0.914 | pixel 0.0685 syncnet 0.6473
+step   25350 lr 2.72e-04 ce 6.9499 (chance 10.3972, gap +3.4473) acc_dim 0.4320 acc_tok 0.07481 gnorm 1.040 | pixel 0.0688 syncnet 0.6491
+step   25400 lr 2.72e-04 ce 6.9805 (chance 10.3972, gap +3.4167) acc_dim 0.4285 acc_tok 0.07217 gnorm 0.806 | pixel 0.0666 syncnet 0.6504
+step   25450 lr 2.72e-04 ce 6.9559 (chance 10.3972, gap +3.4413) acc_dim 0.4315 acc_tok 0.07389 gnorm 0.705 | pixel 0.0669 syncnet 0.6470
+step   25500 lr 2.72e-04 ce 6.9838 (chance 10.3972, gap +3.4134) acc_dim 0.4294 acc_tok 0.07396 gnorm 0.863 | pixel 0.0699 syncnet 0.6485
+  [diag] val_ce 7.5981 acc_dim 0.3810 acc_tok 0.06136
+step 25500 val_loss 0.9333 val_acc 0.0667 | best 0.9333@25500
+step   25550 lr 2.71e-04 ce 6.9869 (chance 10.3972, gap +3.4103) acc_dim 0.4283 acc_tok 0.07339 gnorm 0.940 | pixel 0.0665 syncnet 0.6498
+step   25600 lr 2.71e-04 ce 6.9477 (chance 10.3972, gap +3.4495) acc_dim 0.4314 acc_tok 0.07600 gnorm 1.412 | pixel 0.0683 syncnet 0.6490
+step   25650 lr 2.71e-04 ce 6.9684 (chance 10.3972, gap +3.4288) acc_dim 0.4304 acc_tok 0.07400 gnorm 0.856 | pixel 0.0679 syncnet 0.6473
+step   25700 lr 2.71e-04 ce 6.9756 (chance 10.3972, gap +3.4216) acc_dim 0.4298 acc_tok 0.07462 gnorm 0.866 | pixel 0.0668 syncnet 0.6505
+step   25750 lr 2.71e-04 ce 6.9617 (chance 10.3972, gap +3.4355) acc_dim 0.4309 acc_tok 0.07508 gnorm 0.811 | pixel 0.0664 syncnet 0.6508
+step   25800 lr 2.71e-04 ce 6.9920 (chance 10.3972, gap +3.4052) acc_dim 0.4284 acc_tok 0.07324 gnorm 0.738 | pixel 0.0663 syncnet 0.6487
+step   25850 lr 2.71e-04 ce 6.9402 (chance 10.3972, gap +3.4570) acc_dim 0.4326 acc_tok 0.07578 gnorm 0.778 | pixel 0.0685 syncnet 0.6477
+step   25900 lr 2.71e-04 ce 6.9014 (chance 10.3972, gap +3.4958) acc_dim 0.4356 acc_tok 0.07820 gnorm 0.788 | pixel 0.0661 syncnet 0.6490
+step   25950 lr 2.71e-04 ce 6.9442 (chance 10.3972, gap +3.4530) acc_dim 0.4323 acc_tok 0.07483 gnorm 0.942 | pixel 0.0645 syncnet 0.6457
+step   26000 lr 2.70e-04 ce 6.9514 (chance 10.3972, gap +3.4458) acc_dim 0.4316 acc_tok 0.07580 gnorm 0.877 | pixel 0.0680 syncnet 0.6524
+step   26050 lr 2.70e-04 ce 6.9744 (chance 10.3972, gap +3.4228) acc_dim 0.4302 acc_tok 0.07523 gnorm 1.091 | pixel 0.0652 syncnet 0.6487
+step   26100 lr 2.70e-04 ce 7.0049 (chance 10.3972, gap +3.3923) acc_dim 0.4281 acc_tok 0.07438 gnorm 0.935 | pixel 0.0654 syncnet 0.6489
+step   26150 lr 2.70e-04 ce 6.9309 (chance 10.3972, gap +3.4663) acc_dim 0.4338 acc_tok 0.07705 gnorm 0.834 | pixel 0.0646 syncnet 0.6516
+step   26200 lr 2.70e-04 ce 6.9270 (chance 10.3972, gap +3.4703) acc_dim 0.4337 acc_tok 0.07649 gnorm 0.762 | pixel 0.0643 syncnet 0.6481
+step   26250 lr 2.70e-04 ce 6.9340 (chance 10.3972, gap +3.4632) acc_dim 0.4332 acc_tok 0.07511 gnorm 0.859 | pixel 0.0648 syncnet 0.6472
+step   26300 lr 2.70e-04 ce 6.9150 (chance 10.3972, gap +3.4823) acc_dim 0.4347 acc_tok 0.07811 gnorm 0.971 | pixel 0.0632 syncnet 0.6475
+step   26350 lr 2.70e-04 ce 6.9552 (chance 10.3972, gap +3.4420) acc_dim 0.4315 acc_tok 0.07691 gnorm 0.761 | pixel 0.0636 syncnet 0.6442
+step   26400 lr 2.70e-04 ce 6.9356 (chance 10.3972, gap +3.4616) acc_dim 0.4326 acc_tok 0.07650 gnorm 0.845 | pixel 0.0631 syncnet 0.6499
+step   26450 lr 2.69e-04 ce 6.8894 (chance 10.3972, gap +3.5078) acc_dim 0.4367 acc_tok 0.07901 gnorm 0.937 | pixel 0.0634 syncnet 0.6464
+step   26500 lr 2.69e-04 ce 6.8542 (chance 10.3972, gap +3.5431) acc_dim 0.4389 acc_tok 0.07815 gnorm 0.832 | pixel 0.0631 syncnet 0.6453
+step   26550 lr 2.69e-04 ce 6.8649 (chance 10.3972, gap +3.5323) acc_dim 0.4386 acc_tok 0.07883 gnorm 0.760 | pixel 0.0636 syncnet 0.6470
+step   26600 lr 2.69e-04 ce 6.9048 (chance 10.3972, gap +3.4924) acc_dim 0.4357 acc_tok 0.07736 gnorm 0.981 | pixel 0.0631 syncnet 0.6524
+step   26650 lr 2.69e-04 ce 6.8932 (chance 10.3972, gap +3.5041) acc_dim 0.4364 acc_tok 0.07827 gnorm 0.814 | pixel 0.0637 syncnet 0.6501
+step   26700 lr 2.69e-04 ce 6.9052 (chance 10.3972, gap +3.4920) acc_dim 0.4358 acc_tok 0.07723 gnorm 0.774 | pixel 0.0614 syncnet 0.6472
+step   26750 lr 2.69e-04 ce 6.9038 (chance 10.3972, gap +3.4935) acc_dim 0.4350 acc_tok 0.07563 gnorm 0.869 | pixel 0.0621 syncnet 0.6468
+step   26800 lr 2.69e-04 ce 6.9049 (chance 10.3972, gap +3.4923) acc_dim 0.4358 acc_tok 0.07836 gnorm 0.806 | pixel 0.0625 syncnet 0.6443
+step   26850 lr 2.69e-04 ce 6.9490 (chance 10.3972, gap +3.4482) acc_dim 0.4321 acc_tok 0.07584 gnorm 0.937 | pixel 0.0621 syncnet 0.6474
+step   26900 lr 2.68e-04 ce 6.9217 (chance 10.3972, gap +3.4755) acc_dim 0.4336 acc_tok 0.07631 gnorm 0.900 | pixel 0.0610 syncnet 0.6482
+step   26950 lr 2.68e-04 ce 6.9258 (chance 10.3972, gap +3.4714) acc_dim 0.4339 acc_tok 0.07779 gnorm 1.006 | pixel 0.0610 syncnet 0.6476
+step   27000 lr 2.68e-04 ce 6.9203 (chance 10.3972, gap +3.4769) acc_dim 0.4342 acc_tok 0.07702 gnorm 0.764 | pixel 0.0614 syncnet 0.6482
+  [diag] val_ce 7.6401 acc_dim 0.3790 acc_tok 0.05976
+step 27000 val_loss 0.9357 val_acc 0.0643 | best 0.9333@25500
+step   27050 lr 2.68e-04 ce 6.9248 (chance 10.3972, gap +3.4725) acc_dim 0.4336 acc_tok 0.07685 gnorm 0.726 | pixel 0.0625 syncnet 0.6498
+step   27100 lr 2.68e-04 ce 6.9536 (chance 10.3972, gap +3.4436) acc_dim 0.4315 acc_tok 0.07453 gnorm 0.833 | pixel 0.0642 syncnet 0.6459
+step   27150 lr 2.68e-04 ce 6.9351 (chance 10.3972, gap +3.4621) acc_dim 0.4324 acc_tok 0.07477 gnorm 0.923 | pixel 0.0606 syncnet 0.6484
+step   27200 lr 2.68e-04 ce 6.8797 (chance 10.3972, gap +3.5175) acc_dim 0.4383 acc_tok 0.07851 gnorm 0.773 | pixel 0.0611 syncnet 0.6462
+step   27250 lr 2.68e-04 ce 6.9385 (chance 10.3972, gap +3.4587) acc_dim 0.4329 acc_tok 0.07535 gnorm 1.003 | pixel 0.0624 syncnet 0.6555
+step   27300 lr 2.67e-04 ce 6.8955 (chance 10.3972, gap +3.5017) acc_dim 0.4365 acc_tok 0.07824 gnorm 0.899 | pixel 0.0620 syncnet 0.6509
+step   27350 lr 2.67e-04 ce 6.8950 (chance 10.3972, gap +3.5023) acc_dim 0.4365 acc_tok 0.07908 gnorm 1.177 | pixel 0.0601 syncnet 0.6456
+step   27400 lr 2.67e-04 ce 6.8766 (chance 10.3972, gap +3.5206) acc_dim 0.4379 acc_tok 0.07789 gnorm 0.791 | pixel 0.0602 syncnet 0.6483
+step   27450 lr 2.67e-04 ce 6.9394 (chance 10.3972, gap +3.4578) acc_dim 0.4327 acc_tok 0.07500 gnorm 0.852 | pixel 0.0596 syncnet 0.6469
+step   27500 lr 2.67e-04 ce 6.9651 (chance 10.3972, gap +3.4321) acc_dim 0.4313 acc_tok 0.07492 gnorm 0.766 | pixel 0.0602 syncnet 0.6490
+step   27550 lr 2.67e-04 ce 6.9315 (chance 10.3972, gap +3.4658) acc_dim 0.4332 acc_tok 0.07523 gnorm 0.802 | pixel 0.0595 syncnet 0.6492
+step   27600 lr 2.67e-04 ce 6.9079 (chance 10.3972, gap +3.4893) acc_dim 0.4352 acc_tok 0.07776 gnorm 0.846 | pixel 0.0591 syncnet 0.6484
+step   27650 lr 2.67e-04 ce 6.9194 (chance 10.3972, gap +3.4778) acc_dim 0.4346 acc_tok 0.07891 gnorm 0.840 | pixel 0.0594 syncnet 0.6462
+step   27700 lr 2.67e-04 ce 6.9042 (chance 10.3972, gap +3.4930) acc_dim 0.4355 acc_tok 0.07835 gnorm 0.819 | pixel 0.0590 syncnet 0.6500
+step   27750 lr 2.66e-04 ce 6.9155 (chance 10.3972, gap +3.4817) acc_dim 0.4347 acc_tok 0.07801 gnorm 0.896 | pixel 0.0590 syncnet 0.6475
+step   27800 lr 2.66e-04 ce 6.9193 (chance 10.3972, gap +3.4779) acc_dim 0.4347 acc_tok 0.07812 gnorm 0.777 | pixel 0.0599 syncnet 0.6425
+step   27850 lr 2.66e-04 ce 6.9032 (chance 10.3972, gap +3.4940) acc_dim 0.4352 acc_tok 0.07720 gnorm 0.716 | pixel 0.0578 syncnet 0.6436
+step   27900 lr 2.66e-04 ce 6.9662 (chance 10.3972, gap +3.4310) acc_dim 0.4302 acc_tok 0.07479 gnorm 0.887 | pixel 0.0582 syncnet 0.6543
+step   27950 lr 2.66e-04 ce 6.9137 (chance 10.3972, gap +3.4835) acc_dim 0.4346 acc_tok 0.07679 gnorm 0.814 | pixel 0.0590 syncnet 0.6488
+step   28000 lr 2.66e-04 ce 6.9346 (chance 10.3972, gap +3.4626) acc_dim 0.4334 acc_tok 0.07690 gnorm 0.829 | pixel 0.0588 syncnet 0.6522
+step   28050 lr 2.66e-04 ce 6.9077 (chance 10.3972, gap +3.4895) acc_dim 0.4355 acc_tok 0.07758 gnorm 0.766 | pixel 0.0579 syncnet 0.6497
+step   28100 lr 2.66e-04 ce 6.8979 (chance 10.3972, gap +3.4994) acc_dim 0.4356 acc_tok 0.07691 gnorm 0.791 | pixel 0.0576 syncnet 0.6531
+step   28150 lr 2.66e-04 ce 6.9267 (chance 10.3972, gap +3.4705) acc_dim 0.4335 acc_tok 0.07535 gnorm 0.763 | pixel 0.0574 syncnet 0.6485
+step   28200 lr 2.65e-04 ce 6.8949 (chance 10.3972, gap +3.5023) acc_dim 0.4366 acc_tok 0.07779 gnorm 0.860 | pixel 0.0584 syncnet 0.6469
+step   28250 lr 2.65e-04 ce 6.9145 (chance 10.3972, gap +3.4827) acc_dim 0.4348 acc_tok 0.07622 gnorm 0.927 | pixel 0.0584 syncnet 0.6484
+step   28300 lr 2.65e-04 ce 6.9011 (chance 10.3972, gap +3.4961) acc_dim 0.4361 acc_tok 0.07931 gnorm 1.093 | pixel 0.0575 syncnet 0.6453
+step   28350 lr 2.65e-04 ce 6.8203 (chance 10.3972, gap +3.5770) acc_dim 0.4425 acc_tok 0.08317 gnorm 0.918 | pixel 0.0571 syncnet 0.6469
+step   28400 lr 2.65e-04 ce 6.8840 (chance 10.3972, gap +3.5132) acc_dim 0.4369 acc_tok 0.07918 gnorm 0.783 | pixel 0.0573 syncnet 0.6504
+step   28450 lr 2.65e-04 ce 6.8402 (chance 10.3972, gap +3.5570) acc_dim 0.4403 acc_tok 0.08055 gnorm 0.703 | pixel 0.0574 syncnet 0.6463
+step   28500 lr 2.65e-04 ce 6.8239 (chance 10.3972, gap +3.5733) acc_dim 0.4421 acc_tok 0.08211 gnorm 0.899 | pixel 0.0573 syncnet 0.6454
+  [diag] val_ce 7.6835 acc_dim 0.3860 acc_tok 0.06213

@@ -1,0 +1,53 @@
+/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/lightning/fabric/__init__.py:41: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+/beegfs/work/achakraborti/SANG/third_party/vidtok/modules/regularizers.py:206: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @autocast(enabled=False)
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+/beegfs/work/achakraborti/SANG/third_party/vidtok/models/autoencoder.py:161: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  ckpt = torch.load(path, map_location="cpu")
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+[FSQIndexCodec] V=32768 levels=(8, 8, 8, 8, 8) roundtrip=True sum(ln levels)=10.3972 ln(V)=10.3972
+=== sanity: forward ===
+
+  h_masked shape=(1317, 512) ce=10.8241
+  [PASS] loss is finite
+  [PASS] all trainable params received gradient
+
+=== 0 failures ===
+/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/lightning/fabric/__init__.py:41: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+/beegfs/work/achakraborti/SANG/third_party/vidtok/modules/regularizers.py:206: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @autocast(enabled=False)
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+/beegfs/work/achakraborti/SANG/third_party/vidtok/models/autoencoder.py:161: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  ckpt = torch.load(path, map_location="cpu")
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+[FSQIndexCodec] V=32768 levels=(8, 8, 8, 8, 8) roundtrip=True sum(ln levels)=10.3972 ln(V)=10.3972
+=== sanity: causality ===
+
+  max |dlogit(slice1)| future audio = 0.000e+00, future slice = 0.000e+00
+  [PASS] no future-audio leakage
+  [PASS] no future-slice leakage (within slice 1 prediction)
+
+=== 0 failures ===
+/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/lightning/fabric/__init__.py:41: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+/beegfs/work/achakraborti/SANG/third_party/vidtok/modules/regularizers.py:206: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @autocast(enabled=False)
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+/beegfs/work/achakraborti/SANG/third_party/vidtok/models/autoencoder.py:161: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  ckpt = torch.load(path, map_location="cpu")
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+[FSQIndexCodec] V=32768 levels=(8, 8, 8, 8, 8) roundtrip=True sum(ln levels)=10.3972 ln(V)=10.3972
+=== sanity: parity ===
+
+  max |train_hidden - decode_hidden| = 0.000e+00
+  [PASS] train and decode paths identical
+
+=== 0 failures ===

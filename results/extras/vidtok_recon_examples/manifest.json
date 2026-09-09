@@ -1,0 +1,162 @@
+[
+  {
+    "example": 1,
+    "source": "/beegfs/work_fast/shared/li_shared/archi_data/talkvid/clips/oqlwVd6flb4/oqlwVd6flb4_NA_552.068_598.247.mp4",
+    "native_fps": 23.976023976023978,
+    "start_frame": 546,
+    "frames": 17,
+    "codebook": 32768,
+    "resolutions": {
+      "128": {
+        "psnr": 24.081708908081055,
+        "ssim": 0.8069791197776794,
+        "indices_shape": [
+          1,
+          5,
+          16,
+          16
+        ],
+        "tokens": 1280
+      },
+      "256": {
+        "psnr": 29.536863327026367,
+        "ssim": 0.9255672693252563,
+        "indices_shape": [
+          1,
+          5,
+          32,
+          32
+        ],
+        "tokens": 5120
+      }
+    }
+  },
+  {
+    "example": 2,
+    "source": "/beegfs/work_fast/shared/li_shared/archi_data/talkvid/clips/nPKZp3MDlLw/nPKZp3MDlLw_NA_2295.926_2307.939.mp4",
+    "native_fps": 29.97002997002997,
+    "start_frame": 172,
+    "frames": 17,
+    "codebook": 32768,
+    "resolutions": {
+      "128": {
+        "psnr": 27.08270263671875,
+        "ssim": 0.8748956918716431,
+        "indices_shape": [
+          1,
+          5,
+          16,
+          16
+        ],
+        "tokens": 1280
+      },
+      "256": {
+        "psnr": 32.80550765991211,
+        "ssim": 0.9265550374984741,
+        "indices_shape": [
+          1,
+          5,
+          32,
+          32
+        ],
+        "tokens": 5120
+      }
+    }
+  },
+  {
+    "example": 3,
+    "source": "/beegfs/work_fast/shared/li_shared/archi_data/talkvid/clips/EFDm9cSIt8Q/EFDm9cSIt8Q_NA_108.100_115.833.mp4",
+    "native_fps": 30.0,
+    "start_frame": 107,
+    "frames": 17,
+    "codebook": 32768,
+    "resolutions": {
+      "128": {
+        "psnr": 21.449377059936523,
+        "ssim": 0.7874962091445923,
+        "indices_shape": [
+          1,
+          5,
+          16,
+          16
+        ],
+        "tokens": 1280
+      },
+      "256": {
+        "psnr": 25.610105514526367,
+        "ssim": 0.8805611729621887,
+        "indices_shape": [
+          1,
+          5,
+          32,
+          32
+        ],
+        "tokens": 5120
+      }
+    }
+  },
+  {
+    "example": 4,
+    "source": "/beegfs/work_fast/shared/li_shared/archi_data/talkvid/clips/sRMpC4NZy6g/sRMpC4NZy6g_NA_239.733_245.233.mp4",
+    "native_fps": 30.0,
+    "start_frame": 74,
+    "frames": 17,
+    "codebook": 32768,
+    "resolutions": {
+      "128": {
+        "psnr": 21.533416748046875,
+        "ssim": 0.8188339471817017,
+        "indices_shape": [
+          1,
+          5,
+          16,
+          16
+        ],
+        "tokens": 1280
+      },
+      "256": {
+        "psnr": 25.348506927490234,
+        "ssim": 0.9089810252189636,
+        "indices_shape": [
+          1,
+          5,
+          32,
+          32
+        ],
+        "tokens": 5120
+      }
+    }
+  },
+  {
+    "example": 5,
+    "source": "/beegfs/work_fast/shared/li_shared/archi_data/talkvid/clips/agu7C1dYuk8/agu7C1dYuk8_NA_647.166_707.533.mp4",
+    "native_fps": 30.0,
+    "start_frame": 897,
+    "frames": 17,
+    "codebook": 32768,
+    "resolutions": {
+      "128": {
+        "psnr": 27.56630516052246,
+        "ssim": 0.8264933228492737,
+        "indices_shape": [
+          1,
+          5,
+          16,
+          16
+        ],
+        "tokens": 1280
+      },
+      "256": {
+        "psnr": 32.10345458984375,
+        "ssim": 0.8992546200752258,
+        "indices_shape": [
+          1,
+          5,
+          32,
+          32
+        ],
+        "tokens": 5120
+      }
+    }
+  }
+]

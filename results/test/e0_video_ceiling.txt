@@ -1,0 +1,22 @@
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_4096.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_4096.ckpt with 
+0 missing and 56 unexpected keys
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_262144.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_262144.ckpt 
+with 0 missing and 56 unexpected keys
+clips_used=300 skipped=0 frames=17
+res=128 K=  4096 bits=12  PSNR=24.65 SSIM=0.8087 tok/s=2199
+res=128 K= 32768 bits=15  PSNR=25.31 SSIM=0.8311 tok/s=2199
+res=128 K=262144 bits=18  PSNR=25.92 SSIM=0.8481 tok/s=2199
+res=256 K=  4096 bits=12  PSNR=28.76 SSIM=0.8800 tok/s=8796
+res=256 K= 32768 bits=15  PSNR=29.65 SSIM=0.8951 tok/s=8796
+res=256 K=262144 bits=18  PSNR=30.37 SSIM=0.9046 tok/s=8796

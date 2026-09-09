@@ -1,0 +1,3 @@
+clips=16027 train_windows=121291 val_windows=6378
+params=45.7M device=cuda
+step 500 val_loss 4.8478 val_acc 0.0149 | best_acc 0.0149@500

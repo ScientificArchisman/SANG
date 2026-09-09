@@ -1,0 +1,381 @@
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+[FSQIndexCodec] V=32768 levels=(8, 8, 8, 8, 8) roundtrip=True sum(ln levels)=10.3972 ln(V)=10.3972
+train clips=60479 val clips=3186
+resume best.pt: step 14500 -> 14501, best 0.9896@14500
+model=streaming factorized=True params=78.7M device=cuda
+val_acc = generate motion-token accuracy (MaskGIT decode); val_loss = 1-val_acc
+step   14550 lr 2.91e-04 ce 7.8770 (chance 10.3972, gap +2.5202) acc_dim 0.3494 acc_tok 0.02482 gnorm 0.697
+step   14600 lr 2.91e-04 ce 7.8984 (chance 10.3972, gap +2.4988) acc_dim 0.3477 acc_tok 0.02452 gnorm 0.721
+step   14650 lr 2.91e-04 ce 7.8653 (chance 10.3972, gap +2.5319) acc_dim 0.3504 acc_tok 0.02529 gnorm 0.742
+step   14700 lr 2.90e-04 ce 7.8813 (chance 10.3972, gap +2.5159) acc_dim 0.3494 acc_tok 0.02525 gnorm 0.639
+step   14750 lr 2.90e-04 ce 7.9152 (chance 10.3972, gap +2.4821) acc_dim 0.3465 acc_tok 0.02436 gnorm 0.776
+step   14800 lr 2.90e-04 ce 7.8536 (chance 10.3972, gap +2.5436) acc_dim 0.3521 acc_tok 0.02658 gnorm 0.861
+step   14850 lr 2.90e-04 ce 7.8970 (chance 10.3972, gap +2.5002) acc_dim 0.3485 acc_tok 0.02489 gnorm 0.679
+step   14900 lr 2.90e-04 ce 7.8718 (chance 10.3972, gap +2.5254) acc_dim 0.3501 acc_tok 0.02543 gnorm 0.714
+step   14950 lr 2.90e-04 ce 7.8764 (chance 10.3972, gap +2.5208) acc_dim 0.3494 acc_tok 0.02559 gnorm 0.759
+step   15000 lr 2.90e-04 ce 7.8947 (chance 10.3972, gap +2.5025) acc_dim 0.3486 acc_tok 0.02527 gnorm 0.758
+  [diag] val_ce 8.3856 acc_dim 0.3116 acc_tok 0.01001
+step 15000 val_loss 0.9893 val_acc 0.0107 | best 0.9893@15000
+step   15050 lr 2.90e-04 ce 7.9350 (chance 10.3972, gap +2.4622) acc_dim 0.3453 acc_tok 0.02352 gnorm 0.708
+step   15100 lr 2.90e-04 ce 7.8931 (chance 10.3972, gap +2.5041) acc_dim 0.3488 acc_tok 0.02468 gnorm 0.809
+step   15150 lr 2.90e-04 ce 7.8830 (chance 10.3972, gap +2.5142) acc_dim 0.3491 acc_tok 0.02485 gnorm 0.719
+step   15200 lr 2.90e-04 ce 7.8718 (chance 10.3972, gap +2.5254) acc_dim 0.3503 acc_tok 0.02583 gnorm 0.730
+step   15250 lr 2.90e-04 ce 7.8366 (chance 10.3972, gap +2.5606) acc_dim 0.3526 acc_tok 0.02588 gnorm 0.831
+step   15300 lr 2.90e-04 ce 7.8443 (chance 10.3972, gap +2.5529) acc_dim 0.3525 acc_tok 0.02597 gnorm 0.781
+step   15350 lr 2.90e-04 ce 7.8539 (chance 10.3972, gap +2.5433) acc_dim 0.3511 acc_tok 0.02506 gnorm 0.638
+step   15400 lr 2.90e-04 ce 7.8692 (chance 10.3972, gap +2.5280) acc_dim 0.3504 acc_tok 0.02553 gnorm 0.722
+step   15450 lr 2.89e-04 ce 7.8875 (chance 10.3972, gap +2.5097) acc_dim 0.3489 acc_tok 0.02474 gnorm 0.655
+step   15500 lr 2.89e-04 ce 7.8701 (chance 10.3972, gap +2.5271) acc_dim 0.3503 acc_tok 0.02529 gnorm 0.674
+  [diag] val_ce 8.3297 acc_dim 0.3131 acc_tok 0.01013
+step 15500 val_loss 0.9893 val_acc 0.0107 | best 0.9893@15000
+step   15550 lr 2.89e-04 ce 7.8143 (chance 10.3972, gap +2.5829) acc_dim 0.3554 acc_tok 0.02770 gnorm 0.766
+step   15600 lr 2.89e-04 ce 7.8569 (chance 10.3972, gap +2.5404) acc_dim 0.3512 acc_tok 0.02640 gnorm 0.657
+step   15650 lr 2.89e-04 ce 7.8181 (chance 10.3972, gap +2.5791) acc_dim 0.3545 acc_tok 0.02731 gnorm 0.718
+step   15700 lr 2.89e-04 ce 7.8360 (chance 10.3972, gap +2.5612) acc_dim 0.3532 acc_tok 0.02629 gnorm 0.618
+step   15750 lr 2.89e-04 ce 7.8658 (chance 10.3972, gap +2.5314) acc_dim 0.3509 acc_tok 0.02558 gnorm 0.641
+step   15800 lr 2.89e-04 ce 7.8775 (chance 10.3972, gap +2.5197) acc_dim 0.3496 acc_tok 0.02510 gnorm 0.749
+step   15850 lr 2.89e-04 ce 7.8437 (chance 10.3972, gap +2.5535) acc_dim 0.3526 acc_tok 0.02622 gnorm 0.767
+step   15900 lr 2.89e-04 ce 7.8457 (chance 10.3972, gap +2.5515) acc_dim 0.3522 acc_tok 0.02555 gnorm 0.727
+step   15950 lr 2.89e-04 ce 7.8529 (chance 10.3972, gap +2.5444) acc_dim 0.3513 acc_tok 0.02504 gnorm 0.673
+step   16000 lr 2.89e-04 ce 7.8401 (chance 10.3972, gap +2.5572) acc_dim 0.3529 acc_tok 0.02520 gnorm 0.692
+  [diag] val_ce 8.2787 acc_dim 0.3184 acc_tok 0.01095
+step 16000 val_loss 0.9893 val_acc 0.0107 | best 0.9893@15000
+step   16050 lr 2.89e-04 ce 7.8882 (chance 10.3972, gap +2.5091) acc_dim 0.3486 acc_tok 0.02494 gnorm 0.681
+step   16100 lr 2.89e-04 ce 7.7990 (chance 10.3972, gap +2.5982) acc_dim 0.3560 acc_tok 0.02699 gnorm 0.647
+step   16150 lr 2.88e-04 ce 7.8288 (chance 10.3972, gap +2.5684) acc_dim 0.3543 acc_tok 0.02658 gnorm 0.797
+step   16200 lr 2.88e-04 ce 7.8308 (chance 10.3972, gap +2.5665) acc_dim 0.3532 acc_tok 0.02602 gnorm 0.643
+step   16250 lr 2.88e-04 ce 7.7867 (chance 10.3972, gap +2.6105) acc_dim 0.3572 acc_tok 0.02777 gnorm 0.801
+step   16300 lr 2.88e-04 ce 7.7986 (chance 10.3972, gap +2.5986) acc_dim 0.3565 acc_tok 0.02775 gnorm 0.685
+step   16350 lr 2.88e-04 ce 7.7938 (chance 10.3972, gap +2.6034) acc_dim 0.3563 acc_tok 0.02688 gnorm 0.662
+step   16400 lr 2.88e-04 ce 7.8254 (chance 10.3972, gap +2.5718) acc_dim 0.3541 acc_tok 0.02666 gnorm 0.673
+step   16450 lr 2.88e-04 ce 7.8109 (chance 10.3972, gap +2.5863) acc_dim 0.3556 acc_tok 0.02739 gnorm 0.699
+step   16500 lr 2.88e-04 ce 7.7589 (chance 10.3972, gap +2.6383) acc_dim 0.3593 acc_tok 0.02874 gnorm 0.711
+  [diag] val_ce 8.2840 acc_dim 0.3175 acc_tok 0.01118
+step 16500 val_loss 0.9888 val_acc 0.0112 | best 0.9888@16500
+step   16550 lr 2.88e-04 ce 7.7837 (chance 10.3972, gap +2.6135) acc_dim 0.3569 acc_tok 0.02729 gnorm 0.718
+step   16600 lr 2.88e-04 ce 7.7666 (chance 10.3972, gap +2.6306) acc_dim 0.3583 acc_tok 0.02771 gnorm 0.633
+step   16650 lr 2.88e-04 ce 7.7329 (chance 10.3972, gap +2.6643) acc_dim 0.3612 acc_tok 0.02918 gnorm 0.687
+step   16700 lr 2.88e-04 ce 7.8049 (chance 10.3972, gap +2.5923) acc_dim 0.3559 acc_tok 0.02683 gnorm 0.722
+step   16750 lr 2.88e-04 ce 7.7337 (chance 10.3972, gap +2.6635) acc_dim 0.3616 acc_tok 0.02868 gnorm 0.709
+step   16800 lr 2.88e-04 ce 7.7659 (chance 10.3972, gap +2.6313) acc_dim 0.3584 acc_tok 0.02780 gnorm 0.658
+step   16850 lr 2.87e-04 ce 7.7502 (chance 10.3972, gap +2.6470) acc_dim 0.3600 acc_tok 0.02861 gnorm 0.767
+step   16900 lr 2.87e-04 ce 7.7711 (chance 10.3972, gap +2.6261) acc_dim 0.3581 acc_tok 0.02778 gnorm 0.708
+step   16950 lr 2.87e-04 ce 7.7395 (chance 10.3972, gap +2.6577) acc_dim 0.3606 acc_tok 0.02873 gnorm 0.721
+step   17000 lr 2.87e-04 ce 7.7813 (chance 10.3972, gap +2.6159) acc_dim 0.3577 acc_tok 0.02735 gnorm 0.701
+  [diag] val_ce 8.3097 acc_dim 0.3192 acc_tok 0.01121
+step 17000 val_loss 0.9886 val_acc 0.0114 | best 0.9886@17000
+step   17050 lr 2.87e-04 ce 7.7396 (chance 10.3972, gap +2.6576) acc_dim 0.3609 acc_tok 0.02857 gnorm 0.685
+step   17100 lr 2.87e-04 ce 7.7516 (chance 10.3972, gap +2.6456) acc_dim 0.3597 acc_tok 0.02813 gnorm 0.806
+step   17150 lr 2.87e-04 ce 7.7393 (chance 10.3972, gap +2.6579) acc_dim 0.3604 acc_tok 0.02814 gnorm 0.691
+step   17200 lr 2.87e-04 ce 7.7714 (chance 10.3972, gap +2.6258) acc_dim 0.3586 acc_tok 0.02739 gnorm 0.683
+step   17250 lr 2.87e-04 ce 7.7827 (chance 10.3972, gap +2.6146) acc_dim 0.3573 acc_tok 0.02676 gnorm 0.667
+step   17300 lr 2.87e-04 ce 7.8203 (chance 10.3972, gap +2.5769) acc_dim 0.3540 acc_tok 0.02525 gnorm 0.683
+step   17350 lr 2.87e-04 ce 7.7453 (chance 10.3972, gap +2.6519) acc_dim 0.3601 acc_tok 0.02817 gnorm 0.751
+step   17400 lr 2.87e-04 ce 7.7795 (chance 10.3972, gap +2.6177) acc_dim 0.3576 acc_tok 0.02783 gnorm 0.705
+step   17450 lr 2.87e-04 ce 7.7836 (chance 10.3972, gap +2.6137) acc_dim 0.3572 acc_tok 0.02711 gnorm 0.688
+step   17500 lr 2.86e-04 ce 7.7437 (chance 10.3972, gap +2.6535) acc_dim 0.3606 acc_tok 0.02830 gnorm 0.702
+  [diag] val_ce 8.2252 acc_dim 0.3224 acc_tok 0.01223
+step 17500 val_loss 0.9883 val_acc 0.0117 | best 0.9883@17500
+step   17550 lr 2.86e-04 ce 7.7644 (chance 10.3972, gap +2.6328) acc_dim 0.3584 acc_tok 0.02721 gnorm 0.645
+step   17600 lr 2.86e-04 ce 7.7231 (chance 10.3972, gap +2.6741) acc_dim 0.3627 acc_tok 0.02973 gnorm 0.707
+step   17650 lr 2.86e-04 ce 7.7611 (chance 10.3972, gap +2.6361) acc_dim 0.3593 acc_tok 0.02795 gnorm 0.767
+step   17700 lr 2.86e-04 ce 7.7160 (chance 10.3972, gap +2.6812) acc_dim 0.3624 acc_tok 0.02859 gnorm 0.736
+step   17750 lr 2.86e-04 ce 7.7515 (chance 10.3972, gap +2.6457) acc_dim 0.3595 acc_tok 0.02782 gnorm 0.670
+step   17800 lr 2.86e-04 ce 7.7542 (chance 10.3972, gap +2.6430) acc_dim 0.3594 acc_tok 0.02771 gnorm 0.720
+step   17850 lr 2.86e-04 ce 7.8035 (chance 10.3972, gap +2.5937) acc_dim 0.3558 acc_tok 0.02658 gnorm 0.779
+step   17900 lr 2.86e-04 ce 7.7736 (chance 10.3972, gap +2.6236) acc_dim 0.3582 acc_tok 0.02777 gnorm 0.645
+step   17950 lr 2.86e-04 ce 7.7350 (chance 10.3972, gap +2.6622) acc_dim 0.3609 acc_tok 0.02836 gnorm 0.660
+step   18000 lr 2.86e-04 ce 7.6799 (chance 10.3972, gap +2.7173) acc_dim 0.3654 acc_tok 0.03028 gnorm 0.778
+  [diag] val_ce 8.2291 acc_dim 0.3238 acc_tok 0.01278
+step 18000 val_loss 0.9880 val_acc 0.0120 | best 0.9880@18000
+step   18050 lr 2.86e-04 ce 7.7549 (chance 10.3972, gap +2.6423) acc_dim 0.3595 acc_tok 0.02781 gnorm 0.673
+step   18100 lr 2.86e-04 ce 7.7209 (chance 10.3972, gap +2.6763) acc_dim 0.3623 acc_tok 0.02919 gnorm 0.675
+step   18150 lr 2.85e-04 ce 7.7324 (chance 10.3972, gap +2.6648) acc_dim 0.3613 acc_tok 0.02845 gnorm 0.734
+step   18200 lr 2.85e-04 ce 7.7446 (chance 10.3972, gap +2.6527) acc_dim 0.3605 acc_tok 0.02846 gnorm 0.735
+step   18250 lr 2.85e-04 ce 7.7458 (chance 10.3972, gap +2.6514) acc_dim 0.3602 acc_tok 0.02847 gnorm 0.741
+step   18300 lr 2.85e-04 ce 7.6970 (chance 10.3972, gap +2.7002) acc_dim 0.3639 acc_tok 0.02889 gnorm 0.718
+step   18350 lr 2.85e-04 ce 7.7038 (chance 10.3972, gap +2.6934) acc_dim 0.3638 acc_tok 0.02872 gnorm 0.700
+step   18400 lr 2.85e-04 ce 7.6864 (chance 10.3972, gap +2.7109) acc_dim 0.3645 acc_tok 0.02911 gnorm 0.717
+step   18450 lr 2.85e-04 ce 7.7143 (chance 10.3972, gap +2.6829) acc_dim 0.3626 acc_tok 0.02850 gnorm 0.714
+step   18500 lr 2.85e-04 ce 7.6899 (chance 10.3972, gap +2.7073) acc_dim 0.3651 acc_tok 0.02992 gnorm 0.714
+  [diag] val_ce 8.1699 acc_dim 0.3248 acc_tok 0.01267
+step 18500 val_loss 0.9881 val_acc 0.0119 | best 0.9880@18000
+step   18550 lr 2.85e-04 ce 7.7122 (chance 10.3972, gap +2.6850) acc_dim 0.3632 acc_tok 0.02887 gnorm 0.730
+step   18600 lr 2.85e-04 ce 7.6842 (chance 10.3972, gap +2.7130) acc_dim 0.3655 acc_tok 0.03009 gnorm 0.670
+step   18650 lr 2.85e-04 ce 7.6579 (chance 10.3972, gap +2.7393) acc_dim 0.3677 acc_tok 0.03133 gnorm 0.661
+step   18700 lr 2.85e-04 ce 7.6668 (chance 10.3972, gap +2.7304) acc_dim 0.3665 acc_tok 0.03002 gnorm 0.688
+step   18750 lr 2.84e-04 ce 7.6560 (chance 10.3972, gap +2.7413) acc_dim 0.3671 acc_tok 0.03058 gnorm 0.698
+step   18800 lr 2.84e-04 ce 7.6784 (chance 10.3972, gap +2.7188) acc_dim 0.3659 acc_tok 0.03059 gnorm 0.765
+step   18850 lr 2.84e-04 ce 7.6971 (chance 10.3972, gap +2.7002) acc_dim 0.3641 acc_tok 0.02976 gnorm 0.720
+step   18900 lr 2.84e-04 ce 7.6503 (chance 10.3972, gap +2.7469) acc_dim 0.3679 acc_tok 0.03025 gnorm 0.711
+step   18950 lr 2.84e-04 ce 7.6814 (chance 10.3972, gap +2.7158) acc_dim 0.3654 acc_tok 0.03026 gnorm 0.695
+step   19000 lr 2.84e-04 ce 7.6521 (chance 10.3972, gap +2.7451) acc_dim 0.3677 acc_tok 0.03048 gnorm 0.697
+  [diag] val_ce 8.2077 acc_dim 0.3254 acc_tok 0.01387
+step 19000 val_loss 0.9875 val_acc 0.0125 | best 0.9875@19000
+step   19050 lr 2.84e-04 ce 7.6818 (chance 10.3972, gap +2.7154) acc_dim 0.3654 acc_tok 0.02924 gnorm 0.705
+step   19100 lr 2.84e-04 ce 7.6972 (chance 10.3972, gap +2.7001) acc_dim 0.3639 acc_tok 0.02928 gnorm 0.655
+step   19150 lr 2.84e-04 ce 7.7297 (chance 10.3972, gap +2.6675) acc_dim 0.3620 acc_tok 0.02900 gnorm 0.702
+step   19200 lr 2.84e-04 ce 7.6854 (chance 10.3972, gap +2.7118) acc_dim 0.3652 acc_tok 0.02955 gnorm 0.791
+step   19250 lr 2.84e-04 ce 7.6131 (chance 10.3972, gap +2.7841) acc_dim 0.3707 acc_tok 0.03100 gnorm 0.678
+step   19300 lr 2.84e-04 ce 7.6878 (chance 10.3972, gap +2.7094) acc_dim 0.3645 acc_tok 0.02862 gnorm 0.797
+step   19350 lr 2.83e-04 ce 7.7013 (chance 10.3972, gap +2.6959) acc_dim 0.3636 acc_tok 0.02852 gnorm 0.732
+step   19400 lr 2.83e-04 ce 7.6914 (chance 10.3972, gap +2.7058) acc_dim 0.3650 acc_tok 0.02993 gnorm 0.701
+step   19450 lr 2.83e-04 ce 7.6674 (chance 10.3972, gap +2.7298) acc_dim 0.3667 acc_tok 0.03041 gnorm 0.766
+step   19500 lr 2.83e-04 ce 7.6558 (chance 10.3972, gap +2.7415) acc_dim 0.3672 acc_tok 0.02952 gnorm 0.725
+  [diag] val_ce 8.1554 acc_dim 0.3285 acc_tok 0.01412
+step 19500 val_loss 0.9876 val_acc 0.0124 | best 0.9875@19000
+step   19550 lr 2.83e-04 ce 7.6722 (chance 10.3972, gap +2.7250) acc_dim 0.3661 acc_tok 0.03036 gnorm 0.732
+step   19600 lr 2.83e-04 ce 7.6688 (chance 10.3972, gap +2.7284) acc_dim 0.3667 acc_tok 0.03000 gnorm 0.680
+step   19650 lr 2.83e-04 ce 7.6468 (chance 10.3972, gap +2.7504) acc_dim 0.3681 acc_tok 0.03069 gnorm 0.810
+step   19700 lr 2.83e-04 ce 7.6699 (chance 10.3972, gap +2.7273) acc_dim 0.3665 acc_tok 0.02984 gnorm 0.698
+step   19750 lr 2.83e-04 ce 7.6684 (chance 10.3972, gap +2.7288) acc_dim 0.3664 acc_tok 0.03007 gnorm 0.746
+step   19800 lr 2.83e-04 ce 7.7091 (chance 10.3972, gap +2.6882) acc_dim 0.3632 acc_tok 0.02845 gnorm 0.671
+step   19850 lr 2.83e-04 ce 7.6221 (chance 10.3972, gap +2.7751) acc_dim 0.3701 acc_tok 0.03162 gnorm 0.744
+step   19900 lr 2.83e-04 ce 7.6715 (chance 10.3972, gap +2.7257) acc_dim 0.3658 acc_tok 0.02934 gnorm 0.745
+step   19950 lr 2.82e-04 ce 7.6153 (chance 10.3972, gap +2.7819) acc_dim 0.3710 acc_tok 0.03132 gnorm 0.698
+step   20000 lr 2.82e-04 ce 7.6106 (chance 10.3972, gap +2.7866) acc_dim 0.3713 acc_tok 0.03274 gnorm 0.739
+  [diag] val_ce 8.1803 acc_dim 0.3285 acc_tok 0.01378
+step 20000 val_loss 0.9876 val_acc 0.0124 | best 0.9875@19000
+step   20050 lr 2.82e-04 ce 7.6531 (chance 10.3972, gap +2.7441) acc_dim 0.3672 acc_tok 0.03012 gnorm 0.694
+step   20100 lr 2.82e-04 ce 7.6615 (chance 10.3972, gap +2.7357) acc_dim 0.3674 acc_tok 0.03049 gnorm 0.786
+step   20150 lr 2.82e-04 ce 7.6624 (chance 10.3972, gap +2.7348) acc_dim 0.3669 acc_tok 0.03015 gnorm 0.732
+step   20200 lr 2.82e-04 ce 7.6318 (chance 10.3972, gap +2.7654) acc_dim 0.3692 acc_tok 0.03108 gnorm 0.671
+step   20250 lr 2.82e-04 ce 7.6346 (chance 10.3972, gap +2.7626) acc_dim 0.3693 acc_tok 0.03098 gnorm 0.692
+step   20300 lr 2.82e-04 ce 7.5733 (chance 10.3972, gap +2.8239) acc_dim 0.3738 acc_tok 0.03265 gnorm 0.732
+step   20350 lr 2.82e-04 ce 7.6131 (chance 10.3972, gap +2.7841) acc_dim 0.3712 acc_tok 0.03195 gnorm 0.780
+step   20400 lr 2.82e-04 ce 7.6180 (chance 10.3972, gap +2.7792) acc_dim 0.3703 acc_tok 0.03089 gnorm 0.710
+step   20450 lr 2.82e-04 ce 7.5958 (chance 10.3972, gap +2.8014) acc_dim 0.3727 acc_tok 0.03190 gnorm 0.729
+step   20500 lr 2.81e-04 ce 7.6174 (chance 10.3972, gap +2.7798) acc_dim 0.3706 acc_tok 0.03111 gnorm 0.714
+  [diag] val_ce 8.1568 acc_dim 0.3297 acc_tok 0.01445
+step 20500 val_loss 0.9876 val_acc 0.0124 | best 0.9875@19000
+step   20550 lr 2.81e-04 ce 7.6349 (chance 10.3972, gap +2.7623) acc_dim 0.3687 acc_tok 0.03000 gnorm 0.722
+step   20600 lr 2.81e-04 ce 7.5935 (chance 10.3972, gap +2.8037) acc_dim 0.3724 acc_tok 0.03160 gnorm 0.779
+step   20650 lr 2.81e-04 ce 7.6247 (chance 10.3972, gap +2.7725) acc_dim 0.3700 acc_tok 0.03165 gnorm 0.679
+step   20700 lr 2.81e-04 ce 7.5928 (chance 10.3972, gap +2.8044) acc_dim 0.3723 acc_tok 0.03196 gnorm 0.641
+step   20750 lr 2.81e-04 ce 7.5821 (chance 10.3972, gap +2.8152) acc_dim 0.3730 acc_tok 0.03153 gnorm 0.702
+step   20800 lr 2.81e-04 ce 7.5745 (chance 10.3972, gap +2.8228) acc_dim 0.3746 acc_tok 0.03344 gnorm 0.700
+step   20850 lr 2.81e-04 ce 7.6234 (chance 10.3972, gap +2.7738) acc_dim 0.3693 acc_tok 0.03059 gnorm 0.666
+step   20900 lr 2.81e-04 ce 7.6242 (chance 10.3972, gap +2.7731) acc_dim 0.3697 acc_tok 0.03047 gnorm 0.720
+step   20950 lr 2.81e-04 ce 7.5799 (chance 10.3972, gap +2.8173) acc_dim 0.3730 acc_tok 0.03154 gnorm 0.707
+step   21000 lr 2.81e-04 ce 7.5962 (chance 10.3972, gap +2.8010) acc_dim 0.3720 acc_tok 0.03139 gnorm 0.809
+  [diag] val_ce 8.1423 acc_dim 0.3327 acc_tok 0.01571
+step 21000 val_loss 0.9872 val_acc 0.0128 | best 0.9872@21000
+step   21050 lr 2.80e-04 ce 7.5846 (chance 10.3972, gap +2.8126) acc_dim 0.3728 acc_tok 0.03229 gnorm 0.678
+step   21100 lr 2.80e-04 ce 7.5620 (chance 10.3972, gap +2.8352) acc_dim 0.3753 acc_tok 0.03304 gnorm 0.712
+step   21150 lr 2.80e-04 ce 7.6170 (chance 10.3972, gap +2.7802) acc_dim 0.3708 acc_tok 0.03096 gnorm 0.732
+step   21200 lr 2.80e-04 ce 7.6255 (chance 10.3972, gap +2.7718) acc_dim 0.3697 acc_tok 0.03074 gnorm 0.725
+step   21250 lr 2.80e-04 ce 7.5885 (chance 10.3972, gap +2.8087) acc_dim 0.3724 acc_tok 0.03148 gnorm 0.700
+step   21300 lr 2.80e-04 ce 7.6158 (chance 10.3972, gap +2.7815) acc_dim 0.3704 acc_tok 0.03087 gnorm 0.684
+step   21350 lr 2.80e-04 ce 7.6165 (chance 10.3972, gap +2.7807) acc_dim 0.3707 acc_tok 0.03076 gnorm 0.727
+step   21400 lr 2.80e-04 ce 7.6097 (chance 10.3972, gap +2.7875) acc_dim 0.3711 acc_tok 0.03132 gnorm 0.707
+step   21450 lr 2.80e-04 ce 7.5840 (chance 10.3972, gap +2.8132) acc_dim 0.3729 acc_tok 0.03173 gnorm 0.679
+step   21500 lr 2.80e-04 ce 7.6089 (chance 10.3972, gap +2.7883) acc_dim 0.3710 acc_tok 0.03105 gnorm 0.776
+  [diag] val_ce 8.1380 acc_dim 0.3324 acc_tok 0.01619
+step 21500 val_loss 0.9869 val_acc 0.0131 | best 0.9869@21500
+step   21550 lr 2.80e-04 ce 7.5664 (chance 10.3972, gap +2.8308) acc_dim 0.3747 acc_tok 0.03236 gnorm 0.811
+step   21600 lr 2.79e-04 ce 7.5760 (chance 10.3972, gap +2.8212) acc_dim 0.3740 acc_tok 0.03243 gnorm 0.648
+step   21650 lr 2.79e-04 ce 7.5642 (chance 10.3972, gap +2.8330) acc_dim 0.3752 acc_tok 0.03322 gnorm 0.791
+step   21700 lr 2.79e-04 ce 7.5671 (chance 10.3972, gap +2.8301) acc_dim 0.3744 acc_tok 0.03248 gnorm 0.781
+step   21750 lr 2.79e-04 ce 7.5713 (chance 10.3972, gap +2.8259) acc_dim 0.3747 acc_tok 0.03351 gnorm 0.649
+step   21800 lr 2.79e-04 ce 7.5644 (chance 10.3972, gap +2.8328) acc_dim 0.3748 acc_tok 0.03223 gnorm 0.709
+step   21850 lr 2.79e-04 ce 7.5758 (chance 10.3972, gap +2.8214) acc_dim 0.3735 acc_tok 0.03198 gnorm 0.767
+step   21900 lr 2.79e-04 ce 7.5907 (chance 10.3972, gap +2.8065) acc_dim 0.3725 acc_tok 0.03120 gnorm 0.704
+step   21950 lr 2.79e-04 ce 7.5808 (chance 10.3972, gap +2.8164) acc_dim 0.3730 acc_tok 0.03145 gnorm 0.798
+step   22000 lr 2.79e-04 ce 7.5625 (chance 10.3972, gap +2.8347) acc_dim 0.3750 acc_tok 0.03276 gnorm 0.765
+  [diag] val_ce 8.1265 acc_dim 0.3332 acc_tok 0.01501
+step 22000 val_loss 0.9869 val_acc 0.0131 | best 0.9869@21500
+step   22050 lr 2.79e-04 ce 7.5825 (chance 10.3972, gap +2.8147) acc_dim 0.3732 acc_tok 0.03254 gnorm 0.693
+step   22100 lr 2.78e-04 ce 7.5639 (chance 10.3972, gap +2.8333) acc_dim 0.3748 acc_tok 0.03205 gnorm 0.708
+step   22150 lr 2.78e-04 ce 7.5372 (chance 10.3972, gap +2.8601) acc_dim 0.3766 acc_tok 0.03245 gnorm 0.790
+step   22200 lr 2.78e-04 ce 7.5315 (chance 10.3972, gap +2.8657) acc_dim 0.3775 acc_tok 0.03383 gnorm 0.723
+step   22250 lr 2.78e-04 ce 7.5017 (chance 10.3972, gap +2.8955) acc_dim 0.3792 acc_tok 0.03394 gnorm 0.706
+step   22300 lr 2.78e-04 ce 7.5308 (chance 10.3972, gap +2.8664) acc_dim 0.3775 acc_tok 0.03289 gnorm 0.714
+step   22350 lr 2.78e-04 ce 7.5811 (chance 10.3972, gap +2.8161) acc_dim 0.3735 acc_tok 0.03172 gnorm 0.743
+step   22400 lr 2.78e-04 ce 7.5178 (chance 10.3972, gap +2.8794) acc_dim 0.3778 acc_tok 0.03292 gnorm 0.694
+step   22450 lr 2.78e-04 ce 7.5163 (chance 10.3972, gap +2.8809) acc_dim 0.3785 acc_tok 0.03387 gnorm 0.657
+step   22500 lr 2.78e-04 ce 7.4829 (chance 10.3972, gap +2.9143) acc_dim 0.3814 acc_tok 0.03580 gnorm 0.769
+  [diag] val_ce 8.1202 acc_dim 0.3341 acc_tok 0.01506
+step 22500 val_loss 0.9865 val_acc 0.0135 | best 0.9865@22500
+step   22550 lr 2.78e-04 ce 7.5689 (chance 10.3972, gap +2.8283) acc_dim 0.3745 acc_tok 0.03283 gnorm 0.698
+step   22600 lr 2.78e-04 ce 7.5259 (chance 10.3972, gap +2.8713) acc_dim 0.3773 acc_tok 0.03319 gnorm 0.704
+step   22650 lr 2.77e-04 ce 7.5175 (chance 10.3972, gap +2.8797) acc_dim 0.3785 acc_tok 0.03435 gnorm 0.784
+step   22700 lr 2.77e-04 ce 7.5004 (chance 10.3972, gap +2.8968) acc_dim 0.3798 acc_tok 0.03439 gnorm 0.743
+step   22750 lr 2.77e-04 ce 7.5265 (chance 10.3972, gap +2.8707) acc_dim 0.3774 acc_tok 0.03350 gnorm 0.731
+step   22800 lr 2.77e-04 ce 7.5676 (chance 10.3972, gap +2.8296) acc_dim 0.3742 acc_tok 0.03176 gnorm 0.827
+step   22850 lr 2.77e-04 ce 7.5344 (chance 10.3972, gap +2.8628) acc_dim 0.3773 acc_tok 0.03259 gnorm 0.759
+step   22900 lr 2.77e-04 ce 7.4920 (chance 10.3972, gap +2.9052) acc_dim 0.3804 acc_tok 0.03512 gnorm 0.804
+step   22950 lr 2.77e-04 ce 7.5232 (chance 10.3972, gap +2.8740) acc_dim 0.3778 acc_tok 0.03360 gnorm 0.633
+step   23000 lr 2.77e-04 ce 7.5761 (chance 10.3972, gap +2.8211) acc_dim 0.3741 acc_tok 0.03192 gnorm 0.711
+  [diag] val_ce 8.1199 acc_dim 0.3342 acc_tok 0.01567
+step 23000 val_loss 0.9868 val_acc 0.0132 | best 0.9865@22500
+step   23050 lr 2.77e-04 ce 7.5277 (chance 10.3972, gap +2.8695) acc_dim 0.3776 acc_tok 0.03348 gnorm 0.803
+step   23100 lr 2.77e-04 ce 7.5483 (chance 10.3972, gap +2.8489) acc_dim 0.3758 acc_tok 0.03311 gnorm 0.760
+step   23150 lr 2.76e-04 ce 7.5689 (chance 10.3972, gap +2.8283) acc_dim 0.3744 acc_tok 0.03171 gnorm 0.770
+step   23200 lr 2.76e-04 ce 7.5253 (chance 10.3972, gap +2.8719) acc_dim 0.3775 acc_tok 0.03377 gnorm 0.718
+step   23250 lr 2.76e-04 ce 7.5298 (chance 10.3972, gap +2.8674) acc_dim 0.3770 acc_tok 0.03281 gnorm 0.787
+step   23300 lr 2.76e-04 ce 7.5482 (chance 10.3972, gap +2.8490) acc_dim 0.3761 acc_tok 0.03321 gnorm 0.651
+step   23350 lr 2.76e-04 ce 7.5183 (chance 10.3972, gap +2.8789) acc_dim 0.3783 acc_tok 0.03321 gnorm 0.704
+step   23400 lr 2.76e-04 ce 7.5071 (chance 10.3972, gap +2.8901) acc_dim 0.3798 acc_tok 0.03368 gnorm 0.711
+step   23450 lr 2.76e-04 ce 7.5171 (chance 10.3972, gap +2.8801) acc_dim 0.3785 acc_tok 0.03364 gnorm 0.679
+step   23500 lr 2.76e-04 ce 7.5316 (chance 10.3972, gap +2.8657) acc_dim 0.3775 acc_tok 0.03344 gnorm 0.707
+  [diag] val_ce 8.1070 acc_dim 0.3378 acc_tok 0.01704
+step 23500 val_loss 0.9864 val_acc 0.0136 | best 0.9864@23500
+step   23550 lr 2.76e-04 ce 7.5306 (chance 10.3972, gap +2.8666) acc_dim 0.3771 acc_tok 0.03305 gnorm 0.768
+step   23600 lr 2.76e-04 ce 7.5598 (chance 10.3972, gap +2.8375) acc_dim 0.3749 acc_tok 0.03283 gnorm 0.832
+step   23650 lr 2.75e-04 ce 7.5414 (chance 10.3972, gap +2.8558) acc_dim 0.3765 acc_tok 0.03324 gnorm 0.697
+step   23700 lr 2.75e-04 ce 7.5610 (chance 10.3972, gap +2.8362) acc_dim 0.3749 acc_tok 0.03180 gnorm 0.820
+step   23750 lr 2.75e-04 ce 7.4472 (chance 10.3972, gap +2.9501) acc_dim 0.3837 acc_tok 0.03490 gnorm 0.666
+step   23800 lr 2.75e-04 ce 7.5305 (chance 10.3972, gap +2.8667) acc_dim 0.3769 acc_tok 0.03291 gnorm 0.735
+step   23850 lr 2.75e-04 ce 7.5231 (chance 10.3972, gap +2.8741) acc_dim 0.3784 acc_tok 0.03429 gnorm 0.725
+step   23900 lr 2.75e-04 ce 7.5160 (chance 10.3972, gap +2.8812) acc_dim 0.3786 acc_tok 0.03459 gnorm 0.754
+step   23950 lr 2.75e-04 ce 7.4776 (chance 10.3972, gap +2.9196) acc_dim 0.3815 acc_tok 0.03497 gnorm 0.729
+step   24000 lr 2.75e-04 ce 7.4958 (chance 10.3972, gap +2.9014) acc_dim 0.3804 acc_tok 0.03405 gnorm 0.709
+  [diag] val_ce 8.0764 acc_dim 0.3377 acc_tok 0.01630
+step 24000 val_loss 0.9865 val_acc 0.0135 | best 0.9864@23500
+step   24050 lr 2.75e-04 ce 7.4466 (chance 10.3972, gap +2.9506) acc_dim 0.3838 acc_tok 0.03481 gnorm 0.723
+step   24100 lr 2.75e-04 ce 7.4706 (chance 10.3972, gap +2.9266) acc_dim 0.3820 acc_tok 0.03523 gnorm 0.792
+step   24150 lr 2.74e-04 ce 7.4840 (chance 10.3972, gap +2.9132) acc_dim 0.3807 acc_tok 0.03385 gnorm 0.763
+step   24200 lr 2.74e-04 ce 7.4655 (chance 10.3972, gap +2.9317) acc_dim 0.3827 acc_tok 0.03595 gnorm 0.686
+step   24250 lr 2.74e-04 ce 7.4877 (chance 10.3972, gap +2.9095) acc_dim 0.3809 acc_tok 0.03444 gnorm 0.702
+step   24300 lr 2.74e-04 ce 7.4488 (chance 10.3972, gap +2.9484) acc_dim 0.3839 acc_tok 0.03475 gnorm 0.697
+step   24350 lr 2.74e-04 ce 7.4811 (chance 10.3972, gap +2.9161) acc_dim 0.3815 acc_tok 0.03463 gnorm 0.758
+step   24400 lr 2.74e-04 ce 7.4747 (chance 10.3972, gap +2.9225) acc_dim 0.3819 acc_tok 0.03503 gnorm 0.730
+step   24450 lr 2.74e-04 ce 7.4982 (chance 10.3972, gap +2.8990) acc_dim 0.3799 acc_tok 0.03299 gnorm 0.853
+step   24500 lr 2.74e-04 ce 7.5088 (chance 10.3972, gap +2.8884) acc_dim 0.3787 acc_tok 0.03343 gnorm 0.798
+  [diag] val_ce 8.0605 acc_dim 0.3389 acc_tok 0.01732
+step 24500 val_loss 0.9865 val_acc 0.0135 | best 0.9864@23500
+step   24550 lr 2.74e-04 ce 7.4937 (chance 10.3972, gap +2.9035) acc_dim 0.3802 acc_tok 0.03426 gnorm 0.785
+step   24600 lr 2.73e-04 ce 7.4592 (chance 10.3972, gap +2.9380) acc_dim 0.3828 acc_tok 0.03478 gnorm 0.792
+step   24650 lr 2.73e-04 ce 7.4872 (chance 10.3972, gap +2.9101) acc_dim 0.3812 acc_tok 0.03456 gnorm 0.742
+step   24700 lr 2.73e-04 ce 7.4596 (chance 10.3972, gap +2.9376) acc_dim 0.3831 acc_tok 0.03535 gnorm 0.692
+step   24750 lr 2.73e-04 ce 7.4829 (chance 10.3972, gap +2.9143) acc_dim 0.3809 acc_tok 0.03413 gnorm 0.805
+step   24800 lr 2.73e-04 ce 7.4581 (chance 10.3972, gap +2.9391) acc_dim 0.3830 acc_tok 0.03515 gnorm 0.764
+step   24850 lr 2.73e-04 ce 7.4606 (chance 10.3972, gap +2.9366) acc_dim 0.3829 acc_tok 0.03472 gnorm 0.705
+step   24900 lr 2.73e-04 ce 7.4896 (chance 10.3972, gap +2.9076) acc_dim 0.3809 acc_tok 0.03396 gnorm 0.747
+step   24950 lr 2.73e-04 ce 7.4887 (chance 10.3972, gap +2.9085) acc_dim 0.3803 acc_tok 0.03383 gnorm 0.708
+step   25000 lr 2.73e-04 ce 7.4741 (chance 10.3972, gap +2.9231) acc_dim 0.3818 acc_tok 0.03438 gnorm 0.753
+  [diag] val_ce 8.0897 acc_dim 0.3393 acc_tok 0.01738
+step 25000 val_loss 0.9861 val_acc 0.0139 | best 0.9861@25000
+step   25050 lr 2.73e-04 ce 7.4713 (chance 10.3972, gap +2.9259) acc_dim 0.3820 acc_tok 0.03531 gnorm 0.670
+step   25100 lr 2.72e-04 ce 7.5046 (chance 10.3972, gap +2.8926) acc_dim 0.3790 acc_tok 0.03319 gnorm 0.760
+step   25150 lr 2.72e-04 ce 7.4903 (chance 10.3972, gap +2.9070) acc_dim 0.3804 acc_tok 0.03373 gnorm 0.708
+step   25200 lr 2.72e-04 ce 7.4762 (chance 10.3972, gap +2.9210) acc_dim 0.3818 acc_tok 0.03384 gnorm 0.726
+step   25250 lr 2.72e-04 ce 7.4693 (chance 10.3972, gap +2.9279) acc_dim 0.3825 acc_tok 0.03505 gnorm 0.825
+step   25300 lr 2.72e-04 ce 7.4542 (chance 10.3972, gap +2.9431) acc_dim 0.3835 acc_tok 0.03539 gnorm 0.720
+step   25350 lr 2.72e-04 ce 7.4900 (chance 10.3972, gap +2.9072) acc_dim 0.3804 acc_tok 0.03388 gnorm 0.705
+step   25400 lr 2.72e-04 ce 7.4743 (chance 10.3972, gap +2.9229) acc_dim 0.3815 acc_tok 0.03390 gnorm 0.751
+step   25450 lr 2.72e-04 ce 7.4577 (chance 10.3972, gap +2.9396) acc_dim 0.3830 acc_tok 0.03500 gnorm 0.758
+step   25500 lr 2.72e-04 ce 7.4486 (chance 10.3972, gap +2.9486) acc_dim 0.3842 acc_tok 0.03637 gnorm 0.755
+  [diag] val_ce 8.0405 acc_dim 0.3396 acc_tok 0.01652
+step 25500 val_loss 0.9864 val_acc 0.0136 | best 0.9861@25000
+step   25550 lr 2.71e-04 ce 7.4532 (chance 10.3972, gap +2.9440) acc_dim 0.3832 acc_tok 0.03430 gnorm 0.774
+step   25600 lr 2.71e-04 ce 7.4272 (chance 10.3972, gap +2.9700) acc_dim 0.3860 acc_tok 0.03673 gnorm 0.764
+step   25650 lr 2.71e-04 ce 7.4397 (chance 10.3972, gap +2.9575) acc_dim 0.3842 acc_tok 0.03521 gnorm 0.737
+step   25700 lr 2.71e-04 ce 7.4679 (chance 10.3972, gap +2.9293) acc_dim 0.3823 acc_tok 0.03481 gnorm 0.782
+step   25750 lr 2.71e-04 ce 7.4386 (chance 10.3972, gap +2.9586) acc_dim 0.3849 acc_tok 0.03631 gnorm 0.695
+step   25800 lr 2.71e-04 ce 7.4428 (chance 10.3972, gap +2.9545) acc_dim 0.3841 acc_tok 0.03541 gnorm 0.767
+step   25850 lr 2.71e-04 ce 7.4633 (chance 10.3972, gap +2.9339) acc_dim 0.3830 acc_tok 0.03499 gnorm 0.717
+step   25900 lr 2.71e-04 ce 7.4111 (chance 10.3972, gap +2.9861) acc_dim 0.3877 acc_tok 0.03654 gnorm 0.729
+step   25950 lr 2.71e-04 ce 7.3987 (chance 10.3972, gap +2.9985) acc_dim 0.3884 acc_tok 0.03692 gnorm 0.777
+step   26000 lr 2.70e-04 ce 7.4355 (chance 10.3972, gap +2.9617) acc_dim 0.3842 acc_tok 0.03461 gnorm 0.740
+  [diag] val_ce 8.0353 acc_dim 0.3425 acc_tok 0.01767
+step 26000 val_loss 0.9856 val_acc 0.0144 | best 0.9856@26000
+step   26050 lr 2.70e-04 ce 7.4285 (chance 10.3972, gap +2.9687) acc_dim 0.3853 acc_tok 0.03560 gnorm 0.763
+step   26100 lr 2.70e-04 ce 7.3906 (chance 10.3972, gap +3.0066) acc_dim 0.3887 acc_tok 0.03754 gnorm 0.804
+step   26150 lr 2.70e-04 ce 7.4146 (chance 10.3972, gap +2.9826) acc_dim 0.3867 acc_tok 0.03673 gnorm 0.699
+step   26200 lr 2.70e-04 ce 7.4174 (chance 10.3972, gap +2.9798) acc_dim 0.3867 acc_tok 0.03696 gnorm 0.772
+step   26250 lr 2.70e-04 ce 7.4265 (chance 10.3972, gap +2.9707) acc_dim 0.3854 acc_tok 0.03474 gnorm 0.741
+step   26300 lr 2.70e-04 ce 7.4346 (chance 10.3972, gap +2.9626) acc_dim 0.3842 acc_tok 0.03467 gnorm 0.717
+step   26350 lr 2.70e-04 ce 7.4228 (chance 10.3972, gap +2.9744) acc_dim 0.3862 acc_tok 0.03631 gnorm 0.733
+step   26400 lr 2.70e-04 ce 7.4012 (chance 10.3972, gap +2.9960) acc_dim 0.3875 acc_tok 0.03667 gnorm 0.814
+step   26450 lr 2.69e-04 ce 7.4358 (chance 10.3972, gap +2.9614) acc_dim 0.3847 acc_tok 0.03533 gnorm 0.764
+step   26500 lr 2.69e-04 ce 7.4118 (chance 10.3972, gap +2.9854) acc_dim 0.3869 acc_tok 0.03587 gnorm 0.693
+  [diag] val_ce 8.0685 acc_dim 0.3413 acc_tok 0.01719
+step 26500 val_loss 0.9859 val_acc 0.0141 | best 0.9856@26000
+step   26550 lr 2.69e-04 ce 7.4300 (chance 10.3972, gap +2.9672) acc_dim 0.3855 acc_tok 0.03482 gnorm 0.691
+step   26600 lr 2.69e-04 ce 7.4281 (chance 10.3972, gap +2.9691) acc_dim 0.3856 acc_tok 0.03652 gnorm 0.711
+step   26650 lr 2.69e-04 ce 7.4271 (chance 10.3972, gap +2.9701) acc_dim 0.3856 acc_tok 0.03546 gnorm 0.716
+step   26700 lr 2.69e-04 ce 7.4604 (chance 10.3972, gap +2.9368) acc_dim 0.3831 acc_tok 0.03533 gnorm 0.703
+step   26750 lr 2.69e-04 ce 7.4610 (chance 10.3972, gap +2.9362) acc_dim 0.3828 acc_tok 0.03482 gnorm 0.842
+step   26800 lr 2.69e-04 ce 7.4463 (chance 10.3972, gap +2.9509) acc_dim 0.3842 acc_tok 0.03546 gnorm 0.824
+step   26850 lr 2.69e-04 ce 7.3877 (chance 10.3972, gap +3.0095) acc_dim 0.3886 acc_tok 0.03669 gnorm 0.714
+step   26900 lr 2.68e-04 ce 7.3863 (chance 10.3972, gap +3.0109) acc_dim 0.3893 acc_tok 0.03780 gnorm 0.804
+step   26950 lr 2.68e-04 ce 7.4229 (chance 10.3972, gap +2.9743) acc_dim 0.3857 acc_tok 0.03560 gnorm 0.711
+step   27000 lr 2.68e-04 ce 7.4147 (chance 10.3972, gap +2.9825) acc_dim 0.3862 acc_tok 0.03602 gnorm 0.715
+  [diag] val_ce 8.0005 acc_dim 0.3446 acc_tok 0.01870
+step 27000 val_loss 0.9857 val_acc 0.0143 | best 0.9856@26000
+step   27050 lr 2.68e-04 ce 7.4305 (chance 10.3972, gap +2.9667) acc_dim 0.3855 acc_tok 0.03638 gnorm 0.753
+step   27100 lr 2.68e-04 ce 7.4502 (chance 10.3972, gap +2.9470) acc_dim 0.3831 acc_tok 0.03397 gnorm 0.763
+step   27150 lr 2.68e-04 ce 7.4701 (chance 10.3972, gap +2.9271) acc_dim 0.3823 acc_tok 0.03497 gnorm 0.720
+step   27200 lr 2.68e-04 ce 7.3979 (chance 10.3972, gap +2.9993) acc_dim 0.3878 acc_tok 0.03589 gnorm 0.743
+step   27250 lr 2.68e-04 ce 7.3801 (chance 10.3972, gap +3.0171) acc_dim 0.3895 acc_tok 0.03688 gnorm 0.801
+step   27300 lr 2.67e-04 ce 7.4198 (chance 10.3972, gap +2.9774) acc_dim 0.3860 acc_tok 0.03594 gnorm 0.761
+step   27350 lr 2.67e-04 ce 7.4364 (chance 10.3972, gap +2.9608) acc_dim 0.3847 acc_tok 0.03509 gnorm 0.799
+step   27400 lr 2.67e-04 ce 7.3616 (chance 10.3972, gap +3.0356) acc_dim 0.3910 acc_tok 0.03855 gnorm 0.729
+step   27450 lr 2.67e-04 ce 7.4049 (chance 10.3972, gap +2.9923) acc_dim 0.3875 acc_tok 0.03775 gnorm 0.804
+step   27500 lr 2.67e-04 ce 7.4320 (chance 10.3972, gap +2.9652) acc_dim 0.3849 acc_tok 0.03524 gnorm 0.738
+  [diag] val_ce 8.0132 acc_dim 0.3447 acc_tok 0.01905
+step 27500 val_loss 0.9859 val_acc 0.0141 | best 0.9856@26000
+step   27550 lr 2.67e-04 ce 7.4273 (chance 10.3972, gap +2.9699) acc_dim 0.3857 acc_tok 0.03518 gnorm 0.734
+step   27600 lr 2.67e-04 ce 7.4185 (chance 10.3972, gap +2.9787) acc_dim 0.3861 acc_tok 0.03597 gnorm 0.821
+step   27650 lr 2.67e-04 ce 7.4311 (chance 10.3972, gap +2.9661) acc_dim 0.3857 acc_tok 0.03626 gnorm 0.747
+step   27700 lr 2.67e-04 ce 7.3624 (chance 10.3972, gap +3.0348) acc_dim 0.3908 acc_tok 0.03785 gnorm 0.746
+step   27750 lr 2.66e-04 ce 7.3749 (chance 10.3972, gap +3.0223) acc_dim 0.3898 acc_tok 0.03751 gnorm 0.749
+step   27800 lr 2.66e-04 ce 7.3641 (chance 10.3972, gap +3.0331) acc_dim 0.3902 acc_tok 0.03754 gnorm 0.738
+step   27850 lr 2.66e-04 ce 7.3226 (chance 10.3972, gap +3.0746) acc_dim 0.3944 acc_tok 0.03919 gnorm 0.765
+step   27900 lr 2.66e-04 ce 7.3147 (chance 10.3972, gap +3.0825) acc_dim 0.3951 acc_tok 0.03960 gnorm 0.740
+step   27950 lr 2.66e-04 ce 7.3692 (chance 10.3972, gap +3.0280) acc_dim 0.3898 acc_tok 0.03663 gnorm 0.874
+step   28000 lr 2.66e-04 ce 7.4072 (chance 10.3972, gap +2.9900) acc_dim 0.3864 acc_tok 0.03513 gnorm 0.777
+  [diag] val_ce 8.0581 acc_dim 0.3443 acc_tok 0.01800
+step 28000 val_loss 0.9854 val_acc 0.0146 | best 0.9854@28000
+step   28050 lr 2.66e-04 ce 7.3600 (chance 10.3972, gap +3.0372) acc_dim 0.3907 acc_tok 0.03758 gnorm 0.773
+step   28100 lr 2.66e-04 ce 7.3898 (chance 10.3972, gap +3.0074) acc_dim 0.3886 acc_tok 0.03667 gnorm 0.758
+step   28150 lr 2.66e-04 ce 7.3864 (chance 10.3972, gap +3.0108) acc_dim 0.3886 acc_tok 0.03658 gnorm 0.768
+step   28200 lr 2.65e-04 ce 7.3656 (chance 10.3972, gap +3.0316) acc_dim 0.3902 acc_tok 0.03690 gnorm 0.753
+step   28250 lr 2.65e-04 ce 7.3444 (chance 10.3972, gap +3.0528) acc_dim 0.3925 acc_tok 0.03821 gnorm 0.747
+step   28300 lr 2.65e-04 ce 7.3822 (chance 10.3972, gap +3.0150) acc_dim 0.3886 acc_tok 0.03590 gnorm 0.754
+step   28350 lr 2.65e-04 ce 7.3724 (chance 10.3972, gap +3.0248) acc_dim 0.3895 acc_tok 0.03748 gnorm 0.797
+step   28400 lr 2.65e-04 ce 7.3937 (chance 10.3972, gap +3.0035) acc_dim 0.3877 acc_tok 0.03654 gnorm 0.827
+step   28450 lr 2.65e-04 ce 7.3640 (chance 10.3972, gap +3.0332) acc_dim 0.3901 acc_tok 0.03770 gnorm 0.832
+step   28500 lr 2.65e-04 ce 7.3790 (chance 10.3972, gap +3.0182) acc_dim 0.3891 acc_tok 0.03696 gnorm 0.880
+  [diag] val_ce 8.0330 acc_dim 0.3448 acc_tok 0.01909
+step 28500 val_loss 0.9857 val_acc 0.0143 | best 0.9854@28000
+step   28550 lr 2.65e-04 ce 7.3877 (chance 10.3972, gap +3.0095) acc_dim 0.3885 acc_tok 0.03705 gnorm 0.787
+step   28600 lr 2.64e-04 ce 7.3913 (chance 10.3972, gap +3.0059) acc_dim 0.3880 acc_tok 0.03628 gnorm 0.721
+step   28650 lr 2.64e-04 ce 7.3468 (chance 10.3972, gap +3.0504) acc_dim 0.3920 acc_tok 0.03818 gnorm 0.753
+step   28700 lr 2.64e-04 ce 7.3675 (chance 10.3972, gap +3.0297) acc_dim 0.3902 acc_tok 0.03733 gnorm 0.752
+step   28750 lr 2.64e-04 ce 7.3739 (chance 10.3972, gap +3.0233) acc_dim 0.3897 acc_tok 0.03748 gnorm 0.700
+step   28800 lr 2.64e-04 ce 7.3484 (chance 10.3972, gap +3.0488) acc_dim 0.3914 acc_tok 0.03717 gnorm 0.852
+step   28850 lr 2.64e-04 ce 7.3589 (chance 10.3972, gap +3.0383) acc_dim 0.3912 acc_tok 0.03761 gnorm 0.751
+step   28900 lr 2.64e-04 ce 7.3578 (chance 10.3972, gap +3.0394) acc_dim 0.3914 acc_tok 0.03860 gnorm 0.804
+step   28950 lr 2.64e-04 ce 7.4020 (chance 10.3972, gap +2.9952) acc_dim 0.3874 acc_tok 0.03609 gnorm 0.776
+step   29000 lr 2.63e-04 ce 7.3809 (chance 10.3972, gap +3.0163) acc_dim 0.3885 acc_tok 0.03712 gnorm 0.741
+  [diag] val_ce 8.0195 acc_dim 0.3463 acc_tok 0.01844
+step 29000 val_loss 0.9852 val_acc 0.0148 | best 0.9852@29000
+step   29050 lr 2.63e-04 ce 7.4242 (chance 10.3972, gap +2.9730) acc_dim 0.3854 acc_tok 0.03467 gnorm 0.772
+step   29100 lr 2.63e-04 ce 7.3627 (chance 10.3972, gap +3.0345) acc_dim 0.3907 acc_tok 0.03748 gnorm 0.942
+step   29150 lr 2.63e-04 ce 7.4063 (chance 10.3972, gap +2.9909) acc_dim 0.3877 acc_tok 0.03615 gnorm 0.777
+step   29200 lr 2.63e-04 ce 7.3830 (chance 10.3972, gap +3.0142) acc_dim 0.3891 acc_tok 0.03690 gnorm 0.754
+step   29250 lr 2.63e-04 ce 7.3796 (chance 10.3972, gap +3.0176) acc_dim 0.3899 acc_tok 0.03674 gnorm 0.744
+step   29300 lr 2.63e-04 ce 7.3988 (chance 10.3972, gap +2.9984) acc_dim 0.3878 acc_tok 0.03641 gnorm 0.791
+step   29350 lr 2.63e-04 ce 7.4146 (chance 10.3972, gap +2.9826) acc_dim 0.3870 acc_tok 0.03633 gnorm 0.776
+step   29400 lr 2.63e-04 ce 7.3903 (chance 10.3972, gap +3.0069) acc_dim 0.3882 acc_tok 0.03585 gnorm 0.697
+step   29450 lr 2.62e-04 ce 7.3487 (chance 10.3972, gap +3.0486) acc_dim 0.3917 acc_tok 0.03792 gnorm 0.745
+step   29500 lr 2.62e-04 ce 7.4040 (chance 10.3972, gap +2.9932) acc_dim 0.3876 acc_tok 0.03616 gnorm 0.758
+  [diag] val_ce 7.9808 acc_dim 0.3458 acc_tok 0.01807
+step 29500 val_loss 0.9856 val_acc 0.0144 | best 0.9852@29000
+step   29550 lr 2.62e-04 ce 7.4168 (chance 10.3972, gap +2.9804) acc_dim 0.3866 acc_tok 0.03643 gnorm 0.771
+step   29600 lr 2.62e-04 ce 7.4120 (chance 10.3972, gap +2.9852) acc_dim 0.3870 acc_tok 0.03568 gnorm 0.786
+step   29650 lr 2.62e-04 ce 7.3346 (chance 10.3972, gap +3.0626) acc_dim 0.3934 acc_tok 0.03902 gnorm 0.806
+step   29700 lr 2.62e-04 ce 7.3388 (chance 10.3972, gap +3.0584) acc_dim 0.3929 acc_tok 0.03828 gnorm 0.813
+step   29750 lr 2.62e-04 ce 7.3244 (chance 10.3972, gap +3.0728) acc_dim 0.3940 acc_tok 0.03921 gnorm 0.730
+step   29800 lr 2.62e-04 ce 7.3413 (chance 10.3972, gap +3.0559) acc_dim 0.3925 acc_tok 0.03817 gnorm 0.789
+step   29850 lr 2.61e-04 ce 7.3672 (chance 10.3972, gap +3.0300) acc_dim 0.3903 acc_tok 0.03758 gnorm 0.774
+step   29900 lr 2.61e-04 ce 7.3323 (chance 10.3972, gap +3.0649) acc_dim 0.3937 acc_tok 0.03899 gnorm 0.914
+step   29950 lr 2.61e-04 ce 7.3654 (chance 10.3972, gap +3.0318) acc_dim 0.3904 acc_tok 0.03737 gnorm 0.860
+step   30000 lr 2.61e-04 ce 7.3735 (chance 10.3972, gap +3.0237) acc_dim 0.3892 acc_tok 0.03646 gnorm 0.750
+  [diag] val_ce 8.0037 acc_dim 0.3458 acc_tok 0.01846

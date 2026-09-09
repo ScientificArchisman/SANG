@@ -1,0 +1,32 @@
+{
+  "example": 3,
+  "source": "/beegfs/work_fast/shared/li_shared/archi_data/talkvid/clips/EFDm9cSIt8Q/EFDm9cSIt8Q_NA_108.100_115.833.mp4",
+  "native_fps": 30.0,
+  "start_frame": 107,
+  "frames": 17,
+  "codebook": 32768,
+  "resolutions": {
+    "128": {
+      "psnr": 21.449377059936523,
+      "ssim": 0.7874962091445923,
+      "indices_shape": [
+        1,
+        5,
+        16,
+        16
+      ],
+      "tokens": 1280
+    },
+    "256": {
+      "psnr": 25.610105514526367,
+      "ssim": 0.8805611729621887,
+      "indices_shape": [
+        1,
+        5,
+        32,
+        32
+      ],
+      "tokens": 5120
+    }
+  }
+}

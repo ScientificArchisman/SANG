@@ -1,0 +1,32 @@
+{
+  "example": 5,
+  "source": "/beegfs/work_fast/shared/li_shared/archi_data/talkvid/clips/agu7C1dYuk8/agu7C1dYuk8_NA_647.166_707.533.mp4",
+  "native_fps": 30.0,
+  "start_frame": 897,
+  "frames": 17,
+  "codebook": 32768,
+  "resolutions": {
+    "128": {
+      "psnr": 27.56630516052246,
+      "ssim": 0.8264933228492737,
+      "indices_shape": [
+        1,
+        5,
+        16,
+        16
+      ],
+      "tokens": 1280
+    },
+    "256": {
+      "psnr": 32.10345458984375,
+      "ssim": 0.8992546200752258,
+      "indices_shape": [
+        1,
+        5,
+        32,
+        32
+      ],
+      "tokens": 5120
+    }
+  }
+}

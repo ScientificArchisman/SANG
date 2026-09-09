@@ -1,0 +1,41 @@
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+train_win=6056 val_win=319 | train_clips=760 val_clips=40
+step 100 loss 5.206 | val retrieval_acc 0.016 hardneg_acc 0.501 | best -1.000 (chance: acc~0.025, hn 0.5)
+step 200 loss 5.050 | val retrieval_acc 0.018 hardneg_acc 0.494 | best 0.501 (chance: acc~0.025, hn 0.5)
+step 300 loss 4.919 | val retrieval_acc 0.019 hardneg_acc 0.504 | best 0.501 (chance: acc~0.025, hn 0.5)
+step 400 loss 4.839 | val retrieval_acc 0.013 hardneg_acc 0.509 | best 0.504 (chance: acc~0.025, hn 0.5)
+step 500 loss 4.575 | val retrieval_acc 0.010 hardneg_acc 0.511 | best 0.509 (chance: acc~0.025, hn 0.5)
+step 600 loss 4.206 | val retrieval_acc 0.014 hardneg_acc 0.518 | best 0.511 (chance: acc~0.025, hn 0.5)
+step 700 loss 4.164 | val retrieval_acc 0.008 hardneg_acc 0.514 | best 0.518 (chance: acc~0.025, hn 0.5)
+step 800 loss 3.728 | val retrieval_acc 0.023 hardneg_acc 0.525 | best 0.518 (chance: acc~0.025, hn 0.5)
+step 900 loss 3.382 | val retrieval_acc 0.010 hardneg_acc 0.490 | best 0.525 (chance: acc~0.025, hn 0.5)
+step 1000 loss 3.625 | val retrieval_acc 0.009 hardneg_acc 0.506 | best 0.525 (chance: acc~0.025, hn 0.5)
+step 1100 loss 3.309 | val retrieval_acc 0.011 hardneg_acc 0.526 | best 0.525 (chance: acc~0.025, hn 0.5)
+step 1200 loss 3.186 | val retrieval_acc 0.018 hardneg_acc 0.541 | best 0.526 (chance: acc~0.025, hn 0.5)
+step 1300 loss 2.922 | val retrieval_acc 0.021 hardneg_acc 0.543 | best 0.541 (chance: acc~0.025, hn 0.5)
+step 1400 loss 2.983 | val retrieval_acc 0.010 hardneg_acc 0.505 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 1500 loss 2.894 | val retrieval_acc 0.023 hardneg_acc 0.508 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 1600 loss 2.912 | val retrieval_acc 0.019 hardneg_acc 0.528 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 1700 loss 2.654 | val retrieval_acc 0.011 hardneg_acc 0.503 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 1800 loss 2.668 | val retrieval_acc 0.013 hardneg_acc 0.525 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 1900 loss 2.490 | val retrieval_acc 0.010 hardneg_acc 0.481 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 2000 loss 2.366 | val retrieval_acc 0.020 hardneg_acc 0.516 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 2100 loss 2.411 | val retrieval_acc 0.021 hardneg_acc 0.496 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 2200 loss 2.136 | val retrieval_acc 0.011 hardneg_acc 0.499 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 2300 loss 2.147 | val retrieval_acc 0.011 hardneg_acc 0.513 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 2400 loss 2.292 | val retrieval_acc 0.019 hardneg_acc 0.526 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 2500 loss 2.068 | val retrieval_acc 0.010 hardneg_acc 0.524 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 2600 loss 2.031 | val retrieval_acc 0.014 hardneg_acc 0.530 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 2700 loss 2.111 | val retrieval_acc 0.010 hardneg_acc 0.513 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 2800 loss 1.995 | val retrieval_acc 0.014 hardneg_acc 0.521 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 2900 loss 2.077 | val retrieval_acc 0.018 hardneg_acc 0.499 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 3000 loss 1.874 | val retrieval_acc 0.025 hardneg_acc 0.515 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 3100 loss 1.886 | val retrieval_acc 0.016 hardneg_acc 0.533 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 3200 loss 1.654 | val retrieval_acc 0.011 hardneg_acc 0.529 | best 0.543 (chance: acc~0.025, hn 0.5)
+step 3300 loss 1.748 | val retrieval_acc 0.019 hardneg_acc 0.505 | best 0.543 (chance: acc~0.025, hn 0.5)
+early stop @ 3300; best hardneg_acc 0.543
+DONE best val hardneg_acc = 0.543

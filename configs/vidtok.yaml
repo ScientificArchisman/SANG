@@ -1,0 +1,37 @@
+# Frozen VidTok FSQ causal 4x8x8 video tokenizer (code vendored @ third_party/vidtok).
+# load_vidtok() overrides levels + z_channels per codebook and sets ckpt_path.
+model:
+  target: vidtok.models.autoencoder.AutoencodingEngine
+  params:
+    ignore_keys: []
+    verbose: false
+    encoder_config:
+      target: vidtok.modules.model_3dcausal.EncoderCausal3DPadding
+      params:
+        double_z: false
+        z_channels: 6
+        in_channels: 3
+        out_ch: 3
+        ch: 128
+        ch_mult: [1, 2, 4, 4]
+        time_downsample_factor: 4
+        num_res_blocks: 2
+        dropout: 0.0
+        use_checkpoint: false
+        init_pad_mode: replicate
+        norm_type: layernorm
+        fix_encoder: false
+        fix_decoder: false
+    decoder_config:
+      target: vidtok.modules.model_3dcausal.DecoderCausal3DPadding
+      params: ${model.params.encoder_config.params}
+    regularizer_config:
+      target: vidtok.modules.regularizers.FSQRegularizer
+      params:
+        levels: [8, 8, 8, 8, 8, 8]
+        entropy_loss_weight: 0.1
+        entropy_loss_annealing_steps: 2000
+        entropy_loss_annealing_factor: 3
+        commitment_loss_weight: 0.25
+    loss_config:
+      target: torch.nn.Identity

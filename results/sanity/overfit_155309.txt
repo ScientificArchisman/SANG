@@ -1,0 +1,35 @@
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+[FSQIndexCodec] V=32768 levels=(8, 8, 8, 8, 8) roundtrip=True sum(ln levels)=10.3972 ln(V)=10.3972
+=== sanity: overfit ===
+
+  overfit 1 clip, lr=0.0003, supervise_all_motion=True
+       1 ce=   10.7686 gnorm=    2.6774 acc_dim=0.1258
+      20 ce=    1.9898 gnorm=    4.0385 acc_dim=0.9984
+      40 ce=    0.1635 gnorm=    0.8774 acc_dim=1.0000
+      60 ce=    0.0661 gnorm=    0.4231 acc_dim=1.0000
+      80 ce=    0.0391 gnorm=    0.2718 acc_dim=1.0000
+     100 ce=    0.0251 gnorm=    0.1859 acc_dim=1.0000
+     120 ce=    0.0160 gnorm=    0.1262 acc_dim=1.0000
+     140 ce=    0.0101 gnorm=    0.0839 acc_dim=1.0000
+     160 ce=    0.0066 gnorm=    0.0628 acc_dim=1.0000
+     180 ce=    0.0038 gnorm=    0.0353 acc_dim=1.0000
+     200 ce=    0.0023 gnorm=    0.0225 acc_dim=1.0000
+     220 ce=    0.0014 gnorm=    0.0146 acc_dim=1.0000
+     240 ce=    0.0008 gnorm=    0.0091 acc_dim=1.0000
+     260 ce=    0.0005 gnorm=    0.0057 acc_dim=1.0000
+     280 ce=    0.0003 gnorm=    0.0036 acc_dim=1.0000
+     300 ce=    0.0002 gnorm=    0.0023 acc_dim=1.0000
+     320 ce=    0.0001 gnorm=    0.0014 acc_dim=1.0000
+     340 ce=    0.0001 gnorm=    0.0009 acc_dim=1.0000
+     360 ce=    0.0000 gnorm=    0.0006 acc_dim=1.0000
+     380 ce=    0.0000 gnorm=    0.0003 acc_dim=1.0000
+     400 ce=    0.0000 gnorm=    0.0002 acc_dim=1.0000
+
+  final CE = 0.0000  (ln V = 10.3972)
+  [PASS] CE collapsed — pipeline structurally sound
+
+=== 0 failures ===

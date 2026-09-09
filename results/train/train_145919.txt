@@ -1,0 +1,104 @@
+[vidtok.models.autoencoder][AutoencodingEngine] Use ckpt_path: 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt
+[vidtok.models.autoencoder][AutoencodingEngine] Restored from 
+/beegfs/work/achakraborti/SANG/checkpoints/vidtok_fsq_causal_488_32768.ckpt with
+0 missing and 56 unexpected keys
+train clips=60479 val clips=3178
+params=87.1M device=cuda
+step 500 val_loss 10.1877 val_acc 0.0002 | best 10.1877@500
+step 1000 val_loss 10.0447 val_acc 0.0003 | best 10.0447@1000
+step 1500 val_loss 9.7454 val_acc 0.0005 | best 9.7454@1500
+step 2000 val_loss 9.5500 val_acc 0.0008 | best 9.5500@2000
+step 2500 val_loss 9.4023 val_acc 0.0011 | best 9.4023@2500
+step 3000 val_loss 9.2641 val_acc 0.0014 | best 9.2641@3000
+step 3500 val_loss 9.1205 val_acc 0.0020 | best 9.1205@3500
+step 4000 val_loss 9.0070 val_acc 0.0028 | best 9.0070@4000
+step 4500 val_loss 8.9095 val_acc 0.0036 | best 8.9095@4500
+step 5000 val_loss 8.8260 val_acc 0.0048 | best 8.8260@5000
+step 5500 val_loss 8.7235 val_acc 0.0061 | best 8.7235@5500
+step 6000 val_loss 8.5920 val_acc 0.0081 | best 8.5920@6000
+step 6500 val_loss 8.4548 val_acc 0.0100 | best 8.4548@6500
+step 7000 val_loss 8.3091 val_acc 0.0121 | best 8.3091@7000
+step 7500 val_loss 8.1866 val_acc 0.0141 | best 8.1866@7500
+step 8000 val_loss 8.0876 val_acc 0.0162 | best 8.0876@8000
+step 8500 val_loss 7.9841 val_acc 0.0184 | best 7.9841@8500
+step 9000 val_loss 7.8881 val_acc 0.0200 | best 7.8881@9000
+step 9500 val_loss 7.7852 val_acc 0.0227 | best 7.7852@9500
+step 10000 val_loss 7.7034 val_acc 0.0246 | best 7.7034@10000
+step 10500 val_loss 7.6342 val_acc 0.0267 | best 7.6342@10500
+step 11000 val_loss 7.5593 val_acc 0.0279 | best 7.5593@11000
+step 11500 val_loss 7.5111 val_acc 0.0290 | best 7.5111@11500
+step 12000 val_loss 7.4698 val_acc 0.0302 | best 7.4698@12000
+step 12500 val_loss 7.4305 val_acc 0.0309 | best 7.4305@12500
+step 13000 val_loss 7.3902 val_acc 0.0327 | best 7.3902@13000
+step 13500 val_loss 7.3621 val_acc 0.0335 | best 7.3621@13500
+step 14000 val_loss 7.3164 val_acc 0.0341 | best 7.3164@14000
+step 14500 val_loss 7.3009 val_acc 0.0348 | best 7.3009@14500
+step 15000 val_loss 7.2632 val_acc 0.0355 | best 7.2632@15000
+step 15500 val_loss 7.2652 val_acc 0.0360 | best 7.2632@15000
+step 16000 val_loss 7.2328 val_acc 0.0366 | best 7.2328@16000
+step 16500 val_loss 7.2183 val_acc 0.0373 | best 7.2183@16500
+step 17000 val_loss 7.1930 val_acc 0.0378 | best 7.1930@17000
+step 17500 val_loss 7.2091 val_acc 0.0381 | best 7.1930@17000
+step 18000 val_loss 7.1835 val_acc 0.0385 | best 7.1835@18000
+step 18500 val_loss 7.1675 val_acc 0.0389 | best 7.1675@18500
+step 19000 val_loss 7.1623 val_acc 0.0393 | best 7.1623@19000
+step 19500 val_loss 7.1546 val_acc 0.0393 | best 7.1546@19500
+step 20000 val_loss 7.1321 val_acc 0.0399 | best 7.1321@20000
+step 20500 val_loss 7.1265 val_acc 0.0404 | best 7.1265@20500
+step 21000 val_loss 7.1382 val_acc 0.0402 | best 7.1265@20500
+step 21500 val_loss 7.1210 val_acc 0.0402 | best 7.1210@21500
+step 22000 val_loss 7.1056 val_acc 0.0408 | best 7.1056@22000
+step 22500 val_loss 7.0848 val_acc 0.0412 | best 7.0848@22500
+step 23000 val_loss 7.1120 val_acc 0.0410 | best 7.0848@22500
+step 23500 val_loss 7.0921 val_acc 0.0411 | best 7.0848@22500
+step 24000 val_loss 7.0879 val_acc 0.0413 | best 7.0848@22500
+step 24500 val_loss 7.0550 val_acc 0.0415 | best 7.0550@24500
+step 25000 val_loss 7.0919 val_acc 0.0417 | best 7.0550@24500
+step 25500 val_loss 7.0840 val_acc 0.0415 | best 7.0550@24500
+step 26000 val_loss 7.0706 val_acc 0.0422 | best 7.0550@24500
+step 26500 val_loss 7.0893 val_acc 0.0419 | best 7.0550@24500
+step 27000 val_loss 7.0652 val_acc 0.0418 | best 7.0550@24500
+step 27500 val_loss 7.0574 val_acc 0.0420 | best 7.0550@24500
+step 28000 val_loss 7.0467 val_acc 0.0426 | best 7.0467@28000
+step 28500 val_loss 7.0867 val_acc 0.0423 | best 7.0467@28000
+step 29000 val_loss 7.0659 val_acc 0.0424 | best 7.0467@28000
+step 29500 val_loss 7.0537 val_acc 0.0425 | best 7.0467@28000
+step 30000 val_loss 7.0523 val_acc 0.0428 | best 7.0467@28000
+step 30500 val_loss 7.0581 val_acc 0.0427 | best 7.0467@28000
+step 31000 val_loss 7.0626 val_acc 0.0424 | best 7.0467@28000
+step 31500 val_loss 7.0531 val_acc 0.0431 | best 7.0467@28000
+step 32000 val_loss 7.0342 val_acc 0.0434 | best 7.0342@32000
+step 32500 val_loss 7.0709 val_acc 0.0428 | best 7.0342@32000
+step 33000 val_loss 7.0383 val_acc 0.0428 | best 7.0342@32000
+step 33500 val_loss 7.0347 val_acc 0.0433 | best 7.0342@32000
+step 34000 val_loss 7.0189 val_acc 0.0436 | best 7.0189@34000
+step 34500 val_loss 7.0524 val_acc 0.0427 | best 7.0189@34000
+step 35000 val_loss 7.0610 val_acc 0.0432 | best 7.0189@34000
+step 35500 val_loss 7.0140 val_acc 0.0436 | best 7.0140@35500
+step 36000 val_loss 7.0499 val_acc 0.0435 | best 7.0140@35500
+step 36500 val_loss 7.0500 val_acc 0.0432 | best 7.0140@35500
+step 37000 val_loss 7.0373 val_acc 0.0434 | best 7.0140@35500
+step 37500 val_loss 7.0157 val_acc 0.0438 | best 7.0140@35500
+step 38000 val_loss 7.0539 val_acc 0.0434 | best 7.0140@35500
+step 38500 val_loss 7.0433 val_acc 0.0438 | best 7.0140@35500
+step 39000 val_loss 7.0378 val_acc 0.0437 | best 7.0140@35500
+step 39500 val_loss 7.0317 val_acc 0.0438 | best 7.0140@35500
+step 40000 val_loss 7.0515 val_acc 0.0436 | best 7.0140@35500
+step 40500 val_loss 7.0463 val_acc 0.0430 | best 7.0140@35500
+step 41000 val_loss 7.0280 val_acc 0.0436 | best 7.0140@35500
+step 41500 val_loss 7.0097 val_acc 0.0439 | best 7.0097@41500
+step 42000 val_loss 7.0629 val_acc 0.0431 | best 7.0097@41500
+step 42500 val_loss 7.0441 val_acc 0.0435 | best 7.0097@41500
+step 43000 val_loss 7.0315 val_acc 0.0442 | best 7.0097@41500
+step 43500 val_loss 7.0585 val_acc 0.0444 | best 7.0097@41500
+step 44000 val_loss 7.0591 val_acc 0.0439 | best 7.0097@41500
+step 44500 val_loss 7.0275 val_acc 0.0438 | best 7.0097@41500
+step 45000 val_loss 7.0259 val_acc 0.0438 | best 7.0097@41500
+step 45500 val_loss 7.0463 val_acc 0.0438 | best 7.0097@41500
+step 46000 val_loss 7.0693 val_acc 0.0439 | best 7.0097@41500
+step 46500 val_loss 7.0465 val_acc 0.0439 | best 7.0097@41500
+step 47000 val_loss 7.0099 val_acc 0.0441 | best 7.0097@41500
+step 47500 val_loss 7.0565 val_acc 0.0437 | best 7.0097@41500
+early stop at step 47500 (best val_loss 7.0097@41500)
+done. best val_loss 7.0097@41500 -> /beegfs/work/achakraborti/SANG/runs/e2/best.pt (best.json)
