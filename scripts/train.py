@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from sang.data import audio_samples, clip_windows
+from sang.data import MEL_VERSION, cpu_task, encode_windows
 from sang.losses import build_losses, face_lip_weight
 from sang.masking import per_slice_cosine_mask
 from sang.model import build_talking_head
@@ -37,58 +37,6 @@ def load_visual(cfg: dict, device: str):
     for p in model.parameters():
         p.requires_grad_(False)
     return model
-
-
-def mel_spectrogram(wav: torch.Tensor, sr: int = 16000, n_mels: int = 80) -> torch.Tensor:
-    """[1, N] waveform -> [1, n_mels, T] log-mel for SyncNet (16kHz, 80 bins, 25ms/10ms hops)."""
-    import torchaudio
-    mel = torchaudio.transforms.MelSpectrogram(
-        sample_rate=sr, n_fft=1024, hop_length=160, win_length=400, n_mels=n_mels,
-        f_min=0, f_max=sr // 2, power=2.0,
-    )(wav)
-    return torch.log(mel.clamp_min(1e-5))
-
-
-def _mel_audio_ctx(clip_path, cfg: dict):
-    """(native_fps, span_frames, sr, n_samples, wav[1,N]) for clip_windows-aligned mel."""
-    from decord import AudioReader, VideoReader
-
-    path = Path(clip_path)
-    native = VideoReader(str(path)).get_avg_fps()
-    fps, frames = cfg["fps"], cfg["frames"]
-    span = int(round((frames - 1) * (native / fps))) + 1
-    sr = 16000
-    n = audio_samples(frames, fps, sr)  # D8: frames-1 intervals, not frames
-    wav = torch.from_numpy(AudioReader(str(path.with_suffix(".m4a")), sample_rate=sr, mono=True)[:].asnumpy())
-    return native, span, sr, n, wav
-
-
-def mel_for_window(clip_path, window_idx: int, cfg: dict) -> torch.Tensor:
-    native, span, sr, n, wav = _mel_audio_ctx(clip_path, cfg)
-    a0 = int(window_idx * span / native * sr)
-    win = wav[:, a0:a0 + n]
-    if win.shape[-1] < n:
-        win = F.pad(win, (0, n - win.shape[-1]))
-    return mel_spectrogram(win, sr).squeeze(0).half()
-
-
-def patch_mel_for_clip(clip_path, cached_files, cfg: dict) -> None:
-    """Add mel to cached windows; one audio read per clip."""
-    todo = []
-    for w, f in enumerate(cached_files):
-        d = torch.load(f, weights_only=True)
-        if "mel" not in d:
-            todo.append((w, f, d))
-    if not todo:
-        return
-    native, span, sr, n, wav = _mel_audio_ctx(clip_path, cfg)
-    for w, f, d in todo:
-        a0 = int(w * span / native * sr)
-        win = wav[:, a0:a0 + n]
-        if win.shape[-1] < n:
-            win = F.pad(win, (0, n - win.shape[-1]))
-        d["mel"] = mel_spectrogram(win, sr).squeeze(0).half()
-        torch.save(d, f)
 
 
 def perceptual_losses(loss, pred_px, gt_px, mel, losses, cfg, parts):
@@ -122,63 +70,113 @@ def _clip_cache_complete(cache_dir: Path, key: str, nwin: int) -> list[Path] | N
     return None
 
 
+def host_rss_gb() -> float:
+    return int(open("/proc/self/statm").read().split()[1]) * 4096 / 2**30
+
+
+def _write_windows(cache_dir: Path, key: str, wins: list[dict], cfg: dict) -> list[Path]:
+    """Persist one clip's encoded windows; returns the files written."""
+    continuous, motion_ctx = cfg.get("continuous", False), cfg.get("motion_ctx", False)
+    cast = (lambda x: x.half()) if continuous else (lambda x: x.to(torch.int16))
+    frame = (lambda vid, t: vid[:, t]) if continuous else (lambda vid, t: vid[t])  # video [z,Tv,h,w] | [Tv,h,w]
+    files = []
+    for w, d in enumerate(wins):
+        a = d["audio"][0]
+        entry = {"video": cast(d["video"][0]).cpu(),
+                 "audio": a.cpu().half() if a.is_floating_point() else a.to(torch.int16).cpu(),
+                 "start": int(d["start"])}
+        if "struct" in d:
+            entry["struct"] = d["struct"][0].to(torch.int16).cpu()
+        if "face_found" in d:
+            entry["face_found"] = bool(d["face_found"])
+        if "mel" in d:
+            entry["mel"], entry["mel_version"] = d["mel"], MEL_VERSION
+        if motion_ctx:
+            # Anchor from a DIFFERENT window: window 0 must not get its own content slice 0 as
+            # ref/ctx, which would hand over a supervised slice verbatim.
+            ref_w = 0 if w != 0 else min(1, len(wins) - 1)
+            entry["ref"] = cast(frame(wins[ref_w]["video"][0], 0)).cpu()
+            prev = frame(wins[w - 1]["video"][0], -1) if w > 0 else frame(wins[ref_w]["video"][0], 0)
+            entry["ctx"] = cast(prev).cpu()
+        f = cache_dir / f"{key}_{w}.pt"
+        torch.save(entry, f)
+        files.append(f)
+    return files
+
+
 def build_cache(clips, vidtok, audio_enc, cfg, cache_dir: Path, split: str):
+    """Cache windows for `clips`. CPU work (decode, face crop, audio, mel) runs in a spawn pool
+    whose workers are recycled every `cache_tasks_per_worker` clips -- decord and mediapipe leak
+    ~26 MB per clip between them, which took job 162800 to 118 GB RSS; a bounded worker lifetime
+    makes the leak irrelevant. The main process only does the batched GPU encodes and writes.
+    Complete clips are skipped; complete clips whose mel predates MEL_VERSION get their mel
+    recomputed from the spread window starts (they were cut from packed-from-t=0 starts)."""
+    import multiprocessing as mp
     cache_dir.mkdir(parents=True, exist_ok=True)
-    motion_ctx = cfg.get("motion_ctx", False)
-    syncnet = cfg.get("syncnet_loss", False)
-    continuous = cfg.get("continuous", False)  # v4: store continuous latents, not FSQ indices
-    out = []
-    for i, c in enumerate(tqdm(clips, desc=f"cache/{split}")):
+    syncnet, continuous = cfg.get("syncnet_loss", False), cfg.get("continuous", False)
+    nwin = cfg["windows_per_clip"]
+    cpu_kw = dict(frames=cfg["frames"], fps=cfg["fps"], max_windows=nwin)
+    win_kw = dict(cpu_kw, res=cfg["res"], face_crop=cfg.get("face_crop", False), with_mel=syncnet)
+
+    out, jobs, done_files = [], [], {}
+    for c in clips:
         key = hashlib.md5(str(c).encode()).hexdigest()
-        done = _clip_cache_complete(cache_dir, key, cfg["windows_per_clip"])
-        if done is not None:
-            if syncnet:
-                patch_mel_for_clip(c, done, cfg)
+        done = _clip_cache_complete(cache_dir, key, nwin)
+        if done is None:
+            jobs.append(("windows", c, win_kw))
+        elif syncnet and torch.load(done[0], weights_only=True).get("mel_version") != MEL_VERSION:
+            jobs.append(("mels", c, cpu_kw)); done_files[c] = done
+        else:
             out.extend(done)
-            continue
-        try:
-            wins = clip_windows(c, vidtok, audio_enc, frames=cfg["frames"], res=cfg["res"],
-                                fps=cfg["fps"], max_windows=cfg["windows_per_clip"],
-                                face_cond=cfg.get("face_cond", False), continuous=continuous,
-                                face_crop=cfg.get("face_crop", False))
-        except Exception as e:
-            print(f"skip {Path(c).name}: {type(e).__name__} {e}", file=sys.stderr)
-            continue
-        for w, d in enumerate(wins):
-            f = cache_dir / f"{key}_{w}.pt"
-            a = d["audio"][0]
-            # continuous: video is [1,z_ch,Tv,h,w] float -> store half; discrete: [1,Tv,h,w] -> int16
-            v = d["video"][0]
-            vstore = v.cpu().half() if continuous else v.to(torch.int16).cpu()
-            entry = {"video": vstore,
-                     "audio": a.cpu().half() if a.is_floating_point() else a.to(torch.int16).cpu()}
-            if "struct" in d:
-                entry["struct"] = d["struct"][0].to(torch.int16).cpu()
-            if "face_found" in d:
-                entry["face_found"] = bool(d["face_found"])
-            if motion_ctx:
-                # identity anchor = clip frame 0 (matches the static image at inference);
-                # motion context = previous window's last slice (window 0: static start = ref).
-                # continuous video is [z_ch, Tv, h, w]; discrete is [Tv, h, w]. Slice a frame off dim Tv.
-                def frame(vid, t):  # -> [z_ch,h,w] (continuous) | [h,w] (discrete)
-                    return vid[:, t] if continuous else vid[t]
-                cast = (lambda x: x.half()) if continuous else (lambda x: x.to(torch.int16))
-                # Anchor from a DIFFERENT window: window 0 must not get its own content slice 0
-                # as ref/ctx, which would hand over a supervised slice verbatim.
-                ref_w = 0 if w != 0 else min(1, len(wins) - 1)
-                entry["ref"] = cast(frame(wins[ref_w]["video"][0], 0)).cpu()
-                prev = (frame(wins[w - 1]["video"][0], -1) if w > 0
-                        else frame(wins[ref_w]["video"][0], 0))  # window 0: static start = ref
-                entry["ctx"] = cast(prev).cpu()
-            if syncnet:
-                entry["mel"] = mel_for_window(c, w, cfg)
-            torch.save(entry, f)
-            out.append(f)
-        del wins
-        if i % 20 == 0:
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+    n_build = sum(j[0] == "windows" for j in jobs)
+    print(f"cache/{split}: {len(clips) - len(jobs)} clips ready, {n_build} to build, "
+          f"{len(jobs) - n_build} mel repairs", flush=True)
+    if not jobs:
+        return out
+
+    workers = max(1, int(cfg.get("workers", 4)))
+    # ~26 MB leaked per clip per worker; 100 tasks -> ~2.6 GB before the worker is replaced.
+    pool = mp.get_context("spawn").Pool(workers, maxtasksperchild=int(cfg.get("cache_tasks_per_worker", 100)))
+    bar = tqdm(total=len(jobs), desc=f"cache/{split}")
+    # Pool.imap has no backpressure: workers would run ahead of the GPU consumer and park ~27 MB
+    # results per clip in this process. Submit in bounded chunks instead.
+    chunk = 4 * workers
+
+    def results():
+        for start in range(0, len(jobs), chunk):
+            yield from pool.imap(cpu_task, jobs[start:start + chunk])
+
+    try:
+        for i, (c, result, err) in enumerate(results()):
+            key = hashlib.md5(str(c).encode()).hexdigest()
+            kind = jobs[i][0]
+            if result is None:
+                print(f"skip {Path(c).name}: {err}", file=sys.stderr)
+            elif kind == "windows":
+                try:
+                    enc = encode_windows(vidtok, audio_enc, result, continuous, cfg.get("face_cond", False))
+                    out.extend(_write_windows(cache_dir, key, enc, cfg))
+                except Exception as e:
+                    print(f"skip {Path(c).name}: {type(e).__name__} {e}", file=sys.stderr)
+            else:  # mel repair in place
+                files = done_files[c]
+                if len(result) < len(files):
+                    print(f"skip mel repair {Path(c).name}: {len(result)} starts for {len(files)} windows",
+                          file=sys.stderr)
+                else:
+                    for f, mel in zip(files, result):
+                        d = torch.load(f, weights_only=True)
+                        d["mel"], d["mel_version"] = mel, MEL_VERSION
+                        torch.save(d, f)
+                    out.extend(files)
+            bar.update(1)
+            if i % 50 == 0:
+                bar.set_postfix(rss=f"{host_rss_gb():.1f}G")
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+    finally:
+        pool.close(); pool.join(); bar.close()
     return out
 
 

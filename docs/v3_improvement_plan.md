@@ -2169,3 +2169,48 @@ without CFG. All sanity checks 0 failures; module self-check ok.
 **End-to-end smoke:** a100 job 162786 (real batch settings, 6 clips): cache built in ~2 min, 3 steps, sequential eval + Wan decode, checkpoint, exit 0 in 4:29; peak GPU memory 25.1 GB at batch 2 (job 162788). syncnet moved across steps (0.683 / 0.668 / 0.674). **Correction:** `gpu:a100` on this cluster is the *40 GB* card (the v3 OOM logs all say `total capacity of 39.49 GiB`); the 80 GB cards are `a100_80gb` (gpu08 ×8) and `h100` (gpu09 ×2). The 25.1 GB figure was measured on the 40 GB card, so batch 2 is the 40 GB setting; batch 4 measured **31.4 GB** on an `a100_80gb` (job 162789: step, eval, checkpoint, exit 0 in 2:23). Two points give ≈19 GB fixed + ≈3.2 GB/sample, so the launch config uses batch 8 × accum 8 — **measured 44.0 GB** (job 162799, exit 0), 36 GB headroom for 80 GB cards and batch 2 × accum 32 for the 40 GB `gpu:a100`.
 
 Also fixed on the way: the consolidated `train.sh`/`job.sh` resolved `env.sh` relative to `$BASH_SOURCE`, but sbatch runs a *copy* of the script from `/var/spool/slurmd`, so the first GPU submission died in 1 s. They now resolve it from `$SLURM_SUBMIT_DIR`. And `eval_every: 0` raised a modulo-by-zero; it now means evaluate only at the end.
+
+---
+
+## 36. Job 162800 post-mortem: host-memory OOM in the cache build, and a mel-alignment bug (10 September 2026)
+
+**What happened.** Job 162800 (a100_80gb, gpu08) was killed by the cgroup OOM killer at **62% of the
+cache build** (7043/11366 clips, 8 h 08 m), before a single training step: `MaxRSS 117.6 GB`
+against a 120 GB request. Not a GPU OOM — the GPU probes in §35 were right; this was the
+cache-building *process* growing on the host. It also ran on **2 CPUs** (the partition caps GPU
+jobs unless `--comment=force_cpus` is passed), which is why the build crawled at 4 s/clip.
+
+**Measured cause** (current RSS after `gc` + `malloc_trim`, per clip, 30-clip bisection):
+
+| component | leak |
+|---|---|
+| decord `VideoReader` + `get_batch` | **13.6 MB / clip** |
+| mediapipe `landmarks_px` | **1.4 MB / detection** (≈11 MB at 8 windows) |
+| decord `AudioReader` | 1.1 MB / clip |
+| torchaudio `load` (for comparison) | 0.3 MB / clip |
+
+≈26 MB/clip × 7043 clips ≈ 180 GB — consistent with 118 GB reached at 62%. Separately, 1440p/4K
+sources produced **4.6 GB transient spikes** (decord buffers whole GOPs at native size); those
+`malloc_trim` did reclaim, so they were a peak problem, not a leak.
+
+**A second bug, mine.** When windows were spread across each clip (§34.1), the SyncNet mel kept
+being cut by `mel_for_window` from the *old packed-from-t=0* start. Every cached window except the
+first therefore paired its video with the wrong second of audio — the SyncNet loss would have
+trained against misaligned audio for the whole run, and no smoke test could show it (losses at
+init are meaningless). All 61,101 surviving windows carried a misaligned mel.
+
+**Fix (commit below).**
+- `sang/data.py` splits caching into a **CPU side** (`clip_cpu_windows`: decode, face crop, audio
+  slice, mel) and a **GPU side** (`encode_windows`: one VAE call and one WavLM call for a clip's 8
+  windows). The CPU side runs in a `spawn` pool with `maxtasksperchild` — leaked memory dies with
+  the worker — submitted in bounded chunks because `Pool.imap` has no backpressure. The mel is now
+  cut from the **same waveform window that feeds WavLM**: one source of truth.
+- `open_video` caps decode height at 1080 (a face still has ≥256 px), removing the 4K spikes.
+- `mel_version` is stored per entry; complete clips at an older version get their mels
+  **recomputed in place** from the spread starts, so the 61k windows are repaired, not rebuilt.
+- `train.sh` / `job.sh`: `--cpus-per-task=8` + `--comment=force_cpus`.
+- Host RSS is shown in the cache progress bar (`rss=`) so growth is visible in the log.
+
+**Expected effect.** CPU side ≈1.6 s/clip spread over 8 workers, GPU side batched: the remaining
+~4,300 clips plus ~7,000 mel repairs should take well under an hour instead of 5 h, with the main
+process flat at a few GB.

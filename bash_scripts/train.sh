@@ -5,9 +5,10 @@
 #SBATCH --qos=normal
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
+#SBATCH --comment=force_cpus
 #SBATCH --mem=120gb
 #SBATCH --time=72:00:00
-#SBATCH --gres=gpu:a100_80gb:1
+#SBATCH --gres=gpu:h100:1
 #SBATCH --output=slurm_logs/%x_%j.out
 #SBATCH --error=slurm_logs/%x_%j.err
 # Usage: sbatch bash_scripts/train.sh [--config configs/train.yaml] [--set k=v ...]
