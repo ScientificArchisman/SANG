@@ -5,6 +5,7 @@
 #SBATCH --qos=normal
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
+#SBATCH --comment=force_cpus
 #SBATCH --mem=64gb
 #SBATCH --time=04:00:00
 #SBATCH --gres=gpu:a100_80gb:1

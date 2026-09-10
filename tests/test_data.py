@@ -6,7 +6,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 from sang.config import load_config
-from sang.data import audio_samples, clip_tokens
+from sang.data import (SR, audio_samples, clip_cpu_windows, clip_tokens, cpu_task,
+                       mel_spectrogram, window_starts)
 from sang.video import load_vidtok
 
 CLIPS = "/beegfs/work_fast/shared/li_shared/archi_data/talkvid/clips/*/*.mp4"
@@ -44,8 +45,41 @@ def test_clip_tokens_alignment():
     assert out["audio"].shape[1] == 31  # 0.64 s of WavLM at 50 Hz
 
 
+def test_window_starts_span_the_clip():
+    st = window_starts(1000, 17, 8)
+    assert len(st) == 8 and st[0] == 0 and st[-1] == 1000 - 17
+    assert all(b > a for a, b in zip(st, st[1:]))
+    assert window_starts(20, 17, 1) == [0]
+
+
+def test_cpu_task_reports_bad_clip_instead_of_raising():
+    path, result, err = cpu_task(("windows", "/nonexistent/clip.mp4", {}))
+    assert result is None and err
+
+
+def test_mel_is_cut_from_the_same_window_as_the_audio():
+    """Regression: mels used to be cut from packed-from-t=0 starts after the video windows were
+    spread across the clip, so every window but the first paired video with the wrong second of
+    audio. Both must come from the same spread start."""
+    files = sorted(glob.glob(CLIPS))
+    if not files:
+        print("no TalkVid data; skipping")
+        return
+    import torch
+    wins = clip_cpu_windows(files[0], frames=17, res=64, fps=25, max_windows=4, with_mel=True)
+    assert len(wins) >= 2
+    w1 = wins[1]
+    assert w1["start"] > 0                                          # spread, not packed
+    assert w1["pixels"].shape == (17, 64, 64, 3) and w1["wav"].shape == (1, audio_samples(17, 25, SR))
+    expect = mel_spectrogram(torch.from_numpy(w1["wav"]))[0].half()
+    assert torch.equal(w1["mel"], expect)
+
+
 if __name__ == "__main__":
     test_audio_span_matches_video_span()
     test_config_derives_the_real_tick_count()
     test_clip_tokens_alignment()
+    test_window_starts_span_the_clip()
+    test_cpu_task_reports_bad_clip_instead_of_raising()
+    test_mel_is_cut_from_the_same_window_as_the_audio()
     print("ok")
