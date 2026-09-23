@@ -13,10 +13,12 @@ pip install onnxruntime-gpu insightface tyro pykalman scikit-image "imageio[ffmp
 huggingface-cli download KlingTeam/LivePortrait --local-dir third_party/LivePortrait/pretrained_weights \
     --exclude "*animal*" "*.git*"
 
-if [ ! -d third_party/syncnet_python ]; then
-    git clone --depth 1 https://github.com/joonson/syncnet_python third_party/syncnet_python
+[ -d third_party/syncnet_python ] || git clone --depth 1 https://github.com/joonson/syncnet_python third_party/syncnet_python
+# check the weights, not the folder: an interrupted first install leaves the clone without them
+if [ ! -s third_party/syncnet_python/data/syncnet_v2.model ] || [ ! -s third_party/syncnet_python/detectors/s3fd/weights/sfd_face.pth ]; then
     (cd third_party/syncnet_python && sh download_model.sh)
 fi
+ls -la third_party/syncnet_python/data/syncnet_v2.model third_party/syncnet_python/detectors/s3fd/weights/sfd_face.pth
 pip install python_speech_features scenedetect
 # syncnet_python shells out to `ffmpeg` by name; give it imageio-ffmpeg's binary if none is on PATH
 if ! command -v ffmpeg >/dev/null; then
