@@ -3,6 +3,24 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+# The cache is a face_box(margin=1.6) crop; LatentSync's aligned faces fill more of the frame.
+# Keeping the central 1/1.3 of each frame before the mouth band takes the ground-truth in-sync
+# loss from 0.45 to 0.42 and widens the in/out-of-sync gap by 0.02 (28 windows, 2026-09-10),
+# without touching the cached pixels. Tighter (1.45) is worse again.
+SYNC_ZOOM = 1.3
+
+
+def zoom_frames(frames: torch.Tensor, zoom: float) -> torch.Tensor:
+    """[B,C,T,H,W] -> the central H/zoom x W/zoom of every frame, resized back to H x W."""
+    if zoom == 1.0:
+        return frames
+    B, C, T, H, W = frames.shape
+    h, w = round(H / zoom), round(W / zoom)
+    t0, l0 = (H - h) // 2, (W - w) // 2
+    x = frames[:, :, :, t0:t0 + h, l0:l0 + w].permute(0, 2, 1, 3, 4).reshape(B * T, C, h, w)
+    x = F.interpolate(x, size=(H, W), mode="bilinear", align_corners=False)
+    return x.reshape(B, T, C, H, W).permute(0, 2, 1, 3, 4)
+
 
 class GEGLU(nn.Module):
     def __init__(self, dim_in: int, dim_out: int):
@@ -160,8 +178,9 @@ class StableSyncNet(nn.Module):
         a = self.audio_encoder(audio_sequences).reshape(audio_sequences.shape[0], -1)
         return F.normalize(v, p=2, dim=1), F.normalize(a, p=2, dim=1)
 
-    def loss(self, frames: torch.Tensor, audio_mels: torch.Tensor) -> torch.Tensor:
-        """frames [B,3,T,H,W] in [-1,1], mels [B,80,T] -> cosine sync loss.
+    def loss(self, frames: torch.Tensor, audio_mels: torch.Tensor, zoom: float = SYNC_ZOOM) -> torch.Tensor:
+        """frames [B,3,T,H,W] in [-1,1], mels [B,80,T] (Wav2Lip format, see data.mel_spectrogram)
+        -> cosine sync loss.
 
         The 48 channels must be FRAME-MAJOR (ch = t*3 + c). Any other order silently pins the
         loss at its ~0.65 floor: the pretrained conv_in sees a permuted stack."""
@@ -169,6 +188,7 @@ class StableSyncNet(nn.Module):
         n = T // 16
         if n < 1:
             return torch.tensor(0.0, device=frames.device, requires_grad=True)
+        frames = zoom_frames(frames, zoom)
         # Only a mouth ROI when the frame is a face crop (face_crop: true).
         crop = frames[:, :, : n * 16, H // 2 :, :]
         crop = crop.permute(0, 2, 1, 3, 4).reshape(B * n * 16, C, H // 2, W)  # frame-major

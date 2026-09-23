@@ -41,7 +41,7 @@ class SyncNetLoss(nn.Module):
             p.requires_grad = False
 
     def forward(self, frames: torch.Tensor, audio: torch.Tensor) -> torch.Tensor:
-        """frames [B,3,T,H,W] in [-1,1], audio mels [B,T,n_mel] -> scalar."""
+        """frames [B,3,T,H,W] in [-1,1], audio mels [B,80,T] (Wav2Lip format) -> scalar."""
         return self.syncnet.loss(frames, audio)
 
 
