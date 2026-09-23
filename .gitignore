@@ -31,6 +31,7 @@ results/diagnose_flow.json
 # --- vendored clones with downloaded weights (fetch on cluster) ---
 third_party/LivePortrait/
 third_party/syncnet_python/
+third_party/insightface_full/
 
 # --- large regenerable artefacts ---
 *.npy

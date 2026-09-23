@@ -47,10 +47,16 @@ class ArcFace:
     feeding it the crops we already have."""
 
     def __init__(self, root: str | None = None, device: str = "cuda"):
+        """The FULL buffalo_l pack. LivePortrait's HF upload ships only det_10g + 2d106det, no
+        recognition model, so CSIM from that folder is nan on every frame. install_motion.sh
+        downloads the full pack to third_party/insightface_full on the login node."""
         from insightface.app import FaceAnalysis
-        root = root or str(REPO / "third_party" / "LivePortrait" / "pretrained_weights" / "insightface")
+        root = root or str(REPO / "third_party" / "insightface_full")
+        if not (Path(root) / "models" / "buffalo_l" / "w600k_r50.onnx").exists():
+            raise FileNotFoundError(f"no ArcFace recognition model under {root}; run bash_scripts/install_motion.sh")
         providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if device == "cuda" else ["CPUExecutionProvider"]
-        self.app = FaceAnalysis(name="buffalo_l", root=root, providers=providers)
+        self.app = FaceAnalysis(name="buffalo_l", root=root, providers=providers,
+                                allowed_modules=["detection", "recognition"])
         self.app.prepare(ctx_id=0 if device == "cuda" else -1, det_size=(320, 320))
 
     def embed(self, frame_rgb: np.ndarray) -> np.ndarray | None:
