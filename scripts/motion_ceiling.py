@@ -150,7 +150,7 @@ def main() -> None:
         return v if len(v) else np.array([float("nan")])
 
     print(f"\n{'=' * 64}\nM0 motion ceiling  |  {len(rows)} clips, {len(skipped)} skipped  "
-          f"|  {args.res} px  |  target {args.target}-d  |  relative={args.relative}\n{'=' * 64}")
+          f"|  {args.res} px  |  target {args.target}-d  |  relative={args.relative}  |  stitch={not args.no_stitch}\n{'=' * 64}")
     print(f"  clips truncated at a shot cut (*): {sum(r['cut'] for r in rows)} of {len(rows)}")
     for key, label, fmt in (("mouth_corr", "mouth corr", "6.3f"), ("mouth_amp", "mouth amp", "6.3f"),
                             ("eyes_corr", "eyes corr", "6.3f"), ("brow_corr", "brow corr", "6.3f"),

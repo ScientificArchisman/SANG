@@ -45,6 +45,9 @@ def main() -> None:
     ap.add_argument("--steps", type=int, default=None, help="NFE; default = the run's sample_steps")
     ap.add_argument("--cfg", type=float, default=None, help="audio guidance; default = the run's cfg_audio")
     ap.add_argument("--no-lip-norm", action="store_true", help="skip LivePortrait's flag_normalize_lip")
+    ap.add_argument("--stitch", action="store_true",
+                    help="LivePortrait's stitching: only for pasting back into the full photo. It pulls "
+                         "keypoints toward the source and cost 5.4 dB PSNR in M0 (jobs 171518 vs 171519)")
     ap.add_argument("--raw", action="store_true", help="use the training weights instead of the EMA")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -74,7 +77,7 @@ def main() -> None:
                  steps=args.steps or cfg["sample_steps"],
                  cfg_audio=cfg["cfg_audio"] if args.cfg is None else args.cfg, generator=g)
     m = from_target(norm.untarget(y[0]), m_src)                       # [n, 70], source scale/t/shape
-    frames = codec.render(src, m.cpu(), relative=False, stitch=True)
+    frames = codec.render(src, m.cpu(), relative=False, stitch=args.stitch)
     write_mp4(frames, Path(args.out), fps=FPS, audio=Path(args.audio))
     print(f"wrote {args.out}: {len(frames)} frames, {n_frames / FPS:.1f} s")
 
