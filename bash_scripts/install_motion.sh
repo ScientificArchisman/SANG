@@ -25,8 +25,20 @@ if ! command -v ffmpeg >/dev/null; then
     echo "linked ffmpeg -> $HOME/.local/bin/ffmpeg (make sure it is on PATH in bash_scripts/env.sh)"
 fi
 
-# Pure-tensor checks, no GPU needed; then the API check needs the weights.
+# CSIM needs ArcFace's recognition model, which LivePortrait's upload does not include.
+# insightface downloads the full buffalo_l pack on first use; do it here, where there is internet.
+python -c "from insightface.app import FaceAnalysis; FaceAnalysis(name='buffalo_l', root='third_party/insightface_full', providers=['CPUExecutionProvider']).prepare(ctx_id=-1)"
+ls third_party/insightface_full/models/buffalo_l/w600k_r50.onnx
+
+# Pure-tensor checks, no GPU needed.
 python sang/motion.py
 python sang/bench.py
 python -m pytest tests/test_motion_model.py -q
-python -c "from sang.motion import MotionCodec; MotionCodec(device='cpu'); print('LivePortrait API ok')"
+
+# The LivePortrait API check loads the renderer on a GPU. The login node has none.
+if python -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)"; then
+    python -c "from sang.motion import MotionCodec; MotionCodec(); print('LivePortrait API ok')"
+else
+    echo "No GPU here. Run the renderer check on a GPU node:"
+    echo "  sbatch --time=00:20:00 bash_scripts/job.sh -c \"from sang.motion import MotionCodec; MotionCodec(); print('LivePortrait API ok')\""
+fi

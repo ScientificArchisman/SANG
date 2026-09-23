@@ -118,6 +118,17 @@ def vec_to_kp_info(m: torch.Tensor) -> dict:
             "t": m[:, 4:7], "exp": m[:, 7:M_DIM].reshape(-1, 21, 3)}
 
 
+def as3x3(M: np.ndarray) -> np.ndarray:
+    """Affine as 3x3. Upstream crop_image returns M_c2o as 3x3; accept 2x3 too."""
+    M = np.asarray(M, dtype=np.float64)
+    return M if M.shape == (3, 3) else np.vstack([M[:2], [0.0, 0.0, 1.0]])
+
+
+def o2c(M_c2o: np.ndarray) -> np.ndarray:
+    """Crop->original affine -> the original->crop affine cv2.warpAffine wants (2x3)."""
+    return np.linalg.inv(as3x3(M_c2o))[:2]
+
+
 def interp_boxes(boxes: np.ndarray, idx: list[int], n: int) -> np.ndarray:
     """Affine crop matrices sampled at frames `idx` -> one per frame, linearly interpolated.
 
@@ -172,6 +183,10 @@ class MotionCodec:
         cfg.checkpoint_W = str(base / "base_models" / "warping_module.pth")
         cfg.checkpoint_S = str(base / "retargeting_models" / "stitching_retargeting_module.pth")
         cfg.flag_use_half_precision = bool(half)
+        # LivePortraitWrapper and Cropper choose their device from flag_force_cpu / device_id,
+        # not from anything passed in (upstream live_portrait_wrapper.py, cropper.py).
+        cfg.flag_force_cpu = device == "cpu"
+        cfg.device_id = 0
         for p in (cfg.checkpoint_F, cfg.checkpoint_M, cfg.checkpoint_G, cfg.checkpoint_W, cfg.checkpoint_S):
             if not Path(p).exists():
                 raise FileNotFoundError(f"missing renderer weight {p}; see bash_scripts/install_motion.sh")
@@ -183,7 +198,8 @@ class MotionCodec:
         for k, v in CROP.items():
             setattr(crop_cfg, k, v)
         self.crop_cfg = crop_cfg
-        self.cropper = Cropper(crop_cfg=crop_cfg, device_id=0 if device == "cuda" else -1)
+        crop_cfg.flag_force_cpu = device == "cpu"
+        self.cropper = Cropper(crop_cfg=crop_cfg, device_id=0, flag_force_cpu=device == "cpu")
         self.device = device
         api_check(self)
 
@@ -196,7 +212,7 @@ class MotionCodec:
         return out
 
     def crop_clip(self, frames: np.ndarray, every: int = 25) -> tuple[np.ndarray, np.ndarray]:
-        """[T,H,W,3] uint8 -> ([T,256,256,3] uint8 crops, [T,2,3] crop-to-original affines).
+        """[T,H,W,3] uint8 -> ([T,256,256,3] uint8 crops, [T,3,3] crop-to-original affines).
 
         Boxes are detected every `every` frames (one per second at 25 fps) and interpolated."""
         import cv2
@@ -207,7 +223,7 @@ class MotionCodec:
         boxes, keep = [], []
         for i in idx:
             try:
-                boxes.append(self.crop_one(np.ascontiguousarray(frames[i]))["M_c2o"])
+                boxes.append(as3x3(self.crop_one(np.ascontiguousarray(frames[i]))["M_c2o"]))
                 keep.append(i)
             except Exception:
                 continue
@@ -217,8 +233,7 @@ class MotionCodec:
 
         crops = np.empty((T, 256, 256, 3), dtype=np.uint8)
         for j in range(T):
-            o2c = np.linalg.inv(np.vstack([M[j], [0, 0, 1]]))[:2]
-            big = _transform_img(frames[j], o2c, dsize=CROP["dsize"])
+            big = _transform_img(frames[j], o2c(M[j]), dsize=CROP["dsize"])
             crops[j] = cv2.resize(big, (256, 256), interpolation=cv2.INTER_AREA)
         return crops, M
 
@@ -355,6 +370,10 @@ def self_check() -> None:
     y = to_target(m)                                      # pose change must not move head-frame exp
     m2 = from_target(torch.cat([y[:, :3] + 10.0, y[:, 3:]], 1), m)
     assert torch.allclose(to_target(m2)[:, 3:], y[:, 3:], atol=1e-4), "exp is not pose-invariant"
+
+    A = np.array([[0.5, 0.1, 30.0], [-0.1, 0.5, 40.0], [0.0, 0.0, 1.0]])   # 3x3, as upstream returns
+    assert np.allclose(o2c(A), np.linalg.inv(A)[:2]) and np.allclose(o2c(A[:2]), o2c(A)), "o2c"
+    assert interp_boxes(np.stack([A, A]), [0, 4], 5).shape == (5, 3, 3)
 
     b = np.stack([np.full((2, 3), 0.0, np.float32), np.full((2, 3), 10.0, np.float32)])
     got = interp_boxes(b, [0, 10], 11)
