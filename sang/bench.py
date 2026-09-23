@@ -121,7 +121,9 @@ def lse(video: Path, workdir: Path | None = None, ref: str = "sang") -> tuple[fl
                        check=True, capture_output=True, text=True, timeout=600)
         out = subprocess.run([sys.executable, "run_syncnet.py", *common], cwd=SYNCNET,
                              check=True, capture_output=True, text=True, timeout=600).stdout
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        tail = ((getattr(e, "stderr", "") or "") + (getattr(e, "stdout", "") or ""))[-800:]
+        print(f"  [lse] syncnet_python failed on {Path(video).name}: {type(e).__name__}\n{tail}", flush=True)
         return float("nan"), float("nan"), float("nan")
 
     def grab(label: str) -> float:
@@ -133,7 +135,10 @@ def lse(video: Path, workdir: Path | None = None, ref: str = "sang") -> tuple[fl
                     except ValueError:
                         continue
         return float("nan")
-    return grab("AV offset"), grab("Min dist"), grab("Confidence")
+    res = grab("AV offset"), grab("Min dist"), grab("Confidence")
+    if any(np.isnan(r) for r in res):
+        print(f"  [lse] could not parse run_syncnet.py output for {Path(video).name}:\n{out[-800:]}", flush=True)
+    return res
 
 
 # ------------------------------------------------------------------ distribution metrics
