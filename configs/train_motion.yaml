@@ -1,0 +1,50 @@
+# SANG-M, bidirectional (M1): audio + reference image -> 42-d LivePortrait motion -> frozen renderer.
+# Non-streaming by decision (2026-09-23). Every number below cites where it came from; change one
+# and you are running an ablation, so say so in the run name.
+
+# ---- data (cache from scripts/cache_motion.py) ----
+cache_dir: cache/motion_lp
+out_dir: runs/motion_bidir
+val_frac: 0.05            # split by SPEAKER, as scripts/train.py
+seed: 0
+workers: 8
+frames: 64                # L. KDTalker Tab. 7: LSE-C 6.875 / 7.256 / 7.326 at 8 / 32 / 64 frames
+prefix: 10                # FLOAT's L' = 10 preceding frames
+windows_per_clip: 8
+
+# ---- model: sang/motion_model.py ----
+audio_encoder: wavlm-large
+audio_kernel: 5           # +/-2 frames (+/-80 ms) centred audio window per frame
+attn_window: 0            # 0 = full bidirectional; FLOAT uses +/-2. Untested either way -> ablate
+dim: 512
+layers: 8
+heads: 8
+dropout: 0.0
+max_frames: 512
+
+# ---- objective ----
+lam_vel: 1.0              # FLOAT lambda_vel = 1
+p_audio: 0.1              # FLOAT condition dropout
+p_ref: 0.1
+p_prefix: 0.5             # FLOAT: previous-window dropout, keeps the first window in distribution
+t_dist: uniform           # FLOAT. AVTR-1 uses logit_normal -> ablation
+
+# ---- optimisation ----
+lr: 3.0e-4                # AVTR-1: 3e-4 -> 1e-5 cosine over 200k, on one GPU in 35 h
+min_lr: 1.0e-5
+weight_decay: 0.05
+betas: [0.9, 0.99]
+warmup_steps: 5000
+max_steps: 200000
+batch_size: 256           # KDTalker
+grad_clip: 1.0
+bf16: true
+ema: 0.995                # AVTR-1
+
+# ---- eval / sampling ----
+eval_every: 5000
+eval_batches: 8           # x64 windows of unseen speakers
+sample_steps: 10          # FLOAT Tab. 5: NFE 10 best FID/FVD; KDTalker flat beyond 5 steps
+cfg_audio: 2.0            # FLOAT Tab. 6
+log_every: 100
+resume: ""

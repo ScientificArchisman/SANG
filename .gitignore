@@ -39,3 +39,6 @@ third_party/syncnet_python/
 
 # --- local tooling state ---
 .claude/
+
+# --- macOS ---
+.DS_Store

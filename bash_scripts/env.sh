@@ -8,3 +8,5 @@ export PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # mediapipe needs libGLESv2, which only the `gl` env ships
 export LD_LIBRARY_PATH="$HOME/miniconda3/envs/gl/lib:${LD_LIBRARY_PATH:-}"
+# ffmpeg for syncnet_python, linked by bash_scripts/install_motion.sh when the system has none
+export PATH="$HOME/.local/bin:$PATH"
