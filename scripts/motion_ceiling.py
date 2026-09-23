@@ -33,6 +33,11 @@ from sang.motion import MotionCodec, decode_clip, from_target, to_target
 
 DEV = "cuda" if torch.cuda.is_available() else "cpu"
 
+# Where the face sits in a 256 crop under sang.motion.DRIVE (scale 2.2, vy -0.1): the landmark box is
+# 1/2.2 of the crop side (~116 px), centred horizontally and ~26 px below centre. Background and
+# hair outside it are where a warping renderer is weakest, so it is reported separately.
+FACE = (slice(96, 212), slice(70, 186))
+
 
 def resize(frames: np.ndarray, res: int) -> np.ndarray:
     import cv2
@@ -75,19 +80,26 @@ def main() -> None:
     for k, p in enumerate(paths):
         try:
             frames = decode_clip(p, args.max_frames)
-            d = codec.extract(frames)                       # motion + the exact crops it saw
+            d = codec.extract(frames)                       # ONE fixed box; truncated at a shot cut
+            if len(d["crops"]) < 25:
+                raise ValueError(f"only {len(d['crops'])} frames before a shot cut")
             gt = resize(d["crops"], args.res)               # ground truth IS the crop, not the raw frame
             m = d["m"].float()
             if args.target == 42:                           # frame 0 plays the source image
                 m = from_target(to_target(m), m[:1])
-            gen = codec.render(frames[0], m, relative=args.relative and args.target == 70,
-                               stitch=not args.no_stitch)
+            # The source is frame 0's crop under the SAME box, so source, motion and ground truth
+            # share one coordinate frame. Re-cropping frame 0 on its own would reintroduce the offset.
+            state = codec.source_state(d["crops"][0], precropped=True)
+            gen = codec.render(None, m, relative=args.relative and args.target == 70,
+                               stitch=not args.no_stitch, state=state)
             gen = resize(gen, args.res)
             n = min(len(gt), len(gen))
             gt, gen = gt[:n], gen[:n]
+            ff, fc = FACE if args.res == 256 else (slice(None), slice(None))
 
-            row = {"clip": Path(p).stem, "frames": n,
-                   "psnr": psnr(gt, gen), "ssim": ssim(gt, gen),
+            row = {"clip": Path(p).stem, "frames": n, "cut": n < len(frames),
+                   "psnr": psnr(gt, gen), "psnr_face": psnr(gt[:, ff, fc], gen[:, ff, fc]),
+                   "ssim": ssim(gt, gen),
                    "csim": csim(arc, gt[0], gen),
                    "motion_std": float(d["m"].float().std(0).mean())}
 
@@ -98,13 +110,14 @@ def main() -> None:
                 gen_mp4 = write_mp4(gen, out_dir / f"{k:02d}_gen.mp4", audio=wav if wav.exists() else None)
                 if dump and k < 3:
                     write_mp4(gt, out_dir / f"{k:02d}_gt.mp4", audio=wav if wav.exists() else None)
-                if args.lse and wav.exists():
+                a0 = d["span"][0]
+                if args.lse and wav.exists() and a0 == 0:   # audio mux assumes the clip starts at 0
                     _, row["lse_d"], row["lse_c"] = lse(gen_mp4)
                     gt_mp4 = write_mp4(gt, out_dir / f"{k:02d}_gt_for_lse.mp4", audio=wav)
                     _, row["lse_d_real"], row["lse_c_real"] = lse(gt_mp4)
             rows.append(row)
-            print(f"[{k + 1:>3}/{len(paths)}] {row['clip'][:28]:<28} "
-                  f"PSNR {row['psnr']:>6.2f}  SSIM {row['ssim']:.4f}  CSIM {row['csim']:.4f}"
+            print(f"[{k + 1:>3}/{len(paths)}] {row['clip'][:28]:<28} {n:>4}f{'*' if row['cut'] else ' '} "
+                  f"PSNR {row['psnr']:>6.2f}  face {row['psnr_face']:>6.2f}  SSIM {row['ssim']:.4f}  CSIM {row['csim']:.4f}"
                   + (f"  LSE-C {row.get('lse_c', float('nan')):.2f}"
                      f"/{row.get('lse_c_real', float('nan')):.2f}" if args.lse else ""), flush=True)
         except Exception as e:                              # one bad clip must not kill the sweep
@@ -120,7 +133,8 @@ def main() -> None:
 
     print(f"\n{'=' * 64}\nM0 motion ceiling  |  {len(rows)} clips, {len(skipped)} skipped  "
           f"|  {args.res} px  |  target {args.target}-d  |  relative={args.relative}\n{'=' * 64}")
-    for key, label, fmt in (("psnr", "PSNR (dB)", "6.2f"), ("ssim", "SSIM", "6.4f"),
+    print(f"  clips truncated at a shot cut (*): {sum(r['cut'] for r in rows)} of {len(rows)}")
+    for key, label, fmt in (("psnr", "PSNR (dB)", "6.2f"), ("psnr_face", "PSNR face", "6.2f"), ("ssim", "SSIM", "6.4f"),
                             ("csim", "CSIM", "6.4f"), ("motion_std", "motion std", "6.4f")):
         v = col(key)
         print(f"  {label:<12} mean {np.mean(v):{fmt}}   median {np.median(v):{fmt}}   "

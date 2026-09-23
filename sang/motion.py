@@ -87,7 +87,24 @@ def from_target(y: torch.Tensor, base: torch.Tensor) -> torch.Tensor:
 # Source-image crop convention, used for BOTH the cache and the inference-time reference, so a
 # cached motion trajectory and a freshly cropped reference live in the same frame. Mixing the
 # source (2.3, -0.125) and driving (2.2, -0.1) conventions shifts every keypoint ~2% of the crop.
-CROP = dict(dsize=512, scale=2.3, vx_ratio=0.0, vy_ratio=-0.125)
+CROP = dict(dsize=512, scale=2.3, vx_ratio=0.0, vy_ratio=-0.125)   # upstream SOURCE convention (unused for clips)
+
+# How EVERY crop in this repo is made -- clip frames and the source image alike. Upstream's DRIVING
+# convention (src/utils/cropper.py crop_driving_video, crop_config.py *_crop_driving_video): one
+# box for the whole clip, averaged over per-frame landmark boxes, NO rotation.
+#
+# The first version cropped every frame with crop_source_image instead, which re-centres the box on
+# the face and rotates it to level the eyes. M0 (jobs 171503/4, 2026-09-23) showed what that does:
+# the crop window chases and counter-rotates with the head ("camera sway"), head translation and
+# roll are cancelled out of the extracted motion, and the renderer -- which works in frame 0's
+# crop -- disagrees with the ground truth everywhere. PSNR fell from 35 dB at frame 0 to ~20 dB
+# within 12 frames; mean 14.7 dB.
+DRIVE = dict(dsize=512, scale=2.2, vx_ratio=0.0, vy_ratio=-0.1)
+
+# Shot-cut / runaway-framing test on the sampled landmark boxes, in units of the median box side.
+CUT_JUMP = 0.25       # centre moves more than this between consecutive samples -> cut
+CUT_SCALE = 1.25      # box side changes by more than this ratio between samples -> cut
+MAX_WANDER = 0.35     # centre wanders this far from the clip's mean box -> fixed box loses the face
 
 
 def _require_repo() -> None:
@@ -129,25 +146,20 @@ def o2c(M_c2o: np.ndarray) -> np.ndarray:
     return np.linalg.inv(as3x3(M_c2o))[:2]
 
 
-def interp_boxes(boxes: np.ndarray, idx: list[int], n: int) -> np.ndarray:
-    """Affine crop matrices sampled at frames `idx` -> one per frame, linearly interpolated.
+def first_cut(B: np.ndarray) -> int:
+    """[K,4] boxes sampled along a clip -> number of leading samples that one fixed box can serve.
 
-    Detecting a box per frame makes the crop jitter at ~1 px/frame, which the motion extractor
-    reads as head translation; detecting once per clip drifts off the face. One box per second,
-    interpolated, is the compromise KDTalker's extractor also uses."""
-    if len(idx) != len(boxes):
-        raise ValueError(f"{len(idx)} indices vs {len(boxes)} boxes")
-    out = np.empty((n,) + boxes.shape[1:], dtype=np.float32)
-    if len(idx) == 1:
-        out[:] = boxes[0]
-        return out
-    for a, b, Ma, Mb in zip(idx[:-1], idx[1:], boxes[:-1], boxes[1:]):
-        span = max(1, b - a)
-        for j in range(a, min(b + 1, n)):
-            w = (j - a) / span
-            out[j] = (1.0 - w) * Ma + w * Mb
-    out[idx[-1]:] = boxes[-1]
-    return out
+    K if there is no shot cut. Stops before the first sample whose centre jumps more than CUT_JUMP
+    box sides, whose size changes by more than CUT_SCALE, or whose centre has wandered more than
+    MAX_WANDER sides from the running mean."""
+    ctr, side = (B[:, :2] + B[:, 2:]) / 2, (B[:, 2] - B[:, 0])
+    for k in range(1, len(B)):
+        ref = np.median(side[:k + 1])
+        if (np.linalg.norm(ctr[k] - ctr[k - 1]) > CUT_JUMP * ref
+                or max(side[k], side[k - 1]) / max(1e-6, min(side[k], side[k - 1])) > CUT_SCALE
+                or np.linalg.norm(ctr[k] - ctr[:k + 1].mean(0)) > MAX_WANDER * ref):
+            return k
+    return len(B)
 
 
 def decode_clip(path: str, max_frames: int, fps: float = 25.0) -> np.ndarray:
@@ -204,38 +216,77 @@ class MotionCodec:
         api_check(self)
 
     # -------------------------------------------------------------------- cropping
-    def crop_one(self, frame: np.ndarray) -> dict:
-        """One RGB uint8 frame -> {'img_crop_256x256', 'M_c2o'} in the SOURCE convention."""
-        out = self.cropper.crop_source_image(frame, self.crop_cfg)  # API: name + return keys
-        if out is None:
-            raise ValueError("no face found")
-        return out
+    def landmarks(self, frame: np.ndarray) -> np.ndarray | None:
+        """RGB uint8 frame -> 203 refined landmarks in image coordinates, largest face; None if none.
+        Same two-stage path upstream uses (InsightFace 106 -> LivePortrait landmark.onnx)."""
+        f = self.cropper.face_analysis_wrapper.get(                         # API
+            np.ascontiguousarray(frame[..., ::-1]), flag_do_landmark_2d_106=True, direction="large-small")
+        if len(f) == 0:
+            return None
+        return self.cropper.human_landmark_runner.run(frame, f[0].landmark_2d_106)   # API
 
-    def crop_clip(self, frames: np.ndarray, every: int = 25) -> tuple[np.ndarray, np.ndarray]:
-        """[T,H,W,3] uint8 -> ([T,256,256,3] uint8 crops, [T,3,3] crop-to-original affines).
+    @staticmethod
+    def _box(lmk: np.ndarray) -> np.ndarray:
+        """Landmarks -> [x0, y0, x1, y1] under the DRIVE convention (upstream parse_bbox_from_landmark)."""
+        from src.utils.crop import parse_bbox_from_landmark
+        b = parse_bbox_from_landmark(lmk, scale=DRIVE["scale"], vx_ratio=DRIVE["vx_ratio"],
+                                     vy_ratio=DRIVE["vy_ratio"])["bbox"]
+        return np.array([b[0, 0], b[0, 1], b[2, 0], b[2, 1]], dtype=np.float64)
 
-        Boxes are detected every `every` frames (one per second at 25 fps) and interpolated."""
+    @staticmethod
+    def crop_with_box(frames: np.ndarray, box: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """[T,H,W,3] or [H,W,3] + one box -> ([T,256,256,3] crops, 3x3 M_c2o). No rotation."""
         import cv2
-        from src.utils.crop import _transform_img  # API: private helper, used by upstream too
+        from src.utils.crop import crop_image_by_bbox
+        single = frames.ndim == 3
+        frames = frames[None] if single else frames
+        out, M = np.empty((len(frames), 256, 256, 3), np.uint8), None
+        for j, fr in enumerate(frames):
+            r = crop_image_by_bbox(fr, box.tolist(), dsize=DRIVE["dsize"], flag_rot=False, borderMode=cv2.BORDER_CONSTANT)
+            out[j] = cv2.resize(r["img_crop"], (256, 256), interpolation=cv2.INTER_AREA)
+            M = as3x3(r["M_c2o"])
+        return (out[0] if single else out), M
 
+    def crop_image(self, frame: np.ndarray) -> dict:
+        """A single source photo, cropped by the same convention as the clips -> crop, M_c2o, lmk."""
+        lmk = self.landmarks(frame)
+        if lmk is None:
+            raise ValueError("no face found")
+        crop, M = self.crop_with_box(frame, self._box(lmk))
+        return {"img_crop_256x256": crop, "M_c2o": M, "lmk": lmk}
+
+    def clip_box(self, frames: np.ndarray, every: int = 5) -> tuple[np.ndarray, int, dict]:
+        """One box for the clip. Returns (box, usable_frames, stats).
+
+        Landmark boxes are sampled every `every` frames. At the first shot cut -- or once the face
+        wanders so far that one box cannot hold it -- the clip is truncated there and the box is
+        re-averaged over what remains. Raises if no face is found."""
         T = len(frames)
         idx = sorted({*range(0, T, max(1, every)), T - 1})
         boxes, keep = [], []
         for i in idx:
-            try:
-                boxes.append(as3x3(self.crop_one(np.ascontiguousarray(frames[i]))["M_c2o"]))
+            lmk = self.landmarks(frames[i])
+            if lmk is not None:
+                boxes.append(self._box(lmk))
                 keep.append(i)
-            except Exception:
+            elif not keep:                       # no face at the start: skip ahead
                 continue
+            else:                                # face lost mid-clip: treat as a cut
+                break
         if not boxes:
             raise ValueError("no face in any probed frame")
-        M = interp_boxes(np.stack(boxes), keep, T)
+        B = np.stack(boxes)
+        end = first_cut(B)
+        start = keep[0]
+        stop = keep[end] if end < len(keep) else T        # first frame NOT covered by the box
+        box = B[:end].mean(0)
+        return box, (start, stop), {"cut": end < len(B), "samples": end, "start": start}
 
-        crops = np.empty((T, 256, 256, 3), dtype=np.uint8)
-        for j in range(T):
-            big = _transform_img(frames[j], o2c(M[j]), dsize=CROP["dsize"])
-            crops[j] = cv2.resize(big, (256, 256), interpolation=cv2.INTER_AREA)
-        return crops, M
+    def crop_clip(self, frames: np.ndarray, every: int = 5) -> tuple[np.ndarray, np.ndarray, tuple]:
+        """[T,H,W,3] -> ([T',256,256,3] crops, 3x3 M_c2o, (start, stop)) under ONE fixed box."""
+        box, (a, b), _ = self.clip_box(frames, every=every)
+        crops, M = self.crop_with_box(frames[a:b], box)
+        return crops, M, (a, b)
 
     # -------------------------------------------------------------------- extraction
     @torch.no_grad()
@@ -252,11 +303,14 @@ class MotionCodec:
         return torch.cat(ms), torch.cat(kps)
 
     @torch.no_grad()
-    def extract(self, frames: np.ndarray, batch: int = 64, every: int = 25) -> dict:
-        """[T,H,W,3] uint8 RGB at 25 fps -> {'m': [T,70], 'kp': [T,63], 'M_c2o', 'crops'}."""
-        crops, M = self.crop_clip(frames, every=every)
+    def extract(self, frames: np.ndarray, batch: int = 64, every: int = 5) -> dict:
+        """[T,H,W,3] uint8 RGB at 25 fps -> {'m': [T',70], 'kp': [T',63], 'M_c2o', 'crops', 'span'}.
+
+        T' <= T: the clip is truncated at the first shot cut. `span` = (start, stop) frame indices
+        into the input, so audio can be cut to match."""
+        crops, M, span = self.crop_clip(frames, every=every)
         m, kp = self.motion_from_crops(crops, batch=batch)
-        return {"m": m.half(), "kp": kp.half(), "M_c2o": torch.from_numpy(M), "crops": crops}
+        return {"m": m.half(), "kp": kp.half(), "M_c2o": torch.from_numpy(M), "crops": crops, "span": span}
 
     @torch.no_grad()
     def source_motion(self, source: np.ndarray, normalize_lip: bool = True) -> dict:
@@ -266,12 +320,12 @@ class MotionCodec:
         photo caught mid-vowel otherwise biases every frame of the animation. The retarget module
         returns a keypoint offset d; since x = s(x_c R + delta) + t, the same offset in expression
         space is d / s, applied in the camera frame where delta lives."""
-        c = self.crop_one(np.ascontiguousarray(source))
+        c = self.crop_image(np.ascontiguousarray(source))
         m, kp = self.motion_from_crops(c["img_crop_256x256"][None])
-        if normalize_lip and c.get("lmk_crop") is not None:
+        if normalize_lip:
             src = self.lp.prepare_source(c["img_crop_256x256"])
             x_s = self.lp.transform_keypoint(self.lp.get_kp_info(src))
-            ratio = self.lp.calc_combined_lip_ratio([0.0], c["lmk_crop"])       # API
+            ratio = self.lp.calc_combined_lip_ratio([0.0], c["lmk"])            # API; ratio is scale-free
             thresh = getattr(self.lp.inference_cfg, "lip_normalize_threshold", 0.03)
             if float(ratio[0][0]) >= thresh:
                 d = self.lp.retarget_lip(x_s, ratio).reshape(1, 21, 3).float().cpu()  # API
@@ -281,11 +335,13 @@ class MotionCodec:
 
     # -------------------------------------------------------------------- rendering
     @torch.no_grad()
-    def source_state(self, source: np.ndarray) -> dict:
-        """Source RGB frame -> everything the renderer needs that does not depend on the audio."""
+    def source_state(self, source: np.ndarray, precropped: bool = False) -> dict:
+        """Source RGB frame -> everything the renderer needs that does not depend on the audio.
+        precropped=True: `source` is already a 256x256 crop made by crop_with_box / crop_clip."""
         from src.utils.camera import get_rotation_matrix  # noqa: E402
 
-        c = self.crop_one(np.ascontiguousarray(source))
+        c = ({"img_crop_256x256": source, "M_c2o": None} if precropped
+             else self.crop_image(np.ascontiguousarray(source)))
         src = self.lp.prepare_source(c["img_crop_256x256"])
         info = self.lp.get_kp_info(src)
         return {"info": info,
@@ -296,7 +352,7 @@ class MotionCodec:
                 "M_c2o": c["M_c2o"]}
 
     @torch.no_grad()
-    def render(self, source: np.ndarray, m: torch.Tensor, relative: bool = True,
+    def render(self, source: np.ndarray | None, m: torch.Tensor, relative: bool = True,
                stitch: bool = True, state: dict | None = None) -> np.ndarray:
         """source [H,W,3] uint8 + motion [T,70] -> [T,512,512,3] uint8 crops.
 
@@ -333,7 +389,7 @@ class MotionCodec:
 NEEDED = {"lp": ("get_kp_info", "extract_feature_3d", "transform_keypoint", "stitching",
                  "warp_decode", "parse_output", "prepare_source",
                  "calc_combined_lip_ratio", "retarget_lip"),
-          "cropper": ("crop_source_image",)}
+          "cropper": ("face_analysis_wrapper", "human_landmark_runner")}
 
 
 def api_check(codec: "MotionCodec") -> None:
@@ -373,13 +429,13 @@ def self_check() -> None:
 
     A = np.array([[0.5, 0.1, 30.0], [-0.1, 0.5, 40.0], [0.0, 0.0, 1.0]])   # 3x3, as upstream returns
     assert np.allclose(o2c(A), np.linalg.inv(A)[:2]) and np.allclose(o2c(A[:2]), o2c(A)), "o2c"
-    assert interp_boxes(np.stack([A, A]), [0, 4], 5).shape == (5, 3, 3)
 
-    b = np.stack([np.full((2, 3), 0.0, np.float32), np.full((2, 3), 10.0, np.float32)])
-    got = interp_boxes(b, [0, 10], 11)
-    assert got.shape == (11, 2, 3)
-    assert abs(float(got[5, 0, 0]) - 5.0) < 1e-5, got[5, 0, 0]
-    assert abs(float(got[10, 0, 0]) - 10.0) < 1e-5
+    steady = np.array([[100 + i, 100, 300 + i, 300] for i in range(10)], float)   # slow 1 px drift
+    assert first_cut(steady) == 10, "slow head motion is not a cut"
+    cut = np.vstack([steady[:6], steady[6:] + [150, 0, 150, 0]])                 # jump of 0.75 side
+    assert first_cut(cut) == 6, first_cut(cut)
+    zoom = np.vstack([steady[:4], [[50, 50, 350, 350]] * 3])                      # 1.5x zoom-out
+    assert first_cut(zoom) == 4, first_cut(zoom)
     print("sang/motion.py self-check ok")
 
 

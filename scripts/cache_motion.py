@@ -36,13 +36,13 @@ from sang.motion import MotionCodec, decode_clip
 SR, FPS, TPF = 16000, 25, 2
 
 
-def load_audio(clip: str, n_frames: int) -> torch.Tensor:
-    """16 kHz mono for exactly the span of the decoded frames -> [1, 1, N]."""
+def load_audio(clip: str, start_frame: int, n_frames: int) -> torch.Tensor:
+    """16 kHz mono for exactly frames [start, start + n) -> [1, 1, N]."""
     from decord import AudioReader
     wav = torch.from_numpy(AudioReader(str(Path(clip).with_suffix(".m4a")), sample_rate=SR,
                                        mono=True)[:].asnumpy()).float()
-    need = n_frames * SR // FPS
-    wav = wav[:, :need]
+    a0, need = start_frame * SR // FPS, n_frames * SR // FPS
+    wav = wav[:, a0:a0 + need]
     if wav.shape[1] < need:
         wav = torch.nn.functional.pad(wav, (0, need - wav.shape[1]))
     return wav.unsqueeze(0)
@@ -53,6 +53,7 @@ def main() -> None:
     ap.add_argument("--clips", default=str(REPO / "data/clips_filtered_all.txt"))
     ap.add_argument("--out", default=str(REPO / "cache/motion_lp"))
     ap.add_argument("--max-frames", type=int, default=500, help="20 s cap bounds host memory per clip")
+    ap.add_argument("--min-frames", type=int, default=74, help="one training window: 64 + 10 prefix")
     ap.add_argument("--shard", type=int, default=int(os.environ.get("SLURM_ARRAY_TASK_ID", 0)))
     ap.add_argument("--nshards", type=int, default=1)
     ap.add_argument("--audio-encoder", default="wavlm-large")
@@ -79,16 +80,18 @@ def main() -> None:
             dst = out / Path(clip).parent.name / f"{Path(clip).stem}.pt"
             try:
                 frames = decode_clip(clip, args.max_frames)
-                d = codec.extract(frames)
+                d = codec.extract(frames)                   # fixed box, truncated at a shot cut
                 n = int(d["m"].shape[0])
+                if n < args.min_frames:
+                    raise ValueError(f"only {n} frames before a shot cut")
                 with torch.no_grad():
-                    a = wavlm.encode(load_audio(clip, n).cuda())[0].float().cpu()   # [~2n, D]
+                    a = wavlm.encode(load_audio(clip, d["span"][0], n).cuda())[0].float().cpu()   # [~2n, D]
                 a = a[: TPF * n]
                 if a.shape[0] < TPF * n:                     # conv edge: pad the last tick(s)
                     a = torch.cat([a, a[-1:].expand(TPF * n - a.shape[0], -1)])
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 torch.save({"m": d["m"], "kp": d["kp"], "audio": a.half(), "n": n}, dst)
-                log.write(json.dumps({"clip": clip, "path": str(dst), "n": n}) + "\n")
+                log.write(json.dumps({"clip": clip, "path": str(dst), "n": n, "start": d["span"][0]}) + "\n")
                 log.flush()
                 ok += 1
             except Exception as e:
