@@ -146,6 +146,27 @@ def o2c(M_c2o: np.ndarray) -> np.ndarray:
     return np.linalg.inv(as3x3(M_c2o))[:2]
 
 
+def motion_fidelity(m_in: torch.Tensor, m_out: torch.Tensor) -> dict:
+    """How faithfully a render realises the motion it was driven with.
+
+    m_in: the [T,70] driving motion; m_out: motion re-extracted from the rendered frames. Compared
+    in the 42-d target space, per region: Pearson correlation over time (does it move when the input
+    moves?), amplitude ratio (does it move as MUCH?), and rotation error in degrees. This is the
+    representation ceiling for an audio->motion model -- unlike frame PSNR it ignores hands,
+    torso, lighting and background, which the motion vector does not control."""
+    a, b = to_target(m_in.float()), to_target(m_out.float())
+    out = {}
+    for name in ("mouth", "eyes", "brow"):
+        idx = REGIONS[name]
+        x, y = a[:, idx] - a[:, idx].mean(0), b[:, idx] - b[:, idx].mean(0)
+        live = x.std(0) > 1e-4                        # a coordinate that never moves has no correlation
+        c = (x * y).sum(0) / (x.norm(dim=0) * y.norm(dim=0)).clamp_min(1e-8)
+        out[f"{name}_corr"] = float(c[live].mean()) if live.any() else float("nan")
+        out[f"{name}_amp"] = float(y.std(0)[live].mean() / x.std(0)[live].mean()) if live.any() else float("nan")
+    out["rot_err_deg"] = float((a[:, :3] - b[:, :3]).abs().mean())
+    return out
+
+
 def first_cut(B: np.ndarray) -> int:
     """[K,4] boxes sampled along a clip -> number of leading samples that one fixed box can serve.
 
@@ -429,6 +450,13 @@ def self_check() -> None:
 
     A = np.array([[0.5, 0.1, 30.0], [-0.1, 0.5, 40.0], [0.0, 0.0, 1.0]])   # 3x3, as upstream returns
     assert np.allclose(o2c(A), np.linalg.inv(A)[:2]) and np.allclose(o2c(A[:2]), o2c(A)), "o2c"
+
+    mm = torch.zeros(50, M_DIM); mm[:, 0] = 1.0
+    mm[:, 7:] = torch.sin(torch.linspace(0, 6, 50))[:, None] * torch.linspace(0.01, 0.05, EXP_DIM)
+    f = motion_fidelity(mm, mm)
+    assert abs(f["mouth_corr"] - 1) < 1e-4 and abs(f["mouth_amp"] - 1) < 1e-4 and f["rot_err_deg"] < 1e-5
+    half = mm.clone(); half[:, 7:] *= 0.5
+    assert abs(motion_fidelity(mm, half)["mouth_amp"] - 0.5) < 1e-3, "amplitude ratio"
 
     steady = np.array([[100 + i, 100, 300 + i, 300] for i in range(10)], float)   # slow 1 px drift
     assert first_cut(steady) == 10, "slow head motion is not a cut"

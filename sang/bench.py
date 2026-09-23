@@ -115,7 +115,8 @@ def lse(video: Path, workdir: Path | None = None, ref: str = "sang") -> tuple[fl
         raise FileNotFoundError(f"syncnet_python not at {SYNCNET}; see bash_scripts/install_motion.sh")
     tmp = Path(workdir or tempfile.mkdtemp(prefix="lse_"))
     (tmp / "work").mkdir(parents=True, exist_ok=True)
-    common = ["--data_dir", str(tmp / "work"), "--reference", ref, "--videofile", str(video)]
+    # absolute: syncnet_python runs with cwd=its own checkout, so a relative path does not resolve
+    common = ["--data_dir", str(tmp / "work"), "--reference", ref, "--videofile", str(Path(video).resolve())]
     try:
         subprocess.run([sys.executable, "run_pipeline.py", *common], cwd=SYNCNET,
                        check=True, capture_output=True, text=True, timeout=600)
