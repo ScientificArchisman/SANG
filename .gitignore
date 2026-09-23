@@ -25,6 +25,12 @@ cache/
 # --- run outputs and logs ---
 runs/
 slurm_logs/
+results/train/
+results/diagnose_flow.json
+
+# --- vendored clones with downloaded weights (fetch on cluster) ---
+third_party/LivePortrait/
+third_party/syncnet_python/
 
 # --- large regenerable artefacts ---
 *.npy

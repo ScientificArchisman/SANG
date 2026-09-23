@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from sang.data import MEL_VERSION, cpu_task, encode_windows
+from sang.data import MEL_VERSION, cpu_task, encode_windows, pooled
 from sang.losses import build_losses, face_lip_weight
 from sang.masking import per_slice_cosine_mask
 from sang.model import build_talking_head
@@ -105,13 +105,14 @@ def _write_windows(cache_dir: Path, key: str, wins: list[dict], cfg: dict) -> li
 
 
 def build_cache(clips, vidtok, audio_enc, cfg, cache_dir: Path, split: str):
-    """Cache windows for `clips`. CPU work (decode, face crop, audio, mel) runs in a spawn pool
-    whose workers are recycled every `cache_tasks_per_worker` clips -- decord and mediapipe leak
-    ~26 MB per clip between them, which took job 162800 to 118 GB RSS; a bounded worker lifetime
-    makes the leak irrelevant. The main process only does the batched GPU encodes and writes.
+    """Cache windows for `clips`. CPU work (decode, face crop, audio, mel) runs in spawn workers
+    retired every `cache_tasks_per_worker` clips -- decord and mediapipe leak ~26 MB per clip
+    between them, which took job 162800 to 118 GB RSS; a bounded worker lifetime makes the leak
+    irrelevant. The main process only does the batched GPU encodes and writes. Every wait on a
+    worker is bounded by `cache_task_timeout`, so a dead or wedged worker costs seconds instead
+    of stalling the run silently (job 162848 lost 7h45m to that) -- see sang.data.pooled.
     Complete clips are skipped; complete clips whose mel predates MEL_VERSION get their mel
     recomputed from the spread window starts (they were cut from packed-from-t=0 starts)."""
-    import multiprocessing as mp
     cache_dir.mkdir(parents=True, exist_ok=True)
     syncnet, continuous = cfg.get("syncnet_loss", False), cfg.get("continuous", False)
     nwin = cfg["windows_per_clip"]
@@ -134,22 +135,16 @@ def build_cache(clips, vidtok, audio_enc, cfg, cache_dir: Path, split: str):
     if not jobs:
         return out
 
-    workers = max(1, int(cfg.get("workers", 4)))
-    # ~26 MB leaked per clip per worker; 100 tasks -> ~2.6 GB before the worker is replaced.
-    pool = mp.get_context("spawn").Pool(workers, maxtasksperchild=int(cfg.get("cache_tasks_per_worker", 100)))
     bar = tqdm(total=len(jobs), desc=f"cache/{split}")
-    # Pool.imap has no backpressure: workers would run ahead of the GPU consumer and park ~27 MB
-    # results per clip in this process. Submit in bounded chunks instead.
-    chunk = 4 * workers
-
-    def results():
-        for start in range(0, len(jobs), chunk):
-            yield from pool.imap(cpu_task, jobs[start:start + chunk])
-
     try:
-        for i, (c, result, err) in enumerate(results()):
+        # pooled() yields the job index, so kind/path come from `jobs` rather than from the
+        # arrival order of results.
+        for i, res, infra_err in pooled(jobs, cpu_task, cfg.get("workers", 4),
+                                        tasks_per_worker=int(cfg.get("cache_tasks_per_worker", 100)),
+                                        timeout=float(cfg.get("cache_task_timeout", 900))):
+            kind, c, _ = jobs[i]
             key = hashlib.md5(str(c).encode()).hexdigest()
-            kind = jobs[i][0]
+            result, err = (None, infra_err) if infra_err else (res[1], res[2])
             if result is None:
                 print(f"skip {Path(c).name}: {err}", file=sys.stderr)
             elif kind == "windows":
@@ -176,7 +171,7 @@ def build_cache(clips, vidtok, audio_enc, cfg, cache_dir: Path, split: str):
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
     finally:
-        pool.close(); pool.join(); bar.close()
+        bar.close()
     return out
 
 
@@ -381,6 +376,9 @@ def main() -> None:
     print(f"train windows={len(train_files)} val windows={len(val_files)}")
     if not train_files:
         raise ValueError(f"no training windows from {n_train} clips — lower val_frac or check data_glob")
+    if cfg.get("cache_only"):
+        print("cache_only: cache is complete, exiting before the model build", flush=True)
+        return
 
     if vidtok is None:
         vidtok = load_visual(cfg, device)
