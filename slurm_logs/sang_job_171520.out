@@ -1,0 +1,265 @@
+[17:57:44] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+           Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+[17:57:45] Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[17:57:46] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+           Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+[17:57:48] FaceAnalysisDIY warmup time: 1.901s           face_analysis_diy.py:79
+[17:57:49] LandmarkRunner warmup time: 0.105s        human_landmark_runner.py:95
+  [lse] syncnet_python failed on 00_gen.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+  [lse] syncnet_python failed on 00_gt_for_lse.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+[  1/10] -04ZSRBGcsk_NA_1150.624_1155  131f  PSNR 16.99 (freeze 15.54)  mouth corr 0.621 amp 0.69  rot 0.89deg  CSIM 0.8780  LSE-C nan/nan
+  [lse] syncnet_python failed on 01_gen.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+  [lse] syncnet_python failed on 01_gt_for_lse.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+[  2/10] -04ZSRBGcsk_NA_451.968_462.2  200f  PSNR 17.34 (freeze 15.14)  mouth corr 0.852 amp 0.97  rot 0.80deg  CSIM 0.8396  LSE-C nan/nan
+[  3/10] SKIP -0F1owya2oo_NA_106.956_117.100.mp4: ValueError: only 10 frames before a shot cut
+  [lse] syncnet_python failed on 03_gen.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+  [lse] syncnet_python failed on 03_gt_for_lse.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+[  4/10] -0F1owya2oo_NA_189.664_197.3  193f  PSNR 18.60 (freeze 17.71)  mouth corr 0.925 amp 0.97  rot 0.37deg  CSIM 0.9386  LSE-C nan/nan
+  [lse] syncnet_python failed on 04_gen.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+  [lse] syncnet_python failed on 04_gt_for_lse.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+[  5/10] -0F1owya2oo_NA_64.164_71.888  193f  PSNR 19.15 (freeze 17.85)  mouth corr 0.926 amp 0.97  rot 0.49deg  CSIM 0.9152  LSE-C nan/nan
+  [lse] syncnet_python failed on 05_gen.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+  [lse] syncnet_python failed on 05_gt_for_lse.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+[  6/10] -0F1owya2oo_NA_72.088_86.403  200f  PSNR 18.81 (freeze 17.28)  mouth corr 0.935 amp 0.95  rot 0.25deg  CSIM 0.9329  LSE-C nan/nan
+  [lse] syncnet_python failed on 06_gen.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+  [lse] syncnet_python failed on 06_gt_for_lse.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+[  7/10] -1PHi-xcDXg_NA_13.266_29.900  200f  PSNR 16.88 (freeze 15.11)  mouth corr 0.894 amp 0.94  rot 0.54deg  CSIM 0.8886  LSE-C nan/nan
+  [lse] syncnet_python failed on 07_gen.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+  [lse] syncnet_python failed on 07_gt_for_lse.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+[  8/10] -1PHi-xcDXg_NA_195.733_204.1  200f  PSNR 13.59 (freeze 12.86)  mouth corr 0.908 amp 0.99  rot 0.40deg  CSIM 0.9239  LSE-C nan/nan
+  [lse] syncnet_python failed on 08_gen.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+  [lse] syncnet_python failed on 08_gt_for_lse.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+[  9/10] -1PHi-xcDXg_NA_301.833_309.4  190f  PSNR 14.93 (freeze 14.49)  mouth corr 0.875 amp 0.98  rot 0.49deg  CSIM 0.9066  LSE-C nan/nan
+  [lse] syncnet_python failed on 09_gen.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+  [lse] syncnet_python failed on 09_gt_for_lse.mp4: CalledProcessError
+work/achakraborti/SANG/third_party/syncnet_python/detectors/s3fd/__init__.py", line 23, in __init__
+    state_dict = torch.load(PATH_WEIGHT, map_location=self.device, weights_only=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './detectors/s3fd/weights/sfd_face.pth'
+
+[ 10/10] -1PHi-xcDXg_NA_746.066_753.3  181f  PSNR 14.56 (freeze 13.71)  mouth corr 0.881 amp 0.94  rot 0.75deg  CSIM 0.8988  LSE-C nan/nan
+
+================================================================
+M0 motion ceiling  |  9 clips, 1 skipped  |  256 px  |  target 70-d  |  relative=False
+================================================================
+  clips truncated at a shot cut (*): 0 of 9
+  mouth corr   mean  0.869   median  0.894   min  0.621   max  0.935
+  mouth amp    mean  0.934   median  0.967   min  0.691   max  0.988
+  eyes corr    mean  0.889   median  0.924   min  0.626   max  0.965
+  brow corr    mean  0.827   median  0.855   min  0.669   max  0.937
+  rot err deg  mean   0.56   median   0.49   min   0.25   max   0.89
+  PSNR (dB)    mean  16.76   median  16.99   min  13.59   max  19.15
+  PSNR freeze0 mean  15.52   median  15.14   min  12.86   max  17.85
+  PSNR face    mean  15.13   median  16.09   min  12.61   max  16.95
+  SSIM         mean 0.5901   median 0.5917   min 0.5287   max 0.6336
+  CSIM         mean 0.9025   median 0.9066   min 0.8396   max 0.9386
+  motion std   mean 0.1943   median 0.2138   min 0.1286   max 0.2648
+  LSE-C gen    mean    nan
+  LSE-C real   mean    nan
+  LSE-D gen    mean    nan
+  LSE-D real   mean    nan
+
+GATE                       result       value
+  mouth corr >= 0.85       PASS         0.869
+  mouth amp in 0.75-1.25   PASS         0.934
+  CSIM >= 0.85             PASS         0.9025
+  LSE-C within 0.5 of real FAIL         gap +nan
+
+M0 FAILED -- do not cache yet; read the docstring
+
+first skips: [('-0F1owya2oo_NA_106.956_117.100.mp4', 'ValueError: only 10 frames before a shot cut')]

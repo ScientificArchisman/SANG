@@ -1,0 +1,102 @@
+[17:57:30] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+           Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+[17:57:31] Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[17:57:32] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+           Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+[17:57:34] FaceAnalysisDIY warmup time: 2.346s           face_analysis_diy.py:79
+[17:57:35] LandmarkRunner warmup time: 0.070s        human_landmark_runner.py:95
+[  1/50] -04ZSRBGcsk_NA_1150.624_1155  131f  PSNR 17.18 (freeze 15.54)  mouth corr 0.627 amp 0.63  rot 0.97deg  CSIM 0.8816
+[  2/50] -04ZSRBGcsk_NA_451.968_462.2  200f  PSNR 19.39 (freeze 15.14)  mouth corr 0.876 amp 0.93  rot 0.38deg  CSIM 0.8521
+[  3/50] SKIP -0F1owya2oo_NA_106.956_117.100.mp4: ValueError: only 10 frames before a shot cut
+[  4/50] -0F1owya2oo_NA_189.664_197.3  193f  PSNR 24.98 (freeze 17.71)  mouth corr 0.930 amp 0.98  rot 0.38deg  CSIM 0.9384
+[  5/50] -0F1owya2oo_NA_64.164_71.888  193f  PSNR 24.32 (freeze 17.85)  mouth corr 0.943 amp 0.95  rot 0.42deg  CSIM 0.9152
+[  6/50] -0F1owya2oo_NA_72.088_86.403  200f  PSNR 24.61 (freeze 17.28)  mouth corr 0.941 amp 0.95  rot 0.24deg  CSIM 0.9314
+[  7/50] -1PHi-xcDXg_NA_13.266_29.900  200f  PSNR 19.93 (freeze 15.11)  mouth corr 0.881 amp 0.98  rot 0.58deg  CSIM 0.8931
+[  8/50] -1PHi-xcDXg_NA_195.733_204.1  200f  PSNR 18.11 (freeze 12.86)  mouth corr 0.909 amp 1.00  rot 0.55deg  CSIM 0.9208
+[  9/50] -1PHi-xcDXg_NA_301.833_309.4  190f  PSNR 17.57 (freeze 14.49)  mouth corr 0.878 amp 1.01  rot 0.53deg  CSIM 0.9028
+[ 10/50] -1PHi-xcDXg_NA_746.066_753.3  181f  PSNR 17.58 (freeze 13.71)  mouth corr 0.929 amp 0.95  rot 0.42deg  CSIM 0.9010
+[ 11/50] -1PHi-xcDXg_NA_892.033_901.3  200f  PSNR 13.83 (freeze 12.08)  mouth corr 0.306 amp 1.11  rot 7.71deg  CSIM 0.7186
+[ 12/50] -1SmUivH9dQ_NA_0.100_22.756   200f  PSNR 29.96 (freeze 15.12)  mouth corr 0.827 amp 0.96  rot 0.75deg  CSIM 0.8810
+[ 13/50] -1SmUivH9dQ_NA_117.617_143.7  200f  PSNR 32.16 (freeze 18.18)  mouth corr 0.904 amp 0.97  rot 0.47deg  CSIM 0.9354
+[ 14/50] -1SmUivH9dQ_NA_155.121_168.9  200f  PSNR 25.84 (freeze 15.68)  mouth corr 0.883 amp 1.00  rot 0.75deg  CSIM 0.9011
+[ 15/50] -1SmUivH9dQ_NA_250.483_259.1  200f  PSNR 33.37 (freeze 21.90)  mouth corr 0.908 amp 1.00  rot 0.32deg  CSIM 0.9133
+[ 16/50] -1SmUivH9dQ_NA_280.546_286.9  160f  PSNR 24.15 (freeze 14.56)  mouth corr 0.898 amp 0.98  rot 0.44deg  CSIM 0.9391
+[ 17/50] -1SmUivH9dQ_NA_31.498_39.906  200f  PSNR 28.17 (freeze 17.89)  mouth corr 0.876 amp 0.97  rot 0.54deg  CSIM 0.8846
+[ 18/50] -1SmUivH9dQ_NA_336.602_346.9  200f  PSNR 34.27 (freeze 23.96)  mouth corr 0.919 amp 0.99  rot 0.26deg  CSIM 0.9333
+[ 19/50] -1SmUivH9dQ_NA_365.064_406.9  200f  PSNR 30.13 (freeze 20.82)  mouth corr 0.828 amp 1.04  rot 0.43deg  CSIM 0.9059
+[ 20/50] -1SmUivH9dQ_NA_414.814_445.4  200f  PSNR 33.49 (freeze 24.33)  mouth corr 0.848 amp 0.98  rot 0.63deg  CSIM 0.9405
+[ 21/50] -1SmUivH9dQ_NA_89.789_97.430  191f  PSNR 32.50 (freeze 22.71)  mouth corr 0.832 amp 1.01  rot 0.56deg  CSIM 0.9184
+[ 22/50] -1TVYsuu_yo_NA_394.160_399.3  130f  PSNR 26.56 (freeze 13.16)  mouth corr 0.904 amp 1.07  rot 0.49deg  CSIM 0.9095
+[ 23/50] -1X2rm-lPlY_NA_106.940_135.6  200f  PSNR 22.58 (freeze 13.96)  mouth corr 0.934 amp 0.97  rot 0.43deg  CSIM 0.8651
+[ 24/50] -1X2rm-lPlY_NA_12.512_21.021  200f  PSNR 26.34 (freeze 20.43)  mouth corr 0.887 amp 0.99  rot 0.37deg  CSIM 0.9226
+[ 25/50] -1X2rm-lPlY_NA_138.371_178.0  200f  PSNR 24.99 (freeze 18.63)  mouth corr 0.919 amp 0.93  rot 0.70deg  CSIM 0.9169
+[ 26/50] -1X2rm-lPlY_NA_26.192_69.336  200f  PSNR 25.17 (freeze 14.45)  mouth corr 0.891 amp 0.97  rot 0.27deg  CSIM 0.9037
+[ 27/50] -1X2rm-lPlY_NA_279.412_300.4  200f  PSNR 26.01 (freeze 18.58)  mouth corr 0.921 amp 1.02  rot 0.43deg  CSIM 0.9011
+[ 28/50] -1X2rm-lPlY_NA_319.585_326.3  168f  PSNR 25.79 (freeze 17.86)  mouth corr 0.907 amp 0.98  rot 0.32deg  CSIM 0.9317
+[ 29/50] -1X2rm-lPlY_NA_331.497_377.4  200f  PSNR 26.77 (freeze 16.65)  mouth corr 0.882 amp 0.99  rot 0.25deg  CSIM 0.9508
+[ 30/50] -1X2rm-lPlY_NA_379.779_508.2  200f  PSNR 25.22 (freeze 17.49)  mouth corr 0.875 amp 0.90  rot 0.57deg  CSIM 0.9041
+[ 31/50] -1X2rm-lPlY_NA_620.252_639.8  200f  PSNR 27.20 (freeze 16.64)  mouth corr 0.891 amp 0.95  rot 0.31deg  CSIM 0.9476
+[ 32/50] -1X2rm-lPlY_NA_651.517_689.9  200f  PSNR 29.49 (freeze 23.70)  mouth corr 0.913 amp 0.99  rot 0.22deg  CSIM 0.9574
+[ 33/50] -1X2rm-lPlY_NA_74.207_106.74  200f  PSNR 24.58 (freeze 16.72)  mouth corr 0.888 amp 0.94  rot 0.56deg  CSIM 0.9217
+[ 34/50] -1zlw01RqCE_NA_0.100_89.322   200f  PSNR 23.69 (freeze 16.12)  mouth corr 0.944 amp 0.99  rot 0.20deg  CSIM 0.9373
+[ 35/50] -1zlw01RqCE_NA_90.773_101.16  200f  PSNR  8.16 (freeze  8.00)  mouth corr 0.723 amp 0.75  rot 0.69deg  CSIM 0.8722
+[ 36/50] -2Z04szScZw_NA_45.100_58.800  200f  PSNR 30.24 (freeze 18.15)  mouth corr 0.957 amp 0.98  rot 0.19deg  CSIM 0.9674
+[ 37/50] -30bYBuT3z0_NA_136.803_156.2  200f  PSNR 17.83 (freeze 13.57)  mouth corr 0.921 amp 0.93  rot 0.85deg  CSIM 0.8720
+[ 38/50] -30bYBuT3z0_NA_1390.355_1399  200f  PSNR 22.66 (freeze 17.30)  mouth corr 0.895 amp 0.98  rot 0.34deg  CSIM 0.8762
+[ 39/50] -30bYBuT3z0_NA_1436.668_1444  200f  PSNR 19.73 (freeze 16.33)  mouth corr 0.895 amp 0.94  rot 0.52deg  CSIM 0.9024
+[ 40/50] -30bYBuT3z0_NA_156.422_163.0   95f* PSNR 22.58 (freeze 16.37)  mouth corr 0.898 amp 0.98  rot 0.45deg  CSIM 0.8801
+[ 41/50] -30bYBuT3z0_NA_169.936_185.0  200f  PSNR 18.19 (freeze 14.44)  mouth corr 0.919 amp 0.95  rot 0.60deg  CSIM 0.9381
+[ 42/50] -30bYBuT3z0_NA_1871.002_1879  120f* PSNR 18.16 (freeze 14.87)  mouth corr 0.832 amp 0.96  rot 0.38deg  CSIM 0.8905
+[ 43/50] SKIP -30bYBuT3z0_NA_1973.838_1983.681.mp4: ValueError: only 20 frames before a shot cut
+[ 44/50] -30bYBuT3z0_NA_2244.642_2264  200f  PSNR 19.25 (freeze 15.34)  mouth corr 0.826 amp 0.94  rot 0.78deg  CSIM 0.8634
+[ 45/50] -30bYBuT3z0_NA_2264.962_2279   65f* PSNR 17.33 (freeze 13.89)  mouth corr 0.797 amp 0.93  rot 0.73deg  CSIM 0.9212
+[ 46/50] -30bYBuT3z0_NA_2376.440_2412  200f  PSNR 20.50 (freeze 15.92)  mouth corr 0.918 amp 1.00  rot 0.44deg  CSIM 0.9102
+[ 47/50] -30bYBuT3z0_NA_2412.276_2447  200f  PSNR 19.08 (freeze 16.08)  mouth corr 0.864 amp 0.95  rot 0.35deg  CSIM 0.9222
+[ 48/50] -30bYBuT3z0_NA_2649.847_2669  200f  PSNR 20.95 (freeze 14.37)  mouth corr 0.894 amp 0.92  rot 0.32deg  CSIM 0.9120
+[ 49/50] -30bYBuT3z0_NA_2669.900_2676  165f  PSNR 24.31 (freeze 17.29)  mouth corr 0.872 amp 0.96  rot 0.42deg  CSIM 0.9017
+[ 50/50] -30bYBuT3z0_NA_2676.707_2690  200f  PSNR 22.44 (freeze 18.09)  mouth corr 0.887 amp 0.98  rot 0.46deg  CSIM 0.8721
+
+================================================================
+M0 motion ceiling  |  48 clips, 2 skipped  |  256 px  |  target 70-d  |  relative=False
+================================================================
+  clips truncated at a shot cut (*): 3 of 48
+  mouth corr   mean  0.871   median  0.893   min  0.306   max  0.957
+  mouth amp    mean  0.963   median  0.974   min  0.631   max  1.110
+  eyes corr    mean  0.900   median  0.931   min  0.325   max  0.966
+  brow corr    mean  0.876   median  0.909   min  0.044   max  0.968
+  rot err deg  mean   0.62   median   0.44   min   0.19   max   7.71
+  PSNR (dB)    mean  23.69   median  24.32   min   8.16   max  34.27
+  PSNR freeze0 mean  16.69   median  16.35   min   8.00   max  24.33
+  PSNR face    mean  24.76   median  24.63   min  10.28   max  33.15
+  SSIM         mean 0.8024   median 0.7967   min 0.5105   max 0.9603
+  CSIM         mean 0.9058   median 0.9098   min 0.7186   max 0.9674
+  motion std   mean 0.1792   median 0.1892   min 0.0379   max 0.3136
+
+GATE                       result       value
+  mouth corr >= 0.85       PASS         0.871
+  mouth amp in 0.75-1.25   PASS         0.963
+  CSIM >= 0.85             PASS         0.9058
+
+M0 PASSED -- queue scripts/cache_motion.py
+
+first skips: [('-0F1owya2oo_NA_106.956_117.100.mp4', 'ValueError: only 10 frames before a shot cut'), ('-30bYBuT3z0_NA_1973.838_1983.681.mp4', 'ValueError: only 20 frames before a shot cut')]
