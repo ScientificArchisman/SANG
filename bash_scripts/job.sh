@@ -4,7 +4,7 @@
 #SBATCH --account=ifn
 #SBATCH --qos=normal
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=2
 #SBATCH --comment=force_cpus
 #SBATCH --mem=64gb
 #SBATCH --time=04:00:00
