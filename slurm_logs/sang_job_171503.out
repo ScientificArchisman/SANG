@@ -1,0 +1,360 @@
+[16:02:53] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+           Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+[16:02:54] Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[16:02:55] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+           Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+[16:02:56] FaceAnalysisDIY warmup time: 0.632s           face_analysis_diy.py:79
+[16:02:57] LandmarkRunner warmup time: 0.589s        human_landmark_runner.py:95
+[33mWARNING: onnxruntime is not built with CUDA 12.x support. Please install a version that supports CUDA 12.x, or call preload_dlls with cuda=False and cudnn=False.[0m
+[  1/50] -04ZSRBGcsk_NA_1150.624_1155 PSNR  15.66  SSIM 0.5077  CSIM 0.8892
+[  2/50] -04ZSRBGcsk_NA_451.968_462.2 PSNR  14.96  SSIM 0.4523  CSIM 0.8631
+[16:05:40] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[  3/50] -0F1owya2oo_NA_106.956_117.1 PSNR  14.95  SSIM 0.3423  CSIM 0.8700
+[  4/50] -0F1owya2oo_NA_189.664_197.3 PSNR  16.48  SSIM 0.3928  CSIM 0.9419
+[  5/50] -0F1owya2oo_NA_64.164_71.888 PSNR  16.69  SSIM 0.4465  CSIM 0.9101
+[16:09:40] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:09:42] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:09:43] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:09:44] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:09:46] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:09:47] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:09:49] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:09:50] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:09:52] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:09:54] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[  6/50] -0F1owya2oo_NA_72.088_86.403 PSNR  16.16  SSIM 0.3542  CSIM 0.9283
+[  7/50] -1PHi-xcDXg_NA_13.266_29.900 PSNR  14.14  SSIM 0.5311  CSIM 0.8809
+[16:12:17] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:12:18] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:12:19] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:12:23] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:12:26] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:12:30] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[  8/50] -1PHi-xcDXg_NA_195.733_204.1 PSNR  15.06  SSIM 0.5721  CSIM 0.9173
+[16:13:36] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:13:38] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:13:41] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[  9/50] -1PHi-xcDXg_NA_301.833_309.4 PSNR  14.96  SSIM 0.5761  CSIM 0.9086
+[ 10/50] -1PHi-xcDXg_NA_746.066_753.3 PSNR  14.80  SSIM 0.5865  CSIM 0.9043
+[ 11/50] -1PHi-xcDXg_NA_892.033_901.3 PSNR  11.26  SSIM 0.4072  CSIM nan
+[ 12/50] -1SmUivH9dQ_NA_0.100_22.756  PSNR  16.23  SSIM 0.6906  CSIM 0.8811
+[ 13/50] -1SmUivH9dQ_NA_117.617_143.7 PSNR  17.48  SSIM 0.6427  CSIM 0.9288
+[ 14/50] -1SmUivH9dQ_NA_155.121_168.9 PSNR  13.60  SSIM 0.6522  CSIM 0.9037
+[ 15/50] -1SmUivH9dQ_NA_250.483_259.1 PSNR  17.81  SSIM 0.7135  CSIM 0.9192
+[ 16/50] -1SmUivH9dQ_NA_280.546_286.9 PSNR  13.59  SSIM 0.6600  CSIM 0.9466
+[ 17/50] -1SmUivH9dQ_NA_31.498_39.906 PSNR  11.39  SSIM 0.4909  CSIM 0.8790
+[ 18/50] -1SmUivH9dQ_NA_336.602_346.9 PSNR  18.25  SSIM 0.7561  CSIM 0.9368
+[ 19/50] -1SmUivH9dQ_NA_365.064_406.9 PSNR  15.26  SSIM 0.6511  CSIM 0.9114
+[ 20/50] -1SmUivH9dQ_NA_414.814_445.4 PSNR  17.91  SSIM 0.6834  CSIM 0.9299
+[ 21/50] -1SmUivH9dQ_NA_89.789_97.430 PSNR  18.21  SSIM 0.7203  CSIM 0.9132
+[ 22/50] -1TVYsuu_yo_NA_394.160_399.3 PSNR  13.03  SSIM 0.5378  CSIM 0.9111
+[ 23/50] -1X2rm-lPlY_NA_106.940_135.6 PSNR  12.90  SSIM 0.4490  CSIM 0.8711
+[ 24/50] -1X2rm-lPlY_NA_12.512_21.021 PSNR  17.90  SSIM 0.5887  CSIM 0.9204
+[ 25/50] -1X2rm-lPlY_NA_138.371_178.0 PSNR  13.05  SSIM 0.4835  CSIM 0.9158
+[ 26/50] -1X2rm-lPlY_NA_26.192_69.336 PSNR  16.07  SSIM 0.5192  CSIM 0.9094
+[ 27/50] -1X2rm-lPlY_NA_279.412_300.4 PSNR  13.76  SSIM 0.4836  CSIM 0.9065
+[ 28/50] -1X2rm-lPlY_NA_319.585_326.3 PSNR  14.72  SSIM 0.4999  CSIM 0.9344
+[ 29/50] -1X2rm-lPlY_NA_331.497_377.4 PSNR  15.62  SSIM 0.5353  CSIM 0.9560
+[ 30/50] -1X2rm-lPlY_NA_379.779_508.2 PSNR  12.95  SSIM 0.4786  CSIM 0.9087
+[ 31/50] -1X2rm-lPlY_NA_620.252_639.8 PSNR  19.29  SSIM 0.5736  CSIM 0.9452
+[ 32/50] -1X2rm-lPlY_NA_651.517_689.9 PSNR  20.36  SSIM 0.6155  CSIM 0.9482
+[16:43:19] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 33/50] -1X2rm-lPlY_NA_74.207_106.74 PSNR  13.63  SSIM 0.4540  CSIM 0.9206
+[16:44:26] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:44:27] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:44:29] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:44:31] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:44:32] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:44:34] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:44:35] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:44:36] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:44:38] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:44:40] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 34/50] -1zlw01RqCE_NA_0.100_89.322  PSNR  16.06  SSIM 0.5853  CSIM 0.9379
+[ 35/50] -1zlw01RqCE_NA_90.773_101.16 PSNR   8.38  SSIM 0.4638  CSIM 0.8661
+[ 36/50] -2Z04szScZw_NA_45.100_58.800 PSNR  18.32  SSIM 0.7991  CSIM 0.9677
+[ 37/50] -30bYBuT3z0_NA_136.803_156.2 PSNR  11.75  SSIM 0.3484  CSIM 0.9080
+[16:49:39] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:49:40] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:49:42] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:49:43] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:49:44] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:49:46] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:49:47] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:49:49] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 38/50] -30bYBuT3z0_NA_1390.355_1399 PSNR  14.38  SSIM 0.4398  CSIM 0.8765
+[16:50:56] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:50:58] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:50:59] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:51:00] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:51:02] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:51:03] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:51:04] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:51:06] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:51:07] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:51:09] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 39/50] -30bYBuT3z0_NA_1436.668_1444 PSNR  13.00  SSIM 0.3228  CSIM 0.9068
+[16:52:13] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:52:14] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:52:21] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:52:22] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:52:25] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 40/50] -30bYBuT3z0_NA_156.422_163.0 PSNR  13.23  SSIM 0.3499  CSIM 0.8956
+[ 41/50] -30bYBuT3z0_NA_169.936_185.0 PSNR  12.61  SSIM 0.3210  CSIM 0.9414
+[16:54:38] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:54:40] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:54:41] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:54:43] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:54:44] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:54:46] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:54:47] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:54:50] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:54:52] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 42/50] -30bYBuT3z0_NA_1871.002_1879 PSNR  13.19  SSIM 0.3196  CSIM 0.8796
+[16:55:57] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:55:59] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:56:00] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:56:01] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:56:03] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:56:04] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:56:05] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:56:07] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:56:08] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:56:11] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 43/50] -30bYBuT3z0_NA_1973.838_1983 PSNR  13.84  SSIM 0.3422  CSIM 0.8831
+[16:57:16] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:57:17] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:57:18] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:57:20] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:57:21] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:57:22] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:57:24] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:57:25] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:57:29] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 44/50] -30bYBuT3z0_NA_2244.642_2264 PSNR  12.30  SSIM 0.3033  CSIM 0.8501
+[16:58:33] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:58:35] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:58:36] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:58:37] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:58:39] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:58:40] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:58:41] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:58:43] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:58:44] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:58:47] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 45/50] -30bYBuT3z0_NA_2264.962_2279 PSNR  13.12  SSIM 0.3605  CSIM 0.9039
+[16:59:52] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:59:53] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:59:55] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:59:56] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:59:57] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[16:59:59] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:00:00] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:00:02] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:00:03] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:00:05] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 46/50] -30bYBuT3z0_NA_2376.440_2412 PSNR  12.92  SSIM 0.3147  CSIM 0.9131
+[17:01:10] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:01:12] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:01:13] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:01:14] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:01:16] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:01:17] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:01:18] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:01:20] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:01:21] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:01:23] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 47/50] -30bYBuT3z0_NA_2412.276_2447 PSNR  13.60  SSIM 0.3545  CSIM 0.9221
+[17:02:28] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:02:32] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:02:37] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:02:39] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:02:41] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 48/50] -30bYBuT3z0_NA_2649.847_2669 PSNR  13.05  SSIM 0.3864  CSIM 0.9146
+[17:03:45] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:03:46] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:03:48] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:03:49] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:03:51] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:03:52] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:03:53] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:03:54] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:03:57] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 49/50] -30bYBuT3z0_NA_2669.900_2676 PSNR  14.14  SSIM 0.4527  CSIM 0.9020
+[17:04:53] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:04:54] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:04:56] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:04:57] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:04:58] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:05:00] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:05:01] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[17:05:02] More than one face detected in the image, only pick    cropper.py:110
+           one face by rule large-small.                                        
+[ 50/50] -30bYBuT3z0_NA_2676.707_2690 PSNR  13.92  SSIM 0.4596  CSIM 0.8733
+
+================================================================
+M0 motion ceiling  |  50 clips, 0 skipped  |  256 px  |  target 70-d  |  relative=False
+================================================================
+  PSNR (dB)    mean  14.72   median  14.26   min   8.38   max  20.36
+  SSIM         mean 0.4994   median 0.4836   min 0.3033   max 0.7991
+  CSIM         mean 0.9092   median 0.9101   min 0.8501   max 0.9677
+  motion std   mean 0.1586   median 0.1644   min 0.0402   max 0.2859
+
+GATE                       result       value
+  PSNR >= 29 dB            FAIL         14.72
+  CSIM >= 0.95             FAIL         0.9092
+
+M0 FAILED -- do not cache yet; read the docstring
