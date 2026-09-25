@@ -66,29 +66,47 @@ def fit_norm(rows: list[dict], n_clips: int = 500, seed: int = 0) -> Norm:
 
 class MotionWindows(Dataset):
     """Random windows of P prefix + L target frames. The reference is a random frame of the same
-    clip (Ditto's choice), which at inference becomes the source image."""
+    clip (Ditto's choice), which at inference becomes the source image.
 
-    def __init__(self, rows, L: int, P: int, norm: Norm, per_clip: int, fixed: bool = False):
+    preload=True reads every clip once at start-up and keeps the normalised 42-d targets, reference
+    features and fp16 audio in RAM (~2 MB per 20 s clip). Reading one .pt per SAMPLE from BeeGFS
+    capped the first run at ~1.4 it/s: 256 network file opens per step."""
+
+    def __init__(self, rows, L: int, P: int, norm: Norm, per_clip: int, fixed: bool = False,
+                 preload: bool = True, threads: int = 16):
         self.rows = [r for r in rows if r["n"] >= L + P]
         self.L, self.P, self.norm, self.per_clip = L, P, norm, per_clip
         self.fixed = fixed                # val: the same windows every eval, so curves are comparable
         if not self.rows:
             raise ValueError(f"no clip has {L + P} frames")
+        self.mem = None
+        if preload:
+            from concurrent.futures import ThreadPoolExecutor
+            t0 = time.time()
+            with ThreadPoolExecutor(threads) as ex:          # I/O-bound: threads hide network latency
+                self.mem = list(ex.map(self._load, self.rows))
+            gb = sum(a.numel() * a.element_size() for _, _, a in self.mem) / 1e9
+            print(f"  preloaded {len(self.mem)} clips in {time.time() - t0:.0f} s, audio {gb:.1f} GB", flush=True)
+
+    def _load(self, r):
+        d = torch.load(r["path"], map_location="cpu", weights_only=True)
+        y = self.norm.target(to_target(d["m"].float()))                  # [n, 42]  normalised
+        ref = self.norm.ref(d["kp"].float(), to_target(d["m"].float()))  # [n, REF_DIM] one per frame
+        return y, ref, d["audio"].half().contiguous()
 
     def __len__(self):
         return len(self.rows) * self.per_clip
 
     def __getitem__(self, i):
-        r = self.rows[i % len(self.rows)]
-        d = torch.load(r["path"], map_location="cpu", mmap=True, weights_only=True)
-        n, span = int(d["n"]), self.L + self.P
+        j = i % len(self.rows)
+        y_all, ref_all, audio = self.mem[j] if self.mem is not None else self._load(self.rows[j])
+        n, span = y_all.shape[0], self.L + self.P
         rng = random.Random(i) if self.fixed else random
         s = rng.randint(0, n - span)
-        y = self.norm.target(to_target(d["m"][s:s + span].float()))
         k = rng.randint(0, n - 1)
-        ref = self.norm.ref(d["kp"][k].float(), to_target(d["m"][k:k + 1].float())[0])
-        return {"prefix": y[: self.P], "target": y[self.P:], "ref": ref,
-                "audio": d["audio"][TPF * s: TPF * (s + span)].float()}
+        y = y_all[s:s + span]
+        return {"prefix": y[: self.P], "target": y[self.P:], "ref": ref_all[k],
+                "audio": audio[TPF * s: TPF * (s + span)]}          # fp16: half the bytes per batch; the model casts
 
 
 # ---------------------------------------------------------------------- eval
@@ -173,8 +191,9 @@ def main() -> None:
         norm = fit_norm(train_rows, seed=cfg["seed"])       # train speakers only: no val leakage
         torch.save({k: v for k, v in norm.state_dict().items()}, norm_path)
     L, P = cfg["frames"], cfg["prefix"]
-    train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"])
-    val_ds = MotionWindows(val_rows, L, P, norm, 1, fixed=True)
+    pre = cfg.get("preload", True)
+    train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], preload=pre)
+    val_ds = MotionWindows(val_rows, L, P, norm, 1, fixed=True, preload=pre)
     print(f"{len(train_ds.rows)} train / {len(val_ds.rows)} val clips "
           f"({len({Path(r['path']).parent.name for r in val_rows})} unseen val speakers)", flush=True)
     dl = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True, num_workers=cfg["workers"],
@@ -202,8 +221,12 @@ def main() -> None:
 
     kw = {k: cfg[k] for k in ("lam_vel", "p_audio", "p_ref", "p_prefix", "t_dist")}
     t0 = time.time()
+    t_data = t_gpu = 0.0                                   # seconds per logging window: waiting vs computing
+    t_prev = time.perf_counter()
     while step < cfg["max_steps"]:
         for batch in dl:
+            t_got = time.perf_counter()
+            t_data += t_got - t_prev
             batch = {k: v.to(dev, non_blocking=True) for k, v in batch.items()}
             for gr in opt.param_groups:
                 gr["lr"] = lr_at(step, cfg)
@@ -217,13 +240,18 @@ def main() -> None:
                 for pe, pm in zip(ema.parameters(), model.parameters()):
                     pe.lerp_(pm, 1.0 - cfg["ema"])
             step += 1
+            if dev == "cuda":
+                torch.cuda.synchronize()                   # so compute time is not billed to data
+            t_gpu += time.perf_counter() - t_got
 
             if step % cfg["log_every"] == 0:
                 sps = cfg["log_every"] / (time.time() - t0)
                 t0 = time.time()
                 msg = " ".join(f"{k} {float(v):.4f}" for k, v in parts.items())
+                n_ = cfg["log_every"]
                 print(f"step {step:>7} lr {opt.param_groups[0]['lr']:.2e} {msg} gnorm {float(gnorm):.3f} "
-                      f"{sps:.1f} it/s", flush=True)
+                      f"{sps:.1f} it/s  (data {t_data / n_:.3f} s + gpu {t_gpu / n_:.3f} s per step)", flush=True)
+                t_data = t_gpu = 0.0
 
             if step % cfg["eval_every"] == 0 or step == cfg["max_steps"]:
                 r = evaluate(ema, vdl, cfg, dev, cfg["eval_batches"])
@@ -235,6 +263,7 @@ def main() -> None:
                     best = ck["best"] = r["val_loss"]
                     torch.save(ck, out / "best.pt")
                     (out / "best.json").write_text(json.dumps({"step": step, **r}, indent=1))
+            t_prev = time.perf_counter()                   # eval and logging are not data wait
             if step >= cfg["max_steps"]:
                 break
     print(f"done. best val_loss {best:.4f} -> {out / 'best.pt'}", flush=True)
