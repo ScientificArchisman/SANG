@@ -1,0 +1,279 @@
+shard 1/8: 2120 clips, 0 already cached
+[20:31:41] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+           Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+[20:31:42] Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[20:31:43] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+           Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+[20:31:44] FaceAnalysisDIY warmup time: 0.674s           face_analysis_diy.py:79
+           LandmarkRunner warmup time: 0.562s        human_landmark_runner.py:95
+  skip -30bYBuT3z0_NA_445.745_497.397.mp4: ValueError: only 5 frames before a shot cut
+  [50/2120] ok 49 fail 1  87.5 s/clip
+  [100/2120] ok 99 fail 1  89.9 s/clip
+  skip 17GiwTp1ntM_NA_1154.086_1170.527.mp4: ValueError: only 5 frames before a shot cut
+  [150/2120] ok 148 fail 2  91.0 s/clip
+  [200/2120] ok 198 fail 2  91.0 s/clip
+  skip 2SC6hoJrOXk_NA_149.166_281.000.mp4: ValueError: only 5 frames before a shot cut
+  skip 4B8lFRdquKU_NA_24.357_30.931.mp4: ValueError: only 25 frames before a shot cut
+  [250/2120] ok 246 fail 4  92.1 s/clip
+  skip 4npuVmGxXuk_NA_1093.780_1106.620.mp4: ValueError: only 35 frames before a shot cut
+  skip 5LbrCC8_JQA_NA_449.391_507.233.mp4: ValueError: only 30 frames before a shot cut
+  [300/2120] ok 294 fail 6  94.0 s/clip
+  skip 6HbWpuAW3Po_NA_0.100_225.133.mp4: ValueError: only 30 frames before a shot cut
+  [350/2120] ok 343 fail 7  94.6 s/clip
+  skip 6szc82CetjE_NA_985.851_1015.948.mp4: ValueError: only 40 frames before a shot cut
+  [400/2120] ok 392 fail 8  96.5 s/clip
+  skip AiB5S145mYY_NA_153.233_159.200.mp4: ValueError: only 40 frames before a shot cut
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+right-left 240.0 != bot-top 239.9999976264106
+  [450/2120] ok 441 fail 9  95.7 s/clip
+  [500/2120] ok 491 fail 9  95.3 s/clip
+  [550/2120] ok 541 fail 9  94.2 s/clip
+  skip DyXTXbvOeZo_NA_429.433_487.033.mp4: ValueError: only 5 frames before a shot cut
+  [600/2120] ok 590 fail 10  94.0 s/clip
+  skip EPlaq1fsJts_NA_176.300_210.000.mp4: ValueError: only 15 frames before a shot cut
+  [650/2120] ok 639 fail 11  94.1 s/clip
+  [700/2120] ok 689 fail 11  93.9 s/clip
+  [750/2120] ok 739 fail 11  93.0 s/clip
+  [800/2120] ok 789 fail 11  93.0 s/clip
+  skip GOqEl4ADyVk_NA_6615.220_6629.340.mp4: ValueError: only 70 frames before a shot cut
+  skip GcdDl-hldGM_NA_1834.807_1874.981.mp4: ValueError: only 60 frames before a shot cut
+  [850/2120] ok 837 fail 13  93.3 s/clip
+  skip HGPuIebqobk_NA_2760.100_2781.060.mp4: ValueError: only 10 frames before a shot cut
+  [900/2120] ok 886 fail 14  93.5 s/clip
+  skip H_Y_iM5npnw_NA_2879.977_2892.356.mp4: ValueError: only 30 frames before a shot cut
