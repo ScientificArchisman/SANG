@@ -3,7 +3,7 @@ REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 cd "$REPO_ROOT"
 mkdir -p slurm_logs
 source "$HOME/miniconda3/etc/profile.d/conda.sh"
-conda activate avcodec
+conda activate "${SANG_ENV:-avcodec}"    # train_motion.sh sets sang_bw (Blackwell-capable torch)
 export PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # mediapipe needs libGLESv2, which only the `gl` env ships
