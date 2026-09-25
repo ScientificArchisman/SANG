@@ -303,10 +303,16 @@ class MotionCodec:
         box = B[:end].mean(0)
         return box, (start, stop), {"cut": end < len(B), "samples": end, "start": start}
 
-    def crop_clip(self, frames: np.ndarray, every: int = 5) -> tuple[np.ndarray, np.ndarray, tuple]:
+    def crop_clip(self, frames: np.ndarray, every: int = 5, timings: dict | None = None):
         """[T,H,W,3] -> ([T',256,256,3] crops, 3x3 M_c2o, (start, stop)) under ONE fixed box."""
+        import time
+        t = time.perf_counter()
         box, (a, b), _ = self.clip_box(frames, every=every)
+        t1 = time.perf_counter()
         crops, M = self.crop_with_box(frames[a:b], box)
+        if timings is not None:
+            timings["landmarks"] = timings.get("landmarks", 0.0) + t1 - t
+            timings["crop"] = timings.get("crop", 0.0) + time.perf_counter() - t1
         return crops, M, (a, b)
 
     # -------------------------------------------------------------------- extraction
@@ -324,13 +330,18 @@ class MotionCodec:
         return torch.cat(ms), torch.cat(kps)
 
     @torch.no_grad()
-    def extract(self, frames: np.ndarray, batch: int = 64, every: int = 5) -> dict:
+    def extract(self, frames: np.ndarray, batch: int = 64, every: int = 5,
+                timings: dict | None = None) -> dict:
         """[T,H,W,3] uint8 RGB at 25 fps -> {'m': [T',70], 'kp': [T',63], 'M_c2o', 'crops', 'span'}.
 
         T' <= T: the clip is truncated at the first shot cut. `span` = (start, stop) frame indices
         into the input, so audio can be cut to match."""
-        crops, M, span = self.crop_clip(frames, every=every)
+        import time
+        crops, M, span = self.crop_clip(frames, every=every, timings=timings)
+        t = time.perf_counter()
         m, kp = self.motion_from_crops(crops, batch=batch)
+        if timings is not None:
+            timings["motion"] = timings.get("motion", 0.0) + time.perf_counter() - t
         return {"m": m.half(), "kp": kp.half(), "M_c2o": torch.from_numpy(M), "crops": crops, "span": span}
 
     @torch.no_grad()

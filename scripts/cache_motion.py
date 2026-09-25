@@ -73,24 +73,33 @@ def main() -> None:
 
     ok = fail = 0
     t0 = time.time()
+    tm = {}                                               # seconds per stage, summed over clips
+    def lap(key, since):
+        tm[key] = tm.get(key, 0.0) + time.perf_counter() - since
+        return time.perf_counter()
     with index.open("a") as log:
         for k, clip in enumerate(mine):
             if clip in done:
                 continue
             dst = out / Path(clip).parent.name / f"{Path(clip).stem}.pt"
             try:
+                t = time.perf_counter()
                 frames = decode_clip(clip, args.max_frames)
-                d = codec.extract(frames)                   # fixed box, truncated at a shot cut
+                t = lap("decode", t)
+                d = codec.extract(frames, timings=tm)       # fixed box, truncated at a shot cut
+                t = time.perf_counter()
                 n = int(d["m"].shape[0])
                 if n < args.min_frames:
                     raise ValueError(f"only {n} frames before a shot cut")
                 with torch.no_grad():
                     a = wavlm.encode(load_audio(clip, d["span"][0], n).cuda())[0].float().cpu()   # [~2n, D]
+                t = lap("audio", t)
                 a = a[: TPF * n]
                 if a.shape[0] < TPF * n:                     # conv edge: pad the last tick(s)
                     a = torch.cat([a, a[-1:].expand(TPF * n - a.shape[0], -1)])
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 torch.save({"m": d["m"], "kp": d["kp"], "audio": a.half(), "n": n}, dst)
+                t = lap("save", t)
                 log.write(json.dumps({"clip": clip, "path": str(dst), "n": n, "start": d["span"][0]}) + "\n")
                 log.flush()
                 ok += 1
@@ -99,8 +108,12 @@ def main() -> None:
                 print(f"  skip {Path(clip).name}: {type(e).__name__}: {e}", flush=True)
             if (k + 1) % 50 == 0:
                 rate = (time.time() - t0) / max(1, ok + fail)
-                print(f"  [{k + 1}/{len(mine)}] ok {ok} fail {fail}  {rate:.1f} s/clip", flush=True)
-    print(f"shard {args.shard} done: {ok} cached, {fail} failed", flush=True)
+                n_done = max(1, ok + fail)
+                split = "  ".join(f"{k_} {v / n_done:.1f}" for k_, v in sorted(tm.items(), key=lambda x: -x[1]))
+                print(f"  [{k + 1}/{len(mine)}] ok {ok} fail {fail}  {rate:.1f} s/clip  | s/clip by stage: {split}", flush=True)
+    n_done = max(1, ok + fail)
+    split = "  ".join(f"{k_} {v / n_done:.1f}" for k_, v in sorted(tm.items(), key=lambda x: -x[1]))
+    print(f"shard {args.shard} done: {ok} cached, {fail} failed  | s/clip by stage: {split}", flush=True)
 
 
 if __name__ == "__main__":
