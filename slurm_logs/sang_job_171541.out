@@ -1,0 +1,61 @@
+shard 0/8: 2121 clips, 0 already cached
+[20:32:23] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+           Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+[20:32:24] Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[20:32:25] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+           Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+[20:32:26] FaceAnalysisDIY warmup time: 0.717s           face_analysis_diy.py:79
+[20:32:27] LandmarkRunner warmup time: 0.560s        human_landmark_runner.py:95
+  [50/2121] ok 50 fail 0  89.7 s/clip
+  [100/2121] ok 100 fail 0  87.9 s/clip
+  skip 1jBWzANdJNw_NA_1164.263_1169.535.mp4: ValueError: only 55 frames before a shot cut
+  [150/2121] ok 149 fail 1  88.2 s/clip
+  skip 1uadBVoEoZA_NA_559.367_568.801.mp4: ValueError: only 35 frames before a shot cut
+  skip 25jn92hI-bE_NA_37.966_51.266.mp4: ValueError: only 20 frames before a shot cut
+  [200/2121] ok 197 fail 3  89.7 s/clip
+  skip 2QgpDo3UzZA_NA_2690.162_2696.677.mp4: ValueError: only 10 frames before a shot cut
+  [250/2121] ok 246 fail 4  89.0 s/clip
+  [300/2121] ok 296 fail 4  90.3 s/clip
+  skip 6QGIaE77VLs_NA_211.333_219.066.mp4: ValueError: only 60 frames before a shot cut
+  [350/2121] ok 345 fail 5  91.4 s/clip
+  [400/2121] ok 395 fail 5  93.5 s/clip
+  [450/2121] ok 445 fail 5  92.3 s/clip
+  [500/2121] ok 495 fail 5  92.6 s/clip
+  [550/2121] ok 545 fail 5  92.7 s/clip
+  [600/2121] ok 595 fail 5  92.3 s/clip
+  [650/2121] ok 645 fail 5  91.5 s/clip
+  skip EWtrRD3YrGA_NA_1483.281_1493.191.mp4: ValueError: only 70 frames before a shot cut
+  [700/2121] ok 694 fail 6  90.9 s/clip
+  skip FOnbTueJFyA_NA_439.830_655.805.mp4: ValueError: only 10 frames before a shot cut
+  [750/2121] ok 743 fail 7  90.2 s/clip
+  skip GKCifzbuC0U_NA_57.533_66.466.mp4: ValueError: only 5 frames before a shot cut
+  skip GOqEl4ADyVk_NA_3115.620_3121.420.mp4: ValueError: only 5 frames before a shot cut
+  [800/2121] ok 791 fail 9  89.3 s/clip
+  skip GXJQQqfB-ew_NA_595.444_611.719.mp4: ValueError: only 25 frames before a shot cut
+  skip GYpayTHfpP0_NA_130.863_166.032.mp4: ValueError: only 5 frames before a shot cut
+  skip GZ7g8WVSzDo_NA_0.660_8.373.mp4: ValueError: only 5 frames before a shot cut
+  [850/2121] ok 838 fail 12  90.4 s/clip
+  skip H3yZUfZV9UM_NA_403.058_409.191.mp4: ValueError: only 55 frames before a shot cut
+  skip HGPuIebqobk_NA_807.940_860.260.mp4: ValueError: only 10 frames before a shot cut
+  [900/2121] ok 886 fail 14  90.1 s/clip
+  [950/2121] ok 936 fail 14  89.9 s/clip
