@@ -193,7 +193,7 @@ def main() -> None:
     L, P = cfg["frames"], cfg["prefix"]
     pre = cfg.get("preload", True)
     train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], preload=pre)
-    val_ds = MotionWindows(val_rows, L, P, norm, 1, fixed=True, preload=pre)
+    val_ds = MotionWindows(val_rows, L, P, norm, cfg.get("val_windows_per_clip", 4), fixed=True, preload=pre)
     print(f"{len(train_ds.rows)} train / {len(val_ds.rows)} val clips "
           f"({len({Path(r['path']).parent.name for r in val_rows})} unseen val speakers)", flush=True)
     dl = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True, num_workers=cfg["workers"],
@@ -210,7 +210,7 @@ def main() -> None:
                             lr=cfg["lr"], betas=tuple(cfg["betas"]))
     print(f"MotionFlowTransformer: {sum(p.numel() for p in model.parameters()) / 1e6:.1f} M params", flush=True)
 
-    step, best = 0, float("inf")
+    step, best, bad = 0, float("inf"), 0
     if cfg.get("resume"):
         ck = torch.load(cfg["resume"], map_location=dev, weights_only=False)
         model.load_state_dict(ck["model"])
@@ -261,8 +261,17 @@ def main() -> None:
                 torch.save(ck, out / "last.pt")
                 if r["val_loss"] < best:
                     best = ck["best"] = r["val_loss"]
+                    bad = 0
                     torch.save(ck, out / "best.pt")
                     (out / "best.json").write_text(json.dumps({"step": step, **r}, indent=1))
+                else:
+                    bad += 1
+                # Run 172260 (3,678 clips, no dropout) was best at its FIRST eval (5k) and then lost
+                # 4.7x in val loss while train loss kept falling: stop instead of burning the GPU.
+                if cfg.get("patience", 0) and bad >= cfg["patience"]:
+                    print(f"early stop at step {step}: no val improvement for {bad} evals "
+                          f"(best {best:.4f})", flush=True)
+                    step = cfg["max_steps"]
             t_prev = time.perf_counter()                   # eval and logging are not data wait
             if step >= cfg["max_steps"]:
                 break

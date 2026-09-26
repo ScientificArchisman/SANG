@@ -11,6 +11,7 @@ workers: 8
 frames: 64                # L. KDTalker Tab. 7: LSE-C 6.875 / 7.256 / 7.326 at 8 / 32 / 64 frames
 prefix: 10                # FLOAT's L' = 10 preceding frames
 windows_per_clip: 8
+preload: true             # clips in RAM (~2 MB each): per-sample BeeGFS reads capped run 1 at 1.4 it/s
 
 # ---- model: sang/motion_model.py ----
 audio_encoder: wavlm-large
@@ -19,7 +20,7 @@ attn_window: 0            # 0 = full bidirectional; FLOAT uses +/-2. Untested ei
 dim: 512
 layers: 8
 heads: 8
-dropout: 0.0
+dropout: 0.1               # run 172260 (dropout 0) memorised 3.7k clips after <5k steps
 max_frames: 512
 
 # ---- objective ----
@@ -42,7 +43,9 @@ bf16: true
 ema: 0.995                # AVTR-1
 
 # ---- eval / sampling ----
-eval_every: 5000
+eval_every: 1000          # 5000 missed the optimum: run 172260 was best at its first eval
+patience: 8               # stop after 8 evals without val improvement
+val_windows_per_clip: 4   # 1 gave 3 val batches from 209 clips: too noisy to early-stop on
 eval_batches: 8           # x64 windows of unseen speakers
 sample_steps: 10          # FLOAT Tab. 5: NFE 10 best FID/FVD; KDTalker flat beyond 5 steps
 cfg_audio: 2.0            # FLOAT Tab. 6
