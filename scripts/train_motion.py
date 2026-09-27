@@ -45,11 +45,19 @@ def load_index(cache_dir: Path) -> list[dict]:
 
 
 def split_by_speaker(rows: list[dict], val_frac: float, seed: int):
-    """Same rule as scripts/train.py: the speaker is the clip's parent directory, so val measures
-    unseen identities, not unseen clips of seen people."""
-    spk = sorted({Path(r["path"]).parent.name for r in rows})
-    random.Random(seed).shuffle(spk)
-    val = set(spk[: max(1, int(len(spk) * val_frac))])
+    """Speaker-disjoint split, decided per speaker by a hash of its name.
+
+    The speaker is the clip's parent directory, so val measures unseen identities. Hashing (rather
+    than shuffling the speakers present) keeps every speaker on the same side as the cache grows:
+    runs trained on 3.7k and 16k clips are validated on the same people, and nobody who was in a
+    past run's train set can turn up in a later run's val set. `seed` salts the hash."""
+    import hashlib
+
+    def is_val(spk: str) -> bool:
+        h = int(hashlib.md5(f"{seed}:{spk}".encode()).hexdigest(), 16)
+        return (h % 10_000) < val_frac * 10_000
+
+    val = {Path(r["path"]).parent.name for r in rows if is_val(Path(r["path"]).parent.name)}
     return ([r for r in rows if Path(r["path"]).parent.name not in val],
             [r for r in rows if Path(r["path"]).parent.name in val])
 
