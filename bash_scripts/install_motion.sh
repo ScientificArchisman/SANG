@@ -32,10 +32,13 @@ fi
 python -c "from insightface.app import FaceAnalysis; FaceAnalysis(name='buffalo_l', root='third_party/insightface_full', providers=['CPUExecutionProvider']).prepare(ctx_id=-1)"
 ls third_party/insightface_full/models/buffalo_l/w600k_r50.onnx
 
+# Rule-based naturalness (sang/naturalness.py): language-agnostic IPA phoneme recogniser, CTC at 50 Hz.
+huggingface-cli download facebook/wav2vec2-xlsr-53-espeak-cv-ft
+
 # Pure-tensor checks, no GPU needed.
 python sang/motion.py
 python sang/bench.py
-python -m pytest tests/test_motion_model.py -q
+python -m pytest tests/test_motion_model.py tests/test_naturalness.py -q
 
 # The LivePortrait API check loads the renderer on a GPU. The login node has none.
 if python -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)"; then

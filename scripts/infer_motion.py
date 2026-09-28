@@ -20,7 +20,8 @@ sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.bench import write_mp4
 from sang.motion import MotionCodec, from_target, to_target
-from sang.motion_model import Norm, build, generate
+from sang.motion_model import Norm, build
+from sang.naturalness import Guide, guided_generate
 
 SR, FPS = 16000, 25
 
@@ -50,6 +51,8 @@ def main() -> None:
                          "keypoints toward the source and cost 5.4 dB PSNR in M0 (jobs 171518 vs 171519)")
     ap.add_argument("--raw", action="store_true", help="use the training weights instead of the EMA")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--guide", default="none", choices=["none", "lips", "blinks", "both"],
+                    help="rule constraints at sampling (sang/naturalness.py)")
     args = ap.parse_args()
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -72,10 +75,11 @@ def main() -> None:
     n_frames = int(wav.shape[-1] / SR * FPS)
     with torch.no_grad():
         audio = wavlm.encode(wav.to(dev)).float()                    # [1, ~2n, D]
-    g = torch.Generator(device=dev).manual_seed(args.seed)
-    y = generate(model, audio, ref, n_frames, window=cfg["frames"], n_prefix=cfg["prefix"],
-                 steps=args.steps or cfg["sample_steps"],
-                 cfg_audio=cfg["cfg_audio"] if args.cfg is None else args.cfg, generator=g)
+    guide = Guide.load(Path(cfg["cache_dir"]), dev) if args.guide != "none" else None
+    y, info = guided_generate(model, audio, ref, n_frames, cfg, norm, wav.flatten(), guide, args.guide,
+                              args.seed, steps=args.steps, cfg_audio=args.cfg)
+    if info:
+        print(f"constraints: {info}")
     m = from_target(norm.untarget(y[0]), m_src)                       # [n, 70], source scale/t/shape
     frames = codec.render(src, m.cpu(), relative=False, stitch=args.stitch)
     write_mp4(frames, Path(args.out), fps=FPS, audio=Path(args.audio))
