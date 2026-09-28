@@ -255,16 +255,17 @@ class MotionCodec:
         return np.array([b[0, 0], b[0, 1], b[2, 0], b[2, 1]], dtype=np.float64)
 
     @staticmethod
-    def crop_with_box(frames: np.ndarray, box: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """[T,H,W,3] or [H,W,3] + one box -> ([T,256,256,3] crops, 3x3 M_c2o). No rotation."""
+    def crop_with_box(frames: np.ndarray, box: np.ndarray, size: int = 256) -> tuple[np.ndarray, np.ndarray]:
+        """[T,H,W,3] or [H,W,3] + one box -> ([T,size,size,3] crops, 3x3 M_c2o). No rotation.
+        256 is what the motion extractor takes; 512 matches the renderer's output (demos)."""
         import cv2
         from src.utils.crop import crop_image_by_bbox
         single = frames.ndim == 3
         frames = frames[None] if single else frames
-        out, M = np.empty((len(frames), 256, 256, 3), np.uint8), None
+        out, M = np.empty((len(frames), size, size, 3), np.uint8), None
         for j, fr in enumerate(frames):
             r = crop_image_by_bbox(fr, box.tolist(), dsize=DRIVE["dsize"], flag_rot=False, borderMode=cv2.BORDER_CONSTANT)
-            out[j] = cv2.resize(r["img_crop"], (256, 256), interpolation=cv2.INTER_AREA)
+            out[j] = r["img_crop"] if size == DRIVE["dsize"] else cv2.resize(r["img_crop"], (size, size), interpolation=cv2.INTER_AREA)
             M = as3x3(r["M_c2o"])
         return (out[0] if single else out), M
 
