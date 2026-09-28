@@ -53,6 +53,9 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--guide", default="none", choices=["none", "lips", "blinks", "both"],
                     help="rule constraints at sampling (sang/naturalness.py)")
+    ap.add_argument("--start", default="null", choices=["null", "source"],
+                    help="first window: 'null' = the dropped-prefix configuration training used; "
+                         "'source' = continue from the source photo's own motion after 0.4 s of silence")
     args = ap.parse_args()
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -73,11 +76,15 @@ def main() -> None:
 
     wav = load_audio(args.audio)
     n_frames = int(wav.shape[-1] / SR * FPS)
+    start, lead = None, 0
+    if args.start == "source":                                       # the photo, still and silent, for P frames
+        lead = cfg["prefix"]
+        start = norm.target(to_target(m_src)).unsqueeze(1).expand(1, lead, -1)
     with torch.no_grad():
-        audio = wavlm.encode(wav.to(dev)).float()                    # [1, ~2n, D]
+        audio = wavlm.encode(torch.nn.functional.pad(wav, (lead * SR // FPS, 0)).to(dev)).float()   # [1, ~2(lead+n), D]
     guide = Guide.load(Path(cfg["cache_dir"]), dev) if args.guide != "none" else None
     y, info = guided_generate(model, audio, ref, n_frames, cfg, norm, wav.flatten(), guide, args.guide,
-                              args.seed, steps=args.steps, cfg_audio=args.cfg)
+                              args.seed, steps=args.steps, cfg_audio=args.cfg, start=start)
     if info:
         print(f"constraints: {info}")
     m = from_target(norm.untarget(y[0]), m_src)                       # [n, 70], source scale/t/shape

@@ -58,6 +58,9 @@ def main() -> None:
     ap.add_argument("--guide", default="none", choices=["none", "lips", "blinks", "both"],
                     help="rule constraints at sampling (sang/naturalness.py); needs openness.json + "
                          "naturalness_stats.json in the cache dir")
+    ap.add_argument("--start", default="null", choices=["null", "source"],
+                    help="first window: 'null' = the dropped-prefix configuration training used; "
+                         "'source' = continue from the source photo's own motion after 0.4 s of silence")
     args = ap.parse_args()
 
     dev = "cuda"
@@ -90,19 +93,24 @@ def main() -> None:
 
             wav = torch.from_numpy(AudioReader(str(Path(clip).with_suffix(".m4a")), sample_rate=SR,
                                                mono=True)[:].asnumpy()).float()[:, : len(frames) * SR // FPS]
-            with torch.no_grad():
-                audio = wavlm.encode(wav[None].to(dev)).float()
             sm = codec.source_motion(src)
             m_src = sm["m"].to(dev)
             ref = norm.ref(sm["kp"].to(dev), to_target(m_src))
+            start, lead = None, 0
+            if args.start == "source":                       # the photo, still and silent, for P frames
+                lead = cfg["prefix"]
+                start = norm.target(to_target(m_src)).unsqueeze(1).expand(1, lead, -1)
+            with torch.no_grad():
+                audio = wavlm.encode(torch.nn.functional.pad(wav, (lead * SR // FPS, 0))[None].to(dev)).float()
             y, info = guided_generate(model, audio, ref, len(frames), cfg, norm, wav[0], guide, args.guide,
-                                      args.seed, cfg_audio=args.cfg)
+                                      args.seed, cfg_audio=args.cfg, start=start)
             m = from_target(norm.untarget(y[0]), m_src)
             gen = codec.render(src, m.cpu(), relative=False, stitch=False)
 
             n = min(len(real), len(gen))
             m4a = Path(clip).with_suffix(".m4a")     # starts at frame 0 too; the mux cuts it with -shortest
-            stem = f"{k:02d}_{Path(clip).stem[:40]}" + ("" if args.guide == "none" else f"_{args.guide}")
+            stem = (f"{k:02d}_{Path(clip).stem[:40]}" + ("" if args.guide == "none" else f"_{args.guide}")
+                    + ("" if args.start == "null" else f"_start-{args.start}"))
             write_mp4(np.concatenate([real[:n], gen[:n]], axis=2), out / f"{stem}_sbs.mp4", fps=FPS, audio=m4a)
             write_mp4(gen[:n], out / f"{stem}_gen.mp4", fps=FPS, audio=m4a)
             print(f"[{k + 1}/{len(clips)}] {stem}_sbs.mp4  ({n / FPS:.1f} s) {info or ''}", flush=True)

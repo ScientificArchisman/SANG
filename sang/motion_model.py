@@ -205,7 +205,8 @@ def project(z: torch.Tensor, bounds) -> torch.Tensor:
 
 @torch.no_grad()
 def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps: int = 10,
-           cfg_audio: float = 2.0, generator: torch.Generator | None = None, bounds=None) -> torch.Tensor:
+           cfg_audio: float = 2.0, generator: torch.Generator | None = None, bounds=None,
+           prefix_keep: torch.Tensor | None = None) -> torch.Tensor:
     """Euler from t = 1 (noise) to 0. CFG on audio only, gamma = 2 (FLOAT Tab. 6).
 
     The unconditional branch drops audio and keeps the reference and prefix, so guidance pushes
@@ -215,10 +216,16 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
     equivalent (x0, eps) form, x_next = (1 - t') x0 + t' eps, and x0 is projected onto the
     constraints first; with no bounds this is exactly the Euler step x - dt v. The last step lands
     on the projected x0, so the output satisfies the bounds exactly, while the earlier steps let
-    the model re-fit the neighbouring frames around the constraint."""
+    the model re-fit the neighbouring frames around the constraint.
+
+    prefix_keep [B] bool (optional): False = the prefix slot is present but DROPPED, exactly as
+    flow_loss drops it with p_prefix -- null tokens, null audio, t = 0 -- which is how training
+    represents 'no previous frames'."""
     B, dev = ref.shape[0], ref.device
     x = torch.randn(B, L, T_DIM, device=dev, generator=generator)
-    keep = torch.ones(B, dtype=torch.bool, device=dev) if prefix is not None else None
+    keep = None
+    if prefix is not None:
+        keep = torch.ones(B, dtype=torch.bool, device=dev) if prefix_keep is None else prefix_keep.to(dev)
     null = torch.ones(B, dtype=torch.bool, device=dev)
     dt = 1.0 / steps
     for i in range(steps):
@@ -240,28 +247,49 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
 @torch.no_grad()
 def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tensor, n_frames: int,
              window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio: float = 2.0,
-             generator: torch.Generator | None = None, bounds=None) -> torch.Tensor:
+             generator: torch.Generator | None = None, bounds=None,
+             start: torch.Tensor | None = None) -> torch.Tensor:
     """Any length. Windows of `window` NEW frames, each conditioned on the previous `n_prefix`
-    generated frames (FLOAT's L'). The first window has no prefix, which training covered by
-    dropping the prefix half of the time. audio [B, 2*n_frames, 1024] -> [B, n_frames, 42].
-    bounds: as in `sample`, with ub over the whole clip, [B, n_frames]."""
-    tpf = model.tpf
+    generated frames (FLOAT's L'). audio [B, 2*n_frames, 1024] -> [B, n_frames, 42].
+    bounds: as in `sample`, with ub over the whole clip, [B, n_frames].
+
+    How the FIRST window starts (`start`):
+      None     the prefix slot is present and dropped -- n_prefix null tokens at positions
+               0..n_prefix-1, null audio, t = 0 -- which is exactly how training shows 'no previous
+               frames' (flow_loss, p_prefix = 0.5). Training never saw target frames at positions
+               0..n_prefix-1: the old first window put them there and jittered for ~8 frames in
+               every demo (scripts/video_jitter.py: pixel acceleration 5.1x the real video's at
+               frame 1, falling to 1.4x by frame 8, then ~0.5x; nothing at the window seam).
+      [B, n_prefix, 42]
+               a clean prefix the clip continues from, e.g. the source frame's own (normalised)
+               target repeated: the video then starts at the photo's pose and expression. `audio`
+               must then carry n_prefix frames BEFORE frame 0 (e.g. WavLM of prepended silence).
+    """
+    tpf, B, dev = model.tpf, ref.shape[0], ref.device
+    lead = 0 if start is None else start.shape[1]
+    if start is not None and start.shape[1] != n_prefix:
+        raise ValueError(f"start has {start.shape[1]} frames, the model chains {n_prefix}")
     out, pos = [], 0
     while pos < n_frames:
-        if pos == 0 or n_prefix == 0:
-            prefix, a0 = None, 0
+        keep = None
+        if n_prefix == 0:
+            prefix, a = None, audio[:, pos * tpf:(pos + window) * tpf]
+        elif pos == 0 and start is None:
+            prefix = torch.zeros(B, n_prefix, T_DIM, device=dev)
+            keep = torch.zeros(B, dtype=torch.bool, device=dev)
+            a = F.pad(audio[:, : window * tpf], (0, 0, n_prefix * tpf, 0))   # nulled anyway
         else:
-            prev = torch.cat(out, 1)
-            prefix, a0 = prev[:, -n_prefix:], pos - n_prefix
-        a = audio[:, a0 * tpf:(pos + window) * tpf]          # _audio_frames pads a short tail
+            prefix = start if pos == 0 else torch.cat(out, 1)[:, -n_prefix:]
+            a0 = lead + pos - n_prefix
+            a = audio[:, a0 * tpf:(lead + pos + window) * tpf]            # _audio_frames pads a short tail
         wb = None
         if bounds:
             wb = []
             for vec, ub in bounds:
                 u = ub[:, pos:pos + window]
                 wb.append((vec, F.pad(u, (0, window - u.shape[1]), value=float("inf"))))
-        y = sample(model, a, ref, window, prefix=prefix, steps=steps,
-                   cfg_audio=cfg_audio, generator=generator, bounds=wb)
+        y = sample(model, a, ref, window, prefix=prefix, steps=steps, cfg_audio=cfg_audio,
+                   generator=generator, bounds=wb, prefix_keep=keep)
         out.append(y[:, : n_frames - pos])                   # last window: generate full, keep what fits
         pos += window
     return torch.cat(out, 1)
