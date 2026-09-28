@@ -48,3 +48,4 @@ third_party/knn-vc/
 # --- voice banks hold real people's voices: never commit ---
 voices/
 *.wav
+results/
