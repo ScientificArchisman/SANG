@@ -190,13 +190,32 @@ def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
 
 
 # ---------------------------------------------------------------------- sampling
+def project(z: torch.Tensor, bounds) -> torch.Tensor:
+    """Enforce a . z_f <= ub_f on every frame f, by the smallest move along a (normalised space).
+
+    bounds: [(a [42], ub [B, L])], ub = +inf where a frame is free. The a's used here (lip and eye
+    openness readouts, sang/naturalness.py) live on disjoint columns, so projecting one after the
+    other satisfies all of them exactly."""
+    for a, ub in bounds:
+        a = a.to(z)
+        over = ((z @ a) - ub.to(z)).clamp_min(0)                       # inf bound -> 0
+        z = z - over.unsqueeze(-1) * a / (a @ a)
+    return z
+
+
 @torch.no_grad()
 def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps: int = 10,
-           cfg_audio: float = 2.0, generator: torch.Generator | None = None) -> torch.Tensor:
+           cfg_audio: float = 2.0, generator: torch.Generator | None = None, bounds=None) -> torch.Tensor:
     """Euler from t = 1 (noise) to 0. CFG on audio only, gamma = 2 (FLOAT Tab. 6).
 
     The unconditional branch drops audio and keeps the reference and prefix, so guidance pushes
-    along the audio direction specifically rather than away from the speaker's identity."""
+    along the audio direction specifically rather than away from the speaker's identity.
+
+    bounds (optional, see `project`): training-free constraints. Each step is written in its
+    equivalent (x0, eps) form, x_next = (1 - t') x0 + t' eps, and x0 is projected onto the
+    constraints first; with no bounds this is exactly the Euler step x - dt v. The last step lands
+    on the projected x0, so the output satisfies the bounds exactly, while the earlier steps let
+    the model re-fit the neighbouring frames around the constraint."""
     B, dev = ref.shape[0], ref.device
     x = torch.randn(B, L, T_DIM, device=dev, generator=generator)
     keep = torch.ones(B, dtype=torch.bool, device=dev) if prefix is not None else None
@@ -208,17 +227,24 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
         if cfg_audio != 1.0:
             v_u = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, drop_audio=null)
             v = v_u + cfg_audio * (v - v_u)
-        x = x - dt * v
+        if bounds:
+            t_now, t_next = 1.0 - i * dt, 1.0 - (i + 1) * dt
+            x0 = project(x - t_now * v, bounds)
+            eps = x + (1.0 - t_now) * v
+            x = (1.0 - t_next) * x0 + t_next * eps
+        else:
+            x = x - dt * v
     return x
 
 
 @torch.no_grad()
 def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tensor, n_frames: int,
              window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio: float = 2.0,
-             generator: torch.Generator | None = None) -> torch.Tensor:
+             generator: torch.Generator | None = None, bounds=None) -> torch.Tensor:
     """Any length. Windows of `window` NEW frames, each conditioned on the previous `n_prefix`
     generated frames (FLOAT's L'). The first window has no prefix, which training covered by
-    dropping the prefix half of the time. audio [B, 2*n_frames, 1024] -> [B, n_frames, 42]."""
+    dropping the prefix half of the time. audio [B, 2*n_frames, 1024] -> [B, n_frames, 42].
+    bounds: as in `sample`, with ub over the whole clip, [B, n_frames]."""
     tpf = model.tpf
     out, pos = [], 0
     while pos < n_frames:
@@ -228,8 +254,14 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
             prev = torch.cat(out, 1)
             prefix, a0 = prev[:, -n_prefix:], pos - n_prefix
         a = audio[:, a0 * tpf:(pos + window) * tpf]          # _audio_frames pads a short tail
+        wb = None
+        if bounds:
+            wb = []
+            for vec, ub in bounds:
+                u = ub[:, pos:pos + window]
+                wb.append((vec, F.pad(u, (0, window - u.shape[1]), value=float("inf"))))
         y = sample(model, a, ref, window, prefix=prefix, steps=steps,
-                   cfg_audio=cfg_audio, generator=generator)
+                   cfg_audio=cfg_audio, generator=generator, bounds=wb)
         out.append(y[:, : n_frames - pos])                   # last window: generate full, keep what fits
         pos += window
     return torch.cat(out, 1)

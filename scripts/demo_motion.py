@@ -7,6 +7,7 @@ For each clip: frame 0 is the source image, the clip's own speech drives the mod
 video is cropped with the SAME box as the source, so the two halves line up. Clips come from the
 validation speakers of the run's own split, so nothing shown was trained on. Writes
 <out>/<k>_<clip>_sbs.mp4 (512x1024: real left, generated right) and <k>_<clip>_gen.mp4.
+--guide lips|blinks|both adds the rule constraints (same seed, so compare with the plain run).
 """
 import argparse
 import json
@@ -22,7 +23,8 @@ sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.bench import write_mp4
 from sang.motion import MotionCodec, decode_clip, from_target, to_target
-from sang.motion_model import Norm, build, generate
+from sang.motion_model import Norm, build
+from sang.naturalness import Guide, guided_generate
 
 SR, FPS = 16000, 25
 
@@ -53,6 +55,9 @@ def main() -> None:
     ap.add_argument("--clips", nargs="*", help="explicit clip paths instead of val speakers")
     ap.add_argument("--cfg", type=float, default=None)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--guide", default="none", choices=["none", "lips", "blinks", "both"],
+                    help="rule constraints at sampling (sang/naturalness.py); needs openness.json + "
+                         "naturalness_stats.json in the cache dir")
     args = ap.parse_args()
 
     dev = "cuda"
@@ -72,6 +77,7 @@ def main() -> None:
     from sang.codec import load_wavlm
     codec = MotionCodec(device=dev)
     wavlm = load_wavlm(cfg.get("audio_encoder", "wavlm-large"), device=dev)
+    guide = Guide.load(Path(cfg["cache_dir"]), dev) if args.guide != "none" else None
 
     for k, clip in enumerate(clips):
         try:
@@ -89,19 +95,17 @@ def main() -> None:
             sm = codec.source_motion(src)
             m_src = sm["m"].to(dev)
             ref = norm.ref(sm["kp"].to(dev), to_target(m_src))
-            g = torch.Generator(device=dev).manual_seed(args.seed)
-            y = generate(model, audio, ref, len(frames), window=cfg["frames"], n_prefix=cfg["prefix"],
-                         steps=cfg["sample_steps"], cfg_audio=cfg["cfg_audio"] if args.cfg is None else args.cfg,
-                         generator=g)
+            y, info = guided_generate(model, audio, ref, len(frames), cfg, norm, wav[0], guide, args.guide,
+                                      args.seed, cfg_audio=args.cfg)
             m = from_target(norm.untarget(y[0]), m_src)
             gen = codec.render(src, m.cpu(), relative=False, stitch=False)
 
             n = min(len(real), len(gen))
             m4a = Path(clip).with_suffix(".m4a")     # starts at frame 0 too; the mux cuts it with -shortest
-            stem = f"{k:02d}_{Path(clip).stem[:40]}"
+            stem = f"{k:02d}_{Path(clip).stem[:40]}" + ("" if args.guide == "none" else f"_{args.guide}")
             write_mp4(np.concatenate([real[:n], gen[:n]], axis=2), out / f"{stem}_sbs.mp4", fps=FPS, audio=m4a)
             write_mp4(gen[:n], out / f"{stem}_gen.mp4", fps=FPS, audio=m4a)
-            print(f"[{k + 1}/{len(clips)}] {stem}_sbs.mp4  ({n / FPS:.1f} s)", flush=True)
+            print(f"[{k + 1}/{len(clips)}] {stem}_sbs.mp4  ({n / FPS:.1f} s) {info or ''}", flush=True)
         except Exception as e:
             print(f"[{k + 1}/{len(clips)}] SKIP {Path(clip).name}: {type(e).__name__}: {e}", flush=True)
     (out / "demo.json").write_text(json.dumps({"ckpt": args.ckpt, "step": ck["step"], "clips": clips}, indent=1))
