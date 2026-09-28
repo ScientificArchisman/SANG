@@ -6,6 +6,12 @@
 
 Also the unit the HDTF evaluation runs per clip (first frame as source, the clip's own audio,
 KDTalker's protocol), after which sang/bench.py scores CSIM / LSE / FID on the written mp4s.
+
+Voice cloning (sang/voice.py): --voice voices/<name> (a bank from scripts/enroll_voice.py) or
+--voice <folder or file of the person's audio> (enrolled into voices/<folder name>/ on the fly and
+kept, so the next run reuses it). The face is still driven by the ORIGINAL --audio; only the audio
+track muxed into the mp4 is converted (kNN-VC keeps the timing, so the lips stay aligned). The
+converted track is also written next to the mp4 as <out>.voice.wav.
 """
 import argparse
 import sys
@@ -22,6 +28,7 @@ from sang.bench import write_mp4
 from sang.motion import MotionCodec, from_target, to_target
 from sang.motion_model import Norm, build
 from sang.naturalness import Guide, guided_generate
+from sang.voice import load_knnvc
 
 SR, FPS = 16000, 25
 
@@ -56,6 +63,9 @@ def main() -> None:
     ap.add_argument("--start", default="null", choices=["null", "source"],
                     help="first window: 'null' = the dropped-prefix configuration training used; "
                          "'source' = continue from the source photo's own motion after 0.4 s of silence")
+    ap.add_argument("--voice", default=None,
+                    help="speak in this person's voice: a voice bank dir (voices/<name>) or their audio files")
+    ap.add_argument("--voice-k", type=int, default=None, help="kNN-VC k; default grows with the bank size")
     args = ap.parse_args()
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -89,7 +99,15 @@ def main() -> None:
         print(f"constraints: {info}")
     m = from_target(norm.untarget(y[0]), m_src)                       # [n, 70], source scale/t/shape
     frames = codec.render(src, m.cpu(), relative=False, stitch=args.stitch)
-    write_mp4(frames, Path(args.out), fps=FPS, audio=Path(args.audio))
+    track = Path(args.audio)
+    if args.voice:
+        from sang.voice import SpeakerEncoder, convert, save_wav, voice_bank
+        knnvc = load_knnvc(dev)
+        enrolling = not (Path(args.voice) / "bank.pt").exists()
+        bank = voice_bank(args.voice, knnvc, SpeakerEncoder(dev) if enrolling else None)
+        track = save_wav(convert(wav.flatten(), bank, knnvc, k=args.voice_k), Path(args.out).with_suffix(".voice.wav"))
+        print(f"voice: {bank.dir.name}, bank {bank.seconds:.0f} s -> {track}")
+    write_mp4(frames, Path(args.out), fps=FPS, audio=track)
     print(f"wrote {args.out}: {len(frames)} frames, {n_frames / FPS:.1f} s")
 
 
