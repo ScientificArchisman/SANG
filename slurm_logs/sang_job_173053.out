@@ -1,0 +1,55 @@
+20 clips already done, 984 frames
+[16:27:04] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+[16:27:05] Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+           Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[16:27:07] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+           Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+           FaceAnalysisDIY warmup time: 0.120s           face_analysis_diy.py:79
+[16:27:08] LandmarkRunner warmup time: 0.090s        human_landmark_runner.py:95
+  lip: held-out-clip R^2 0.811 (ok); ratio p5/p50/p95 0.004 / 0.156 / 0.372
+  eye: held-out-clip R^2 0.660 (WEAK -- do not trust constraints on it); ratio p5/p50/p95 0.016 / 0.373 / 0.469
+  wrote /beegfs/work/achakraborti/SANG/cache/motion_lp/openness.json (30 clips, 1449 frames)
+  [30/80] 1449 frames, 93 s  (per clip: decode 0.2 s, landmarks 9.0 s)
+  lip: held-out-clip R^2 0.751 (ok); ratio p5/p50/p95 0.004 / 0.158 / 0.377
+  eye: held-out-clip R^2 0.609 (WEAK -- do not trust constraints on it); ratio p5/p50/p95 0.017 / 0.371 / 0.510
+  wrote /beegfs/work/achakraborti/SANG/cache/motion_lp/openness.json (40 clips, 1944 frames)
+  [40/80] 1944 frames, 198 s  (per clip: decode 0.3 s, landmarks 9.5 s)
+  lip: held-out-clip R^2 0.747 (ok); ratio p5/p50/p95 0.004 / 0.155 / 0.366
+  eye: held-out-clip R^2 0.689 (WEAK -- do not trust constraints on it); ratio p5/p50/p95 0.017 / 0.371 / 0.503
+  wrote /beegfs/work/achakraborti/SANG/cache/motion_lp/openness.json (50 clips, 2444 frames)
+  [50/80] 2444 frames, 313 s  (per clip: decode 0.5 s, landmarks 9.9 s)
+  lip: held-out-clip R^2 0.769 (ok); ratio p5/p50/p95 0.003 / 0.154 / 0.373
+  eye: held-out-clip R^2 0.698 (WEAK -- do not trust constraints on it); ratio p5/p50/p95 0.016 / 0.365 / 0.495
+  wrote /beegfs/work/achakraborti/SANG/cache/motion_lp/openness.json (60 clips, 2941 frames)
+  [60/80] 2941 frames, 415 s  (per clip: decode 0.4 s, landmarks 9.9 s)
+  lip: held-out-clip R^2 0.764 (ok); ratio p5/p50/p95 0.003 / 0.156 / 0.367
+  eye: held-out-clip R^2 0.715 (ok); ratio p5/p50/p95 0.015 / 0.367 / 0.489
+  wrote /beegfs/work/achakraborti/SANG/cache/motion_lp/openness.json (70 clips, 3441 frames)
+  [70/80] 3441 frames, 516 s  (per clip: decode 0.4 s, landmarks 9.8 s)
+  lip: held-out-clip R^2 0.763 (ok); ratio p5/p50/p95 0.004 / 0.158 / 0.369
+  eye: held-out-clip R^2 0.706 (ok); ratio p5/p50/p95 0.015 / 0.369 / 0.489
+  wrote /beegfs/work/achakraborti/SANG/cache/motion_lp/openness.json (80 clips, 3937 frames)
+  [80/80] 3937 frames, 613 s  (per clip: decode 0.4 s, landmarks 9.7 s)
+  lip: held-out-clip R^2 0.763 (ok); ratio p5/p50/p95 0.004 / 0.158 / 0.369
+  eye: held-out-clip R^2 0.706 (ok); ratio p5/p50/p95 0.015 / 0.369 / 0.489
+  wrote /beegfs/work/achakraborti/SANG/cache/motion_lp/openness.json (80 clips, 3937 frames)
