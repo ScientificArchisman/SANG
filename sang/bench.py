@@ -180,6 +180,32 @@ def fvd(*args, **kwargs) -> float:
     raise NotImplementedError("FVD lands with M1; see docs/recovery_plan_2026-09-16.md 5.6")
 
 
+def background_motion(real: np.ndarray, gen: np.ndarray, quiet_pct: float = 40.0,
+                      texture_pct: float = 70.0, eps: float = 0.05) -> dict:
+    """How much the BACKGROUND moves in `gen` compared with `real` ([T,H,W,3] uint8, same size, frames
+    aligned). Pixels are chosen where warping is visible and real video is still: off a central head
+    box (rows 10-80%, cols 20-80%), among the quietest `quiet_pct`% of the real video's pixels, and
+    textured (spatial gradient above the `texture_pct` percentile there) -- warping a flat wall moves
+    nothing visible. Motion = mean |frame-to-frame difference| in gray levels on those pixels.
+    Returns {bg_real, bg_gen, bg_ratio}; ratio ~1 = as still as the real video (eps floors a
+    perfectly static real background, e.g. a studio backdrop, so the ratio stays finite)."""
+    w = np.array([0.299, 0.587, 0.114], np.float32)
+    n = min(len(real), len(gen))
+    g = [x[:n].astype(np.float32) @ w for x in (real, gen)]
+    m = [np.abs(np.diff(x, axis=0)).mean(0) for x in g]
+    H, W = m[0].shape
+    head = np.zeros((H, W), bool)
+    head[int(.1 * H):int(.8 * H), int(.2 * W):int(.8 * W)] = True
+    static = (m[0] <= np.percentile(m[0], quiet_pct)) & ~head
+    gy, gx = np.gradient(g[0][0])
+    grad = gx ** 2 + gy ** 2
+    if not static.any():
+        return {"bg_real": float("nan"), "bg_gen": float("nan"), "bg_ratio": float("nan")}
+    tex = static & (grad > np.percentile(grad[static], texture_pct))
+    bg_real, bg_gen = float(m[0][tex].mean()), float(m[1][tex].mean())
+    return {"bg_real": bg_real, "bg_gen": bg_gen, "bg_ratio": bg_gen / max(bg_real, eps)}
+
+
 def self_check() -> None:
     a = (np.random.default_rng(0).random((4, 32, 32, 3)) * 255).astype(np.uint8)
     assert psnr(a, a) == float("inf")
@@ -190,6 +216,11 @@ def self_check() -> None:
     # eps regularisation biases the trace term by -2*d*eps, so 0 is only approached to ~1e-5.
     assert abs(_frechet(mu, cov, mu, cov)) < 1e-4
     assert abs(_frechet(mu, cov, mu + 1, cov) - 4.0) < 1e-4
+    rng = np.random.default_rng(1)
+    still = np.broadcast_to((rng.random((1, 64, 64, 3)) * 255).astype(np.uint8), (10, 64, 64, 3))
+    shaky = np.stack([np.roll(still[0], i % 2, axis=1) for i in range(10)])      # 1-px wobble everywhere
+    r = background_motion(still, shaky)
+    assert r["bg_real"] == 0.0 and r["bg_gen"] > 10 and background_motion(still, still)["bg_ratio"] == 0.0
     print("sang/bench.py self-check ok")
 
 

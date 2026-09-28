@@ -40,7 +40,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "third_party"))
 
-from sang.bench import ArcFace, csim, lse, psnr, ssim, write_mp4
+from sang.bench import background_motion, ArcFace, csim, lse, psnr, ssim, write_mp4
 from sang.motion import MotionCodec, decode_clip, from_target, motion_fidelity, to_target
 
 DEV = "cuda" if torch.cuda.is_available() else "cpu"
@@ -118,6 +118,7 @@ def main() -> None:
                    **motion_fidelity(m[:n], m_back[:n]),
                    "ssim": ssim(gt, gen),
                    "csim": csim(arc, gt[0], gen),
+                   **background_motion(gt, gen),
                    "motion_std": float(d["m"].float().std(0).mean())}
 
             if args.lse or dump:
@@ -157,7 +158,9 @@ def main() -> None:
                             ("rot_err_deg", "rot err deg", "6.2f"),
                             ("psnr", "PSNR (dB)", "6.2f"), ("psnr_freeze", "PSNR freeze0", "6.2f"),
                             ("psnr_face", "PSNR face", "6.2f"), ("ssim", "SSIM", "6.4f"),
-                            ("csim", "CSIM", "6.4f"), ("motion_std", "motion std", "6.4f")):
+                            ("csim", "CSIM", "6.4f"), ("motion_std", "motion std", "6.4f"),
+                            ("bg_ratio", "bg warp x", "6.2f"), ("bg_gen", "bg move gen", "6.3f"),
+                            ("bg_real", "bg move real", "6.3f")):
         v = col(key)
         print(f"  {label:<12} mean {np.mean(v):{fmt}}   median {np.median(v):{fmt}}   "
               f"min {np.min(v):{fmt}}   max {np.max(v):{fmt}}")
