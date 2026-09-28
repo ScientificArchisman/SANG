@@ -1,7 +1,7 @@
 # SANG-M research log
 
 **Living document: the single place for the plan, results, commands, ideas and references.**
-Last updated 2026-09-29. Update it whenever a run finishes, a decision is taken or an idea is added.
+Last updated 2026-09-29 (calibration done; voice path coded). Update it whenever a run finishes, a decision is taken or an idea is added.
 
 Conventions:
 - **measured** means a number from our own logs or scripts, with the job ID or file.
@@ -18,10 +18,10 @@ Conventions:
 | Best checkpoint | `runs/motion_12k_anneal/best.pt` (job 172696): val flow loss 1.1460 @ step 12k, audio_gain 1.50 |
 | Renderer ceiling (M0) | Passed: mouth corr 0.871, mouth amp 0.963, CSIM 0.906, stitching off (job 171519) |
 | Start-up jitter | **Fixed**, commit `a911f42`. Frames 0–10: 2.7× → 0.65× real (`--start null`) / 0.44× (`--start source`). §3.4 |
-| Naturalness rules (lip closure, blinks) | Code in `f88d50d`; **not yet measured**. Needs `openness.json`, then `naturalness.py` |
-| Openness calibration | First run hit the 4 h limit with nothing saved; made resumable in `eaadd54`; **rerun pending or in progress** |
+| Naturalness rules (lip closure, blinks) | Code in `f88d50d`; **`naturalness.py` next** (then the guided demo) |
+| Openness calibration | **Done** (job 173053, 80 clips / 3,937 frames): lip R² 0.763, eye R² 0.706 (borderline: it ranged 0.61–0.72 while clips were added; treat blink numbers as rough) |
 | HDTF benchmark | **Not started**. Blocked on: can the login node reach YouTube, or is HDTF already downloaded? |
-| Voice cloning | Researched, design fixed (§7.3); **not coded** |
+| Voice cloning | **Coded** (kNN-VC + voice bank + `--voice`; 9 CPU tests); needs `install_voice.sh`, then `eval_voice.py` |
 | Emotion control | Researched, design fixed (§7.4); **not coded**; first step is a data check |
 
 **Next runs, in order** (full commands in §6):
@@ -118,6 +118,10 @@ y [n, 42] ─► from_target(y, m_src) [n, 70] (scale, translation, 8 shape keyp
 | `scripts/calibrate_openness.py` | Fits lip/eye openness readouts → `openness.json` (resumable) |
 | `scripts/naturalness.py` | Rule metrics, real vs none/lips/blinks/both → `naturalness_stats.json` + `results/naturalness/*.json` |
 | `scripts/video_jitter.py` | Start-up jitter: per-frame-range pixel-acceleration ratio gen/real |
+| `sang/voice.py` | Voice cloning: kNN-VC loading, `VoiceBank` (enrol → VAD → 3 s chunks → speaker filter → layer-6 frames), `convert`, `knn_features`, `SpeakerEncoder`, CER |
+| `scripts/enroll_voice.py` | Build or grow `voices/<name>/` from a person's recordings |
+| `scripts/eval_voice.py` | Speaker similarity to the target vs bank size (5/10/30/60 s/all), leakage, timing, optional Whisper CER, on unseen val speakers |
+| `bash_scripts/install_voice.sh` | Login node: clone kNN-VC, cache its weights, fetch WavLM-base-plus-sv (`--asr`: Whisper-large-v3) |
 | `tests/test_motion_model.py`, `tests/test_naturalness.py` | 23 CPU tests (all pass) |
 | `configs/train_motion.yaml` | All hyperparameters, each with its source |
 
@@ -255,6 +259,10 @@ huggingface-cli download facebook/wav2vec2-xlsr-53-espeak-cv-ft   # (already in 
 | Openness calibration | `sbatch --time=08:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/calibrate_openness.py` (resumable; rerun the same line after a timeout) |
 | Naturalness metrics | `sbatch bash_scripts/job.sh scripts/naturalness.py --ckpt runs/motion_12k_anneal/best.pt` |
 | Jitter (laptop) | `python scripts/video_jitter.py results/extras/<dir>/*_sbs.mp4` |
+| Voice install (login) | `bash bash_scripts/install_voice.sh [--asr]` |
+| Voice eval | `sbatch bash_scripts/job.sh scripts/eval_voice.py --targets 20 [--asr openai/whisper-large-v3]` |
+| Enrol a person | `sbatch bash_scripts/job.sh scripts/enroll_voice.py --name <name> --audio <files/folders> [--ref clean.wav]` (rerun with more audio to grow the bank) |
+| Talk in their voice | `python scripts/infer_motion.py ... --voice voices/<name>` (or `--voice <audio folder>` to enrol on the fly); `demo_motion.py --voice voices/<name>` adds `*_voice-<name>_gen.mp4` |
 | CPU tests | `python -m pytest tests/test_motion_model.py tests/test_naturalness.py -q` |
 
 ---
@@ -263,11 +271,11 @@ huggingface-cli download facebook/wav2vec2-xlsr-53-espeak-cv-ft   # (already in 
 
 | # | Run | Command | Gate / what to look at |
 |---|---|---|---|
-| 1 | Openness calibration | `sbatch --time=08:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/calibrate_openness.py` | Both `R^2 ≥ 0.7`. First progress line: if landmarks take ≥ 1 s/frame, the face detector is on CPU |
+| 1 | ~~Openness calibration~~ | done, job 173053 | lip 0.763, eye 0.706 |
 | 2 | Naturalness metrics | `sbatch bash_scripts/job.sh scripts/naturalness.py --ckpt runs/motion_12k_anneal/best.pt` | Compare with the `real` column: `closure_viol` toward 0.10, `blinks_per_min` and `blink_at_pause` toward real, `lip_corr` not lower, `beat_align` vs `beat_chance` |
 | 3 | Guided demo | `sbatch bash_scripts/job.sh scripts/demo_motion.py --ckpt runs/motion_12k_anneal/best.pt --n 6 --guide both --start source --out results/extras/demo_guided` | Watch p/b/m closures and blinks |
 | 4 | Default start mode | Watch `results/extras/demo_fix/*_gen.mp4` vs `*_start-source_gen.mp4` | If `source` looks natural, make it the default |
-| 5 | Voice path (after coding, §7.3) | `python scripts/infer_motion.py ... --voice <folder>` | Speaker similarity per tier; CER; LSE on original vs converted track |
+| 5 | Voice install + eval | `bash bash_scripts/install_voice.sh --asr` (login), then `sbatch bash_scripts/job.sh scripts/eval_voice.py --targets 20 --asr openai/whisper-large-v3` | `sim_target` rises with bank seconds toward the 'real T vs T' ceiling; `sim_source` falls; `env_corr` ≈ 1; CER modest |
 | 6 | Emotion data check (after coding, §7.4) | HSEmotion pass over the cache → distribution report | Enough non-neutral mass, or add CREMA-D |
 | 7 | HDTF protocol (§7.7) | Needs HDTF on disk | GT row, GT-motion row, SANG row, baselines |
 
@@ -348,7 +356,9 @@ What they are: explicit knowledge of how faces move in speech, combined with the
   - Speaker similarity (2 verifiers, real-vs-real ceiling); Whisper-large-v3 CER vs the original's transcript; UTMOS; emotion agreement original vs converted.
   - LSE on the same video with the original vs the converted track.
 - **Decided:** no watermarking (2026-09-28).
-- **Status:** NEXT (code: shared pass + kNN-VC + enrolment + `--voice <folder>` in `infer_motion.py` / `demo_motion.py`).
+- **Status:** CODED (2026-09-29). Not yet run on the cluster.
+  - Deviation from the report: the voice branch uses **kNN-VC's own WavLM** (a second pass) instead of sharing the face model's HF WavLM pass. The prematched vocoder was trained on unilm WavLM-Large layer-6 features of raw audio, so this removes a silent feature mismatch and the `--start source` padding issue. It costs well under a second per clip.
+  - Not yet built: the zero-shot fallback for banks under ~30 s (MKL-VC, training-free on the same features, or Seed-VC v1), Demucs / DeepFilterNet cleaning, and a second speaker verifier (ECAPA) for the metric.
 
 ### 7.4 Emotion control
 

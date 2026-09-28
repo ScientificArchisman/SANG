@@ -61,6 +61,10 @@ def main() -> None:
     ap.add_argument("--start", default="null", choices=["null", "source"],
                     help="first window: 'null' = the dropped-prefix configuration training used; "
                          "'source' = continue from the source photo's own motion after 0.4 s of silence")
+    ap.add_argument("--voice", default=None,
+                    help="also write <stem>_voice-<name>_gen.mp4: the same video speaking in this voice bank's "
+                         "voice (voices/<name> from scripts/enroll_voice.py, or a folder of the person's audio)")
+    ap.add_argument("--voice-k", type=int, default=None)
     args = ap.parse_args()
 
     dev = "cuda"
@@ -81,6 +85,12 @@ def main() -> None:
     codec = MotionCodec(device=dev)
     wavlm = load_wavlm(cfg.get("audio_encoder", "wavlm-large"), device=dev)
     guide = Guide.load(Path(cfg["cache_dir"]), dev) if args.guide != "none" else None
+    knnvc = bank = None
+    if args.voice:
+        from sang.voice import SpeakerEncoder, load_knnvc, voice_bank
+        knnvc = load_knnvc(dev)
+        enrolling = not (Path(args.voice) / "bank.pt").exists()
+        bank = voice_bank(args.voice, knnvc, SpeakerEncoder(dev) if enrolling else None)
 
     for k, clip in enumerate(clips):
         try:
@@ -113,6 +123,10 @@ def main() -> None:
                     + ("" if args.start == "null" else f"_start-{args.start}"))
             write_mp4(np.concatenate([real[:n], gen[:n]], axis=2), out / f"{stem}_sbs.mp4", fps=FPS, audio=m4a)
             write_mp4(gen[:n], out / f"{stem}_gen.mp4", fps=FPS, audio=m4a)
+            if bank is not None:                         # face from the ORIGINAL audio; only the track changes
+                from sang.voice import convert, save_wav
+                vw = save_wav(convert(wav[0], bank, knnvc, k=args.voice_k), out / f"{stem}_voice-{bank.dir.name}.wav")
+                write_mp4(gen[:n], out / f"{stem}_voice-{bank.dir.name}_gen.mp4", fps=FPS, audio=vw)
             print(f"[{k + 1}/{len(clips)}] {stem}_sbs.mp4  ({n / FPS:.1f} s) {info or ''}", flush=True)
         except Exception as e:
             print(f"[{k + 1}/{len(clips)}] SKIP {Path(clip).name}: {type(e).__name__}: {e}", flush=True)
