@@ -140,6 +140,38 @@ def test_sample_and_long_generation():
     assert y.shape == (1, n, T_DIM) and torch.isfinite(y).all()
 
 
+def test_first_window_is_the_training_dropped_prefix_configuration():
+    """Training never puts target frames at positions 0..P-1: a dropped prefix is P null tokens
+    there. generate() must reproduce that, not run the window with no prefix slot at all."""
+    torch.manual_seed(0)
+    m = _model().eval()
+    _unzero(m)
+    ref, audio = torch.randn(1, REF_DIM), torch.randn(1, 2 * L, A)
+    y = generate(m, audio, ref, L, window=L, n_prefix=P, steps=3, generator=torch.Generator().manual_seed(3))
+    junk = torch.randn(1, P, T_DIM)                      # a dropped prefix's content must not matter
+    want = sample(m, torch.cat([torch.zeros(1, 2 * P, A), audio], 1), ref, L, prefix=junk, steps=3,
+                  generator=torch.Generator().manual_seed(3), prefix_keep=torch.zeros(1, dtype=torch.bool))
+    assert torch.allclose(y, want, atol=1e-5)
+    old = sample(m, audio, ref, L, prefix=None, steps=3, generator=torch.Generator().manual_seed(3))
+    assert not torch.allclose(y, old, atol=1e-3)           # the old, never-trained configuration
+
+
+def test_start_prefix_continues_from_the_given_frames():
+    torch.manual_seed(0)
+    m = _model().eval()
+    _unzero(m)
+    ref, start = torch.randn(1, REF_DIM), torch.randn(1, P, T_DIM)
+    n = 2 * L + 3
+    audio = torch.randn(1, 2 * (P + n), A)                 # P lead frames before frame 0
+    y = generate(m, audio, ref, n, window=L, n_prefix=P, steps=2, start=start,
+                 generator=torch.Generator().manual_seed(5))
+    assert y.shape == (1, n, T_DIM)
+    g = torch.Generator().manual_seed(5)
+    w0 = sample(m, audio[:, : 2 * (P + L)], ref, L, prefix=start, steps=2, generator=g)
+    w1 = sample(m, audio[:, 2 * L: 2 * (P + 2 * L)], ref, L, prefix=w0[:, -P:], steps=2, generator=g)
+    assert torch.allclose(y[:, :L], w0, atol=1e-5) and torch.allclose(y[:, L:2 * L], w1, atol=1e-5)
+
+
 def test_norm_round_trip():
     y, kp = torch.randn(100, T_DIM) * 3 + 1, torch.randn(100, 63)
     n = Norm.fit(y, kp)
