@@ -20,6 +20,7 @@ Conventions:
 | Start-up jitter | **Fixed**, commit `a911f42`. Frames 0–10: 2.7× → 0.65× real (`--start null`) / 0.44× (`--start source`). §3.4 |
 | Naturalness rules (lip closure, blinks) | Code in `f88d50d`; **`naturalness.py` next** (then the guided demo) |
 | Openness calibration | **Done** (job 173053, 80 clips / 3,937 frames): lip R² 0.763, eye R² 0.706 (borderline: it ranged 0.61–0.72 while clips were added; treat blink numbers as rough) |
+| Background warping | **Diagnosed** (jobs 173579–84): the renderer leaks ANY keypoint motion into the background (real 70-d: 1.25x; 42-d: 1.5x; +real s,t: 1.89x; generated demos 2.4x). The held-keypoint convention changes nothing (2.36x → 2.41x). Stitching held real motion still (0.95x) and costs ~0 on the 42-d target → **next: `--stitch` test**; then slot-0 background lock / compositing. See `reports/SANG background warping fix.md` (Update section) |
 | HDTF benchmark | **Not started**. Blocked on: can the login node reach YouTube, or is HDTF already downloaded? |
 | Voice cloning | **Coded** (kNN-VC + voice bank + `--voice`; 9 CPU tests); needs `install_voice.sh`, then `eval_voice.py` |
 | Emotion control | Researched, design fixed (§7.4); **not coded**; first step is a data check |
@@ -207,6 +208,7 @@ Generated/real pixel acceleration (median over clips; lower = steadier):
 | 14 | Calibration lost 4 h of work | Wrote only at the end; decoded every frame | Resumable, checkpoint every 10 clips, decode only landmarked frames (`eaadd54`) |
 | 15 | Push 403 from the laptop | Wrong gh account active | `gh auth switch --user ScientificArchisman && gh auth setup-git` |
 | 16 | Cluster git ECONNREFUSED | Stale VS Code askpass socket | New terminal, or `unset GIT_ASKPASS VSCODE_GIT_ASKPASS_MAIN VSCODE_GIT_IPC_HANDLE`; don't push from the cluster |
+| 17 | Background (and torso, padding bars) wobbles; generated bg motion 2.35x real | The 42-d target holds scale, translation and 8 keypoints from the photo and rotated those keypoints' δ with the head; the 0.5 dB 42-vs-70 gate was only run with stitching ON, which hid a 7.5 dB gap (jobs 173138–41) | Convention change had no effect; widening the target improves placement (face PSNR 16.8→24.5) but moves the background MORE. Fix at render time: stitching (testing), then slot-0 lock / compositing |
 
 ---
 
@@ -500,6 +502,7 @@ TalkVid 2508.13618 · TalkVerse 2512.14938 · HDTF · EGT (group-robust generati
 |---|---|
 | `docs/bidirectional_design_2026-09-23.md` | Why the bidirectional DiT; LivePortrait close reading; decision evidence |
 | `reports/SANG talking head improvements.md` + `research_notes/SANG talking head improvements/` | Ranked improvements, paper directions, HDTF comparability |
+| `reports/SANG background warping fix.md` + `research_notes/SANG background warping fix/` | Background-warping diagnosis (42-d round trip), fix ladder (held convention → wider target → slot-0 background lock → compositing → renderer fine-tune), metric upgrade, phased plan |
 | `reports/SANG jitter emotion and voice cloning.md` + `research_notes/SANG jitter emotion and voice cloning/` | Jitter diagnosis, emotion design, voice-cloning tiers and fusion, evaluation, phased plan |
 | `docs/sota_review_2026.md`, `docs/idea.md`, `docs/recovery_plan_2026-09-16.md`, `docs/v3_improvement_plan.md` | Earlier (pre-motion-space) history |
 | Slides | https://claude.ai/artifact/WzsmgbTKsr1KyZEGEvEH7c (inspiration, architecture, SOTA + Ours) |

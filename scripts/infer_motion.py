@@ -54,8 +54,9 @@ def main() -> None:
     ap.add_argument("--cfg", type=float, default=None, help="audio guidance; default = the run's cfg_audio")
     ap.add_argument("--no-lip-norm", action="store_true", help="skip LivePortrait's flag_normalize_lip")
     ap.add_argument("--stitch", action="store_true",
-                    help="LivePortrait's stitching: only for pasting back into the full photo. It pulls "
-                         "keypoints toward the source and cost 5.4 dB PSNR in M0 (jobs 171518 vs 171519)")
+                    help="LivePortrait's stitching module: pins shoulders and nearby background to the source. "
+                         "Costs ~7 dB vs ground truth on real 70-d motion (jobs 171518/9, 173138/9) but ~0 on the "
+                         "42-d target (173140/1); candidate background-warp fix, see reports/SANG background warping fix.md")
     ap.add_argument("--raw", action="store_true", help="use the training weights instead of the EMA")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--guide", default="none", choices=["none", "lips", "blinks", "both"],
