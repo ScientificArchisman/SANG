@@ -1,0 +1,76 @@
+[11:47:08] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+           Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+[11:47:09] Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[11:47:10] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+           Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+[11:47:11] FaceAnalysisDIY warmup time: 0.098s           face_analysis_diy.py:79
+           LandmarkRunner warmup time: 0.143s        human_landmark_runner.py:95
+[33mWARNING: onnxruntime is not built with CUDA 12.x support. Please install a version that supports CUDA 12.x, or call preload_dlls with cuda=False and cudnn=False.[0m
+[  1/20] -04ZSRBGcsk_NA_1150.624_1155  131f  PSNR 16.76 (freeze 15.54)  mouth corr 0.634 amp 0.66  rot 0.87deg  CSIM 0.8822
+[  2/20] -04ZSRBGcsk_NA_451.968_462.2  200f  PSNR 18.74 (freeze 15.14)  mouth corr 0.872 amp 0.87  rot 0.63deg  CSIM 0.8480
+[  3/20] SKIP -0F1owya2oo_NA_106.956_117.100.mp4: ValueError: only 10 frames before a shot cut
+[  4/20] -0F1owya2oo_NA_189.664_197.3  193f  PSNR 21.38 (freeze 17.71)  mouth corr 0.909 amp 0.96  rot 0.60deg  CSIM 0.9378
+[  5/20] -0F1owya2oo_NA_64.164_71.888  193f  PSNR 20.79 (freeze 17.85)  mouth corr 0.915 amp 0.98  rot 1.13deg  CSIM 0.9061
+[  6/20] -0F1owya2oo_NA_72.088_86.403  200f  PSNR 21.39 (freeze 17.28)  mouth corr 0.913 amp 0.93  rot 0.68deg  CSIM 0.9277
+[  7/20] -1PHi-xcDXg_NA_13.266_29.900  200f  PSNR 19.11 (freeze 15.11)  mouth corr 0.881 amp 0.93  rot 0.64deg  CSIM 0.9025
+[  8/20] -1PHi-xcDXg_NA_195.733_204.1  200f  PSNR 18.25 (freeze 12.86)  mouth corr 0.888 amp 0.98  rot 0.45deg  CSIM 0.9255
+[  9/20] -1PHi-xcDXg_NA_301.833_309.4  190f  PSNR 16.87 (freeze 14.49)  mouth corr 0.872 amp 0.95  rot 0.47deg  CSIM 0.9144
+[ 10/20] -1PHi-xcDXg_NA_746.066_753.3  181f  PSNR 16.82 (freeze 13.71)  mouth corr 0.913 amp 0.95  rot 0.54deg  CSIM 0.9050
+[ 11/20] -1PHi-xcDXg_NA_892.033_901.3  200f  PSNR 13.72 (freeze 12.08)  mouth corr 0.313 amp 1.30  rot 7.35deg  CSIM 0.6951
+[ 12/20] -1SmUivH9dQ_NA_0.100_22.756   200f  PSNR 23.72 (freeze 15.12)  mouth corr 0.827 amp 0.93  rot 0.49deg  CSIM 0.8818
+[ 13/20] -1SmUivH9dQ_NA_117.617_143.7  200f  PSNR 28.19 (freeze 18.18)  mouth corr 0.893 amp 0.98  rot 0.47deg  CSIM 0.9378
+[ 14/20] -1SmUivH9dQ_NA_155.121_168.9  200f  PSNR 23.34 (freeze 15.68)  mouth corr 0.887 amp 1.02  rot 0.80deg  CSIM 0.9046
+[ 15/20] -1SmUivH9dQ_NA_250.483_259.1  200f  PSNR 26.66 (freeze 21.90)  mouth corr 0.885 amp 0.97  rot 0.30deg  CSIM 0.9214
+[ 16/20] -1SmUivH9dQ_NA_280.546_286.9  160f  PSNR 23.26 (freeze 14.56)  mouth corr 0.888 amp 0.95  rot 0.31deg  CSIM 0.9407
+[ 17/20] -1SmUivH9dQ_NA_31.498_39.906  200f  PSNR 23.12 (freeze 17.89)  mouth corr 0.861 amp 0.90  rot 0.87deg  CSIM 0.9010
+[ 18/20] -1SmUivH9dQ_NA_336.602_346.9  200f  PSNR 27.85 (freeze 23.96)  mouth corr 0.907 amp 0.96  rot 0.33deg  CSIM 0.9365
+[ 19/20] -1SmUivH9dQ_NA_365.064_406.9  200f  PSNR 25.25 (freeze 20.82)  mouth corr 0.787 amp 0.97  rot 0.69deg  CSIM 0.9057
+[ 20/20] -1SmUivH9dQ_NA_414.814_445.4  200f  PSNR 29.47 (freeze 24.33)  mouth corr 0.834 amp 0.98  rot 0.53deg  CSIM 0.9402
+
+================================================================
+M0 motion ceiling  |  19 clips, 1 skipped  |  256 px  |  target 42-d  |  relative=False  |  stitch=False  |  held=camera  |  real=s+t
+================================================================
+  clips truncated at a shot cut (*): 0 of 19
+  mouth corr   mean  0.836   median  0.885   min  0.313   max  0.915
+  mouth amp    mean  0.956   median  0.957   min  0.659   max  1.298
+  eyes corr    mean  0.840   median  0.891   min  0.175   max  0.940
+  brow corr    mean  0.845   median  0.901   min  0.192   max  0.952
+  rot err deg  mean   0.96   median   0.60   min   0.30   max   7.35
+  PSNR (dB)    mean  21.83   median  21.39   min  13.72   max  29.47
+  PSNR freeze0 mean  17.06   median  15.68   min  12.08   max  24.33
+  PSNR face    mean  24.50   median  24.56   min  12.74   max  32.24
+  SSIM         mean 0.7879   median 0.7874   min 0.5643   max 0.9285
+  CSIM         mean 0.9007   median 0.9061   min 0.6951   max 0.9407
+  motion std   mean 0.1558   median 0.1453   min 0.0660   max 0.2649
+  bg warp x    mean   2.42   median   1.89   min   0.85   max   4.83
+  bg move gen  mean  0.683   median  0.563   min  0.110   max  2.170
+  bg move real mean  0.403   median  0.210   min  0.013   max  1.703
+
+GATE                       result       value
+  mouth corr >= 0.85       FAIL         0.836
+  mouth amp in 0.75-1.25   PASS         0.956
+  CSIM >= 0.85             PASS         0.9007
+
+M0 FAILED -- do not cache yet; read the docstring
+
+first skips: [('-0F1owya2oo_NA_106.956_117.100.mp4', 'ValueError: only 10 frames before a shot cut')]
