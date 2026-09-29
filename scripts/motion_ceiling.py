@@ -41,7 +41,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.bench import background_motion, ArcFace, csim, lse, psnr, ssim, write_mp4
-from sang.motion import MotionCodec, decode_clip, from_target, motion_fidelity, to_target
+from sang.motion import EXPR_KP, MotionCodec, decode_clip, from_target, motion_fidelity, to_target
 
 DEV = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -72,6 +72,12 @@ def main() -> None:
                     help="42 = what the generator actually predicts: rotation + 39 brow/eye/mouth "
                          "coords, with scale, translation and the 24 shape coords held at frame 0. "
                          "The gap to --target 70 is the cost of that choice, measured on our data.")
+    ap.add_argument("--real", nargs="*", default=[], choices=["s", "t", "held"],
+                    help="with --target 42: take these parts from the REAL per-frame motion instead of the "
+                         "source frame -- s = scale, t = translation, held = the 8 non-driven keypoints' "
+                         "camera-frame delta. Shows what predicting them would buy (all three = the 70-d render)")
+    ap.add_argument("--held", default="camera", choices=["camera", "head"],
+                    help="how the 8 non-driven keypoints follow the pose: camera = upstream LivePortrait convention (default); head = rotate them with the head (SANG before 2026-09-29; suspected background-warp cause)")
     ap.add_argument("--lse", action="store_true", help="also run syncnet_python (slow, needs audio)")
     ap.add_argument("--dump", default="", help="directory for side-by-side mp4s of the first 3 clips")
     args = ap.parse_args()
@@ -98,7 +104,15 @@ def main() -> None:
             gt = resize(d["crops"], args.res)               # ground truth IS the crop, not the raw frame
             m = d["m"].float()
             if args.target == 42:                           # frame 0 plays the source image
-                m = from_target(to_target(m), m[:1])
+                m42 = from_target(to_target(m), m[:1], held=args.held)
+                if "s" in args.real:
+                    m42[:, 0] = m[:, 0]
+                if "t" in args.real:
+                    m42[:, 4:7] = m[:, 4:7]
+                if "held" in args.real:
+                    cols = [7 + 3 * k + a for k in range(21) if k not in EXPR_KP for a in range(3)]
+                    m42[:, cols] = m[:, cols]
+                m = m42
             # The source is frame 0's crop under the SAME box, so source, motion and ground truth
             # share one coordinate frame. Re-cropping frame 0 on its own would reintroduce the offset.
             state = codec.source_state(d["crops"][0], precropped=True)
@@ -151,7 +165,7 @@ def main() -> None:
         return v if len(v) else np.array([float("nan")])
 
     print(f"\n{'=' * 64}\nM0 motion ceiling  |  {len(rows)} clips, {len(skipped)} skipped  "
-          f"|  {args.res} px  |  target {args.target}-d  |  relative={args.relative}  |  stitch={not args.no_stitch}\n{'=' * 64}")
+          f"|  {args.res} px  |  target {args.target}-d  |  relative={args.relative}  |  stitch={not args.no_stitch}  |  held={args.held if args.target == 42 else '-'}  |  real={'+'.join(args.real) or '-'}\n{'=' * 64}")
     print(f"  clips truncated at a shot cut (*): {sum(r['cut'] for r in rows)} of {len(rows)}")
     for key, label, fmt in (("mouth_corr", "mouth corr", "6.3f"), ("mouth_amp", "mouth amp", "6.3f"),
                             ("eyes_corr", "eyes corr", "6.3f"), ("brow_corr", "brow corr", "6.3f"),

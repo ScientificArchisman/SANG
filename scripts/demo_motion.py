@@ -61,6 +61,8 @@ def main() -> None:
     ap.add_argument("--start", default="null", choices=["null", "source"],
                     help="first window: 'null' = the dropped-prefix configuration training used; "
                          "'source' = continue from the source photo's own motion after 0.4 s of silence")
+    ap.add_argument("--held", default="camera", choices=["camera", "head"],
+                    help="how the 8 non-driven keypoints follow the pose: camera = upstream LivePortrait convention (default); head = rotate them with the head (SANG before 2026-09-29; suspected background-warp cause)")
     ap.add_argument("--voice", default=None,
                     help="also write <stem>_voice-<name>_gen.mp4: the same video speaking in this voice bank's "
                          "voice (voices/<name> from scripts/enroll_voice.py, or a folder of the person's audio)")
@@ -114,13 +116,14 @@ def main() -> None:
                 audio = wavlm.encode(torch.nn.functional.pad(wav, (lead * SR // FPS, 0))[None].to(dev)).float()
             y, info = guided_generate(model, audio, ref, len(frames), cfg, norm, wav[0], guide, args.guide,
                                       args.seed, cfg_audio=args.cfg, start=start)
-            m = from_target(norm.untarget(y[0]), m_src)
+            m = from_target(norm.untarget(y[0]), m_src, held=args.held)
             gen = codec.render(src, m.cpu(), relative=False, stitch=False)
 
             n = min(len(real), len(gen))
             m4a = Path(clip).with_suffix(".m4a")     # starts at frame 0 too; the mux cuts it with -shortest
             stem = (f"{k:02d}_{Path(clip).stem[:40]}" + ("" if args.guide == "none" else f"_{args.guide}")
-                    + ("" if args.start == "null" else f"_start-{args.start}"))
+                    + ("" if args.start == "null" else f"_start-{args.start}")
+                    + ("" if args.held == "camera" else f"_held-{args.held}"))
             write_mp4(np.concatenate([real[:n], gen[:n]], axis=2), out / f"{stem}_sbs.mp4", fps=FPS, audio=m4a)
             write_mp4(gen[:n], out / f"{stem}_gen.mp4", fps=FPS, audio=m4a)
             if bank is not None:                         # face from the ORIGINAL audio; only the track changes
