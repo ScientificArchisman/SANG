@@ -63,6 +63,8 @@ def main() -> None:
     ap.add_argument("--start", default="null", choices=["null", "source"],
                     help="first window: 'null' = the dropped-prefix configuration training used; "
                          "'source' = continue from the source photo's own motion after 0.4 s of silence")
+    ap.add_argument("--held", default="camera", choices=["camera", "head"],
+                    help="how the 8 non-driven keypoints follow the pose: camera = upstream LivePortrait convention (default); head = rotate them with the head (SANG before 2026-09-29; suspected background-warp cause)")
     ap.add_argument("--voice", default=None,
                     help="speak in this person's voice: a voice bank dir (voices/<name>) or their audio files")
     ap.add_argument("--voice-k", type=int, default=None, help="kNN-VC k; default grows with the bank size")
@@ -97,7 +99,7 @@ def main() -> None:
                               args.seed, steps=args.steps, cfg_audio=args.cfg, start=start)
     if info:
         print(f"constraints: {info}")
-    m = from_target(norm.untarget(y[0]), m_src)                       # [n, 70], source scale/t/shape
+    m = from_target(norm.untarget(y[0]), m_src, held=args.held)     # [n, 70], source scale/t/shape
     frames = codec.render(src, m.cpu(), relative=False, stitch=args.stitch)
     track = Path(args.audio)
     if args.voice:

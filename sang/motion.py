@@ -69,18 +69,31 @@ def to_target(m: torch.Tensor) -> torch.Tensor:
     return torch.cat([m[:, [2, 1, 3]], exp_head[:, list(EXPR_KP)].reshape(-1, 3 * len(EXPR_KP))], 1)
 
 
-def from_target(y: torch.Tensor, base: torch.Tensor) -> torch.Tensor:
+def from_target(y: torch.Tensor, base: torch.Tensor, held: str = "camera") -> torch.Tensor:
     """[N,42] target + [N or 1,70] base motion -> [N,70], ready for MotionCodec.render(relative=False).
 
-    Scale, translation and the 24 shape coordinates come from `base` (the source frame). Those
-    shape coordinates are held fixed in the HEAD frame, so they rotate rigidly with the new pose."""
+    Scale, translation and the 24 non-driven expression coordinates (keypoints 0,3,4,5,7,8,9,10)
+    come from `base` (the source frame). The 39 driven coordinates are the target's head-frame
+    expression, rotated into the camera frame by the NEW pose. `held` sets how the non-driven ones
+    follow a pose change:
+
+      'camera' (default) -- their delta stays the source's camera-frame delta and only x_c rotates,
+               x = s(x_c R + delta) + t. This is upstream LivePortrait's absolute driving, and the
+               paper (arXiv 2407.03168 sec. 3.2) reports that rotating delta with the head "leads to
+               overly flexible learned expressions delta, causing texture flickering".
+      'head'   -- their delta is held in the HEAD frame, so it rotates rigidly with the pose. SANG's
+               original choice; its error is 0 at the source pose and grows with every rotation away
+               from it -- the suspected cause of the background warping (docs/research_log.md)."""
+    if held not in ("camera", "head"):
+        raise ValueError(f"held must be 'camera' or 'head', got {held!r}")
     y, base = y.float(), base.float().expand(y.shape[0], -1)
-    exp_head = base[:, 7:M_DIM].reshape(-1, 21, 3) @ _rot(base).transpose(1, 2)
-    exp_head = exp_head.clone()
-    exp_head[:, list(EXPR_KP)] = y[:, 3:].reshape(-1, len(EXPR_KP), 3)
     out = base.clone()
     out[:, 2], out[:, 1], out[:, 3] = y[:, 0], y[:, 1], y[:, 2]
-    out[:, 7:M_DIM] = (exp_head @ _rot(out)).reshape(-1, EXP_DIM)            # back to camera frame
+    R_new = _rot(out)
+    exp = base[:, 7:M_DIM].reshape(-1, 21, 3)
+    exp = exp @ _rot(base).transpose(1, 2) @ R_new if held == "head" else exp.clone()
+    exp[:, list(EXPR_KP)] = y[:, 3:].reshape(-1, len(EXPR_KP), 3) @ R_new   # head frame -> camera frame
+    out[:, 7:M_DIM] = exp.reshape(-1, EXP_DIM)
     return out
 
 
@@ -459,6 +472,14 @@ def self_check() -> None:
     y = to_target(m)                                      # pose change must not move head-frame exp
     m2 = from_target(torch.cat([y[:, :3] + 10.0, y[:, 3:]], 1), m)
     assert torch.allclose(to_target(m2)[:, 3:], y[:, 3:], atol=1e-4), "exp is not pose-invariant"
+    assert torch.allclose(from_target(y, m, held="head"), m, atol=1e-4), "head-held round trip broke"
+    held_kp = [k for k in range(21) if k not in EXPR_KP]
+    mh = from_target(torch.cat([y[:, :3] + 10.0, y[:, 3:]], 1), m, held="head")
+    mc = from_target(torch.cat([y[:, :3] + 10.0, y[:, 3:]], 1), m, held="camera")
+    cam = lambda v: v[:, 7:M_DIM].reshape(-1, 21, 3)
+    assert torch.allclose(cam(mc)[:, held_kp], cam(m)[:, held_kp]), "camera-held delta must not move"
+    assert torch.allclose(cam(mc)[:, list(EXPR_KP)], cam(mh)[:, list(EXPR_KP)], atol=1e-5), "driven kps differ"
+    assert not torch.allclose(cam(mc)[:, held_kp], cam(mh)[:, held_kp], atol=1e-3), "conventions identical?"
 
     A = np.array([[0.5, 0.1, 30.0], [-0.1, 0.5, 40.0], [0.0, 0.0, 1.0]])   # 3x3, as upstream returns
     assert np.allclose(o2c(A), np.linalg.inv(A)[:2]) and np.allclose(o2c(A[:2]), o2c(A)), "o2c"
