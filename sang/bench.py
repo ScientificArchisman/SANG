@@ -102,7 +102,7 @@ def write_mp4(frames_rgb: np.ndarray, path: Path, fps: float = 25.0,
     return path
 
 
-def lse(video: Path, workdir: Path | None = None, ref: str = "sang") -> tuple[float, float, float]:
+def lse(video: Path, workdir: Path | None = None, ref: str = "sang", verbose: bool = False) -> tuple[float, float, float]:
     """(offset, LSE-D, LSE-C) for one mp4 WITH audio, via joonson/syncnet_python.
 
     LSE-D is 'Min dist' and LSE-C is 'Confidence' in run_syncnet.py's output -- the two numbers
@@ -130,19 +130,30 @@ def lse(video: Path, workdir: Path | None = None, ref: str = "sang") -> tuple[fl
         print(f"  [lse] syncnet_python failed on {Path(video).name}: {type(e).__name__}\n{tail}", flush=True)
         return float("nan"), float("nan"), float("nan")
 
-    def grab(label: str) -> float:
-        for line in out.splitlines():
-            if label.lower() in line.lower():
-                for tok in line.replace(":", " ").split():
-                    try:
-                        return float(tok)
-                    except ValueError:
-                        continue
-        return float("nan")
-    res = grab("AV offset"), grab("Min dist"), grab("Confidence")
+    res, lines = parse_syncnet(out)
+    if verbose:
+        print("  [lse] matched lines:\n    " + "\n    ".join(lines), flush=True)
     if any(np.isnan(r) for r in res):
         print(f"  [lse] could not parse run_syncnet.py output for {Path(video).name}:\n{out[-800:]}", flush=True)
     return res
+
+
+def parse_syncnet(out: str) -> tuple[tuple[float, float, float], list[str]]:
+    """(AV offset, Min dist, Confidence) from run_syncnet.py's text, plus the lines they came from.
+
+    The number is the one right AFTER the label. Since syncnet_python moved to logging (2026-04), each
+    line starts with a timestamp, and taking the line's first number returned the hour -- a run at
+    10:xx read (10.0, 10.0, 10.0)."""
+    import re
+    vals, lines = [], []
+    for label in ("AV offset", "Min dist", "Confidence"):
+        m = re.search(rf"{re.escape(label)}\s*:?\s*([-+]?\d+(?:\.\d+)?)", out, flags=re.IGNORECASE)
+        vals.append(float(m.group(1)) if m else float("nan"))
+        if m:
+            start = out.rfind("\n", 0, m.start()) + 1
+            end = out.find("\n", m.end())
+            lines.append(out[start:end if end >= 0 else None].strip())
+    return tuple(vals), lines
 
 
 # ------------------------------------------------------------------ distribution metrics
@@ -224,6 +235,11 @@ def self_check() -> None:
     shaky = np.stack([np.roll(still[0], i % 2, axis=1) for i in range(10)])      # 1-px wobble everywhere
     r = background_motion(still, shaky)
     assert r["bg_real"] == 0.0 and r["bg_gen"] > 10 and background_motion(still, still)["bg_ratio"] == 0.0
+    log = ("2026-09-30 10:12:33,512 - INFO - AV offset: \t3\n"
+           "2026-09-30 10:12:33,513 - INFO - Min dist: \t5.353\n"
+           "2026-09-30 10:12:33,513 - INFO - Confidence: \t10.021\n")
+    assert parse_syncnet(log)[0] == (3.0, 5.353, 10.021), parse_syncnet(log)
+    assert parse_syncnet("AV offset: \t-2\nMin dist: \t7.1\nConfidence: \t6.5")[0] == (-2.0, 7.1, 6.5)
     print("sang/bench.py self-check ok")
 
 
