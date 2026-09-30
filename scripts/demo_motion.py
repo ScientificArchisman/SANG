@@ -6,7 +6,8 @@
 For each clip: frame 0 is the source image, the clip's own speech drives the model, and the real
 video is cropped with the SAME box as the source, so the two halves line up. Clips come from the
 validation speakers of the run's own split, so nothing shown was trained on. Writes
-<out>/<k>_<clip>_sbs.mp4 (512x1024: real left, generated right) and <k>_<clip>_gen.mp4.
+<out>/<k>_<clip>_sbs.mp4 (512x1024: real left, generated right), <k>_<clip>_gen.mp4, and
+<clip>_real.mp4 (the real crop alone, for scripts/eval_lse.py).
 --guide lips|blinks|both adds the rule constraints (same seed, so compare with the plain run).
 """
 import argparse
@@ -136,6 +137,9 @@ def main() -> None:
                     + ("" if args.stitch else "_nostitch"))
             write_mp4(np.concatenate([real[:n], gen[:n]], axis=2), out / f"{stem}_sbs.mp4", fps=FPS, audio=m4a)
             write_mp4(gen[:n], out / f"{stem}_gen.mp4", fps=FPS, audio=m4a)
+            real_mp4 = out / f"{Path(clip).stem[:40]}_real.mp4"          # one per clip, shared by all settings
+            if not real_mp4.exists():                                    # SyncNet needs one face per video
+                write_mp4(real[:n], real_mp4, fps=FPS, audio=m4a)
             if bank is not None:                         # face from the ORIGINAL audio; only the track changes
                 from sang.voice import convert, save_wav
                 vw = save_wav(convert(wav[0], bank, knnvc, k=args.voice_k), out / f"{stem}_voice-{bank.dir.name}.wav")
