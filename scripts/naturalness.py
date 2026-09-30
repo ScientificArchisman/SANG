@@ -97,6 +97,9 @@ def main() -> None:
     ap.add_argument("--min-frames", type=int, default=125)
     ap.add_argument("--modes", nargs="+", default=["none", "lips", "blinks", "both"])
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--cfg", type=float, nargs="+", default=None,
+                    help="audio guidance values to sweep (default: the run's cfg_audio); columns become mode@cfg")
+    ap.add_argument("--steps", type=int, default=None, help="Euler steps (default: the run's sample_steps)")
     ap.add_argument("--out", default=str(REPO / "results/naturalness"))
     args = ap.parse_args()
 
@@ -157,25 +160,29 @@ def main() -> None:
     guide = Guide(read, st, phon)
     table = {"real": summarise(real, st)}
     extra = {}
-    for mode in args.modes:
-        ms, infos, t0 = [], Counter(), time.time()
-        for c, rm in zip(clips, real):
-            ref = norm.ref(c["kp0"][None].to(dev), c["y"][:1].to(dev))
-            y, info = guided_generate(model, c["audio"][None].to(dev), ref, c["n"], cfg, norm, c["wav"],
-                                      guide, mode, args.seed, events=c["events"])
-            infos.update(info)
-            ms.append(measure(norm.untarget(y[0]).cpu(), c, read, st, real=rm))
-        table[mode] = summarise(ms, st)
-        extra[mode] = dict(infos)
-        print(f"mode {mode}: {time.time() - t0:.0f} s  {dict(infos)}", flush=True)
+    for g in (args.cfg or [None]):
+        for mode in args.modes:
+            col = mode if g is None else f"{mode}@{g:g}"
+            ms, infos, t0 = [], Counter(), time.time()
+            for c, rm in zip(clips, real):
+                ref = norm.ref(c["kp0"][None].to(dev), c["y"][:1].to(dev))
+                y, info = guided_generate(model, c["audio"][None].to(dev), ref, c["n"], cfg, norm, c["wav"],
+                                          guide, mode, args.seed, events=c["events"], cfg_audio=g, steps=args.steps)
+                infos.update(info)
+                ms.append(measure(norm.untarget(y[0]).cpu(), c, read, st, real=rm))
+            table[col] = summarise(ms, st)
+            extra[col] = dict(infos)
+            print(f"{col}: {time.time() - t0:.0f} s  {dict(infos)}", flush=True)
 
-    keys = [k for k in table["none" if "none" in table else "real"] if k not in ("clips", "minutes")]
-    print("\n" + f"{'metric':<16}" + "".join(f"{c:>10}" for c in table))
+    first = next(k for k in table if k != "real")
+    keys = [k for k in table[first] if k not in ("clips", "minutes")]
+    print("\n" + f"{'metric':<16}" + "".join(f"{c:>12}" for c in table))
     for k in keys:
-        print(f"{k:<16}" + "".join(f"{table[c].get(k, float('nan')):>10.3f}" for c in table))
+        print(f"{k:<16}" + "".join(f"{table[c].get(k, float('nan')):>12.3f}" for c in table))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    name = f"{Path(args.ckpt).parent.name}_step{ck['step']}.json"
+    tag = "" if not args.cfg else "_cfg" + "-".join(f"{g:g}" for g in args.cfg)
+    name = f"{Path(args.ckpt).parent.name}_step{ck['step']}{tag}.json"
     (out / name).write_text(json.dumps({"ckpt": args.ckpt, "step": ck["step"], "stats": {k: v for k, v in st.items() if k != "ibi_s"},
                                         "table": table, "constraints": extra}, indent=1))
     print(f"\nwrote {out / name}", flush=True)
