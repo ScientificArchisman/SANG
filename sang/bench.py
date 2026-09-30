@@ -109,7 +109,7 @@ def lse(video: Path, workdir: Path | None = None, ref: str = "sang") -> tuple[fl
     every paper in the field reports. Returns nans when the pipeline finds no usable face track
     rather than raising, so one bad clip does not abort a 300-clip sweep.
 
-    NOTE: parsed from stdout. Check the format ONCE against your checkout (`sh download_model.sh`
+    NOTE: parsed from stdout + stderr (results moved to stderr upstream in 2026-04). Check the format ONCE against your checkout (`sh download_model.sh`
     then run it on a known clip) before trusting a sweep -- upstream has changed the wording."""
     if not (SYNCNET / "run_syncnet.py").exists():
         raise FileNotFoundError(f"syncnet_python not at {SYNCNET}; see bash_scripts/install_motion.sh")
@@ -120,8 +120,11 @@ def lse(video: Path, workdir: Path | None = None, ref: str = "sang") -> tuple[fl
     try:
         subprocess.run([sys.executable, "run_pipeline.py", *common], cwd=SYNCNET,
                        check=True, capture_output=True, text=True, timeout=600)
-        out = subprocess.run([sys.executable, "run_syncnet.py", *common], cwd=SYNCNET,
-                             check=True, capture_output=True, text=True, timeout=600).stdout
+        r = subprocess.run([sys.executable, "run_syncnet.py", *common], cwd=SYNCNET,
+                           check=True, capture_output=True, text=True, timeout=600)
+        # syncnet_python PR #78 (2026-04-17) moved print -> logging, so the result lines ("AV offset",
+        # "Min dist", "Confidence") now arrive on STDERR; reading stdout alone gave nan every time.
+        out = r.stdout + "\n" + r.stderr
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         tail = ((getattr(e, "stderr", "") or "") + (getattr(e, "stdout", "") or ""))[-800:]
         print(f"  [lse] syncnet_python failed on {Path(video).name}: {type(e).__name__}\n{tail}", flush=True)

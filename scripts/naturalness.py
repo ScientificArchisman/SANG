@@ -19,6 +19,7 @@ Metrics (real is the reference column; aim to match it, not to maximise):
     closure_viol     share of /p b m/ with the lips open (threshold = real's 90th pct, so real = 0.10)
     lip_corr         per-clip correlation of lip openness with the real clip  (lip-sync proxy)
     lip_std_r        lip openness std / real's                              ~1
+    lip_ccc          concordance with the real lip trajectory (timing AND amplitude; 1 = identical)
     blinks_per_min, ibi_median_s, ibi_cv, blink_ms, blink_at_pause (vs pause_cover = chance)
     beat_align       head-stroke / loudness-onset alignment (Bailando-style), vs beat_chance
 """
@@ -36,7 +37,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from sang.motion import to_target
-from sang.motion_model import Norm, build
+from sang.motion_model import Norm, build, guidance_vector
 from sang.naturalness import (FPS, Guide, PhonemeRecognizer, audio_onsets, beat_alignment, blink_events,
                               closure_minima, closure_offset, energy_db, guided_generate, head_beats,
                               load_readouts, load_wav, pauses)
@@ -63,6 +64,8 @@ def measure(y_raw: torch.Tensor, c: dict, read: dict, st: dict, real=None) -> di
         out["lip_corr"] = float(np.corrcoef(lip, real["lip"])[0, 1]) if lip.std() > 1e-8 else float("nan")
         out["lip_std_r"] = float(lip.std() / max(real["lip"].std(), 1e-8))
         out["eye_std_r"] = float(eye.std() / max(real["eye"].std(), 1e-8))
+        cov = float(np.mean((lip - lip.mean()) * (real["lip"] - real["lip"].mean())))
+        out["lip_ccc"] = 2 * cov / (lip.var() + real["lip"].var() + (lip.mean() - real["lip"].mean()) ** 2 + 1e-12)
     return out
 
 
@@ -83,7 +86,7 @@ def summarise(ms: list[dict], st: dict) -> dict:
          "pause_cover": float(np.mean([m["pause_cover"] for m in ms])),
          "beat_align": float(np.nanmean([m["bas"] for m in ms])),
          "beat_chance": float(np.nanmean([m["chance"] for m in ms]))}
-    for k in ("lip_corr", "lip_std_r", "eye_std_r"):
+    for k in ("lip_corr", "lip_std_r", "lip_ccc", "eye_std_r"):
         if ms and k in ms[0]:
             s[k] = float(np.nanmean([m[k] for m in ms]))
     return s
@@ -100,6 +103,9 @@ def main() -> None:
     ap.add_argument("--cfg", type=float, nargs="+", default=None,
                     help="audio guidance values to sweep (default: the run's cfg_audio); columns become mode@cfg")
     ap.add_argument("--steps", type=int, default=None, help="Euler steps (default: the run's sample_steps)")
+    ap.add_argument("--variants", nargs="+", default=None,
+                    help="guidance variants, each 'g=2,mouth=1.5,eyes=1,brow=1,rot=2,rescale=0.7' "
+                         "(g = global audio guidance; region keys override it; rescale = CFG-rescale)")
     ap.add_argument("--out", default=str(REPO / "results/naturalness"))
     args = ap.parse_args()
 
@@ -160,14 +166,26 @@ def main() -> None:
     guide = Guide(read, st, phon)
     table = {"real": summarise(real, st)}
     extra = {}
-    for g in (args.cfg or [None]):
+    if args.variants:
+        variants = [(v, {k: float(x) for k, x in (kv.split("=") for kv in v.split(","))}) for v in args.variants]
+    elif args.cfg:
+        variants = [(f"{g:g}", {"g": g}) for g in args.cfg]
+    else:
+        variants = [("", None)]
+    for vname, spec in variants:
+        gamma, rescale = None, 0.0
+        if spec is not None:
+            gamma = guidance_vector(spec.get("g", cfg["cfg_audio"]), mouth=spec.get("mouth"), eyes=spec.get("eyes"),
+                                    brow=spec.get("brow"), rot=spec.get("rot"))
+            rescale = spec.get("rescale", 0.0)
         for mode in args.modes:
-            col = mode if g is None else f"{mode}@{g:g}"
+            col = mode if not vname else f"{mode}@{vname}"
             ms, infos, t0 = [], Counter(), time.time()
             for c, rm in zip(clips, real):
                 ref = norm.ref(c["kp0"][None].to(dev), c["y"][:1].to(dev))
                 y, info = guided_generate(model, c["audio"][None].to(dev), ref, c["n"], cfg, norm, c["wav"],
-                                          guide, mode, args.seed, events=c["events"], cfg_audio=g, steps=args.steps)
+                                          guide, mode, args.seed, events=c["events"], cfg_audio=gamma,
+                                          steps=args.steps, cfg_rescale=rescale)
                 infos.update(info)
                 ms.append(measure(norm.untarget(y[0]).cpu(), c, read, st, real=rm))
             table[col] = summarise(ms, st)
@@ -176,12 +194,13 @@ def main() -> None:
 
     first = next(k for k in table if k != "real")
     keys = [k for k in table[first] if k not in ("clips", "minutes")]
-    print("\n" + f"{'metric':<16}" + "".join(f"{c:>12}" for c in table))
+    wid = {c: max(12, len(c) + 2) for c in table}
+    print("\n" + f"{'metric':<16}" + "".join(f"{c:>{wid[c]}}" for c in table))
     for k in keys:
-        print(f"{k:<16}" + "".join(f"{table[c].get(k, float('nan')):>12.3f}" for c in table))
+        print(f"{k:<16}" + "".join(f"{table[c].get(k, float('nan')):>{wid[c]}.3f}" for c in table))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    tag = "" if not args.cfg else "_cfg" + "-".join(f"{g:g}" for g in args.cfg)
+    tag = "_variants" if args.variants else ("" if not args.cfg else "_cfg" + "-".join(f"{g:g}" for g in args.cfg))
     name = f"{Path(args.ckpt).parent.name}_step{ck['step']}{tag}.json"
     (out / name).write_text(json.dumps({"ckpt": args.ckpt, "step": ck["step"], "stats": {k: v for k, v in st.items() if k != "ibi_s"},
                                         "table": table, "constraints": extra}, indent=1))

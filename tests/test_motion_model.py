@@ -10,7 +10,8 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sang.diffusion import DiffusionHead
 from sang.motion import REGIONS, T_DIM, from_target, rotation_matrix, to_target
-from sang.motion_model import REF_DIM, MotionFlowTransformer, Norm, flow_loss, generate, sample
+from sang.motion_model import (REF_DIM, MotionFlowTransformer, Norm, cfg_combine, flow_loss, generate,
+                               guidance_vector, sample)
 
 B, L, P, A = 2, 16, 4, 32         # batch, target frames, prefix frames, audio feature dim
 
@@ -170,6 +171,26 @@ def test_start_prefix_continues_from_the_given_frames():
     w0 = sample(m, audio[:, : 2 * (P + L)], ref, L, prefix=start, steps=2, generator=g)
     w1 = sample(m, audio[:, 2 * L: 2 * (P + 2 * L)], ref, L, prefix=w0[:, -P:], steps=2, generator=g)
     assert torch.allclose(y[:, :L], w0, atol=1e-5) and torch.allclose(y[:, L:2 * L], w1, atol=1e-5)
+
+
+def test_per_region_guidance_and_rescale():
+    assert guidance_vector(2.0) == 2.0 and guidance_vector(2.0, mouth=2.0) == 2.0      # uniform stays a float
+    vec = guidance_vector(2.0, mouth=1.5)
+    assert vec.shape == (T_DIM,) and torch.all(vec[REGIONS["mouth"]] == 1.5)
+    assert torch.all(vec[REGIONS["rot"] + REGIONS["eyes"] + REGIONS["brow"]] == 2.0)
+    g = torch.Generator().manual_seed(0)
+    v_c, v_u = torch.randn(2, 16, T_DIM, generator=g), torch.randn(2, 16, T_DIM, generator=g)
+    assert torch.allclose(cfg_combine(v_c, v_u, 2.0), cfg_combine(v_c, v_u, torch.full((T_DIM,), 2.0)))
+    mixed = cfg_combine(v_c, v_u, vec)
+    assert torch.allclose(mixed[..., REGIONS["mouth"]], (v_u + 1.5 * (v_c - v_u))[..., REGIONS["mouth"]])
+    full = cfg_combine(v_c, v_u, 2.0, rescale=1.0)                    # temporal std pulled back to v_c's
+    assert torch.allclose(full.std(dim=1), v_c.std(dim=1), atol=1e-5)
+    m = _model().eval()
+    _unzero(m)
+    a, ref = torch.randn(1, 2 * L, A), torch.randn(1, REF_DIM)
+    y1 = sample(m, a, ref, L, steps=3, cfg_audio=2.0, generator=torch.Generator().manual_seed(1))
+    y2 = sample(m, a, ref, L, steps=3, cfg_audio=torch.full((T_DIM,), 2.0), generator=torch.Generator().manual_seed(1))
+    assert torch.allclose(y1, y2, atol=1e-5)
 
 
 def test_norm_round_trip():
