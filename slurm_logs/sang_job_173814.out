@@ -1,0 +1,49 @@
+checkpoint runs/motion_12k_anneal/best.pt: step 13000, best val 1.1460
+[10:30:17] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+[10:30:18] Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+[10:30:19] Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[10:30:20] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+           Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+[10:30:21] FaceAnalysisDIY warmup time: 0.446s           face_analysis_diy.py:79
+[10:30:25] LandmarkRunner warmup time: 3.230s        human_landmark_runner.py:95
+[1/20] 00_-MXl1AjooOg_NA_29.900_55.500_start-source_sbs.mp4  (8.0 s) 
+[2/20] 01_-TvUS3-Mdkk_NA_46.566_55.366_start-source_sbs.mp4  (8.0 s) 
+[3/20] 02_-e-4Kx5px_I_NA_270.116_280.816_start-source_sbs.mp4  (8.0 s) 
+[4/20] 03_1fS0QCcnVQ8_NA_779.418_790.646_start-source_sbs.mp4  (8.0 s) 
+[5/20] 04_2Efx1lK3DA4_NA_1503.380_1515.540_start-source_sbs.mp4  (8.0 s) 
+[6/20] 05_2Q4hZa-tDKE_NA_306.531_334.400_start-source_sbs.mp4  (8.0 s) 
+[7/20] 06_46WX_IPWrSQ_NA_15.620_26.980_start-source_sbs.mp4  (8.0 s) 
+[8/20] 07_4_HRZP_0e3w_NA_0.100_87.354_start-source_sbs.mp4  (8.0 s) 
+[9/20] 08_5T_nV10L_Vc_NA_366.020_374.300_start-source_sbs.mp4  (8.0 s) 
+[10/20] 09_5lcz22Rg9yE_NA_0.100_36.483_start-source_sbs.mp4  (8.0 s) 
+[11/20] 10_5tGa84D-Aiw_NA_4.938_726.959_start-source_sbs.mp4  (8.0 s) 
+[12/20] 11_6HF3C-eKHmg_NA_1020.686_1102.034_start-source_sbs.mp4  (8.0 s) 
+[13/20] 12_6ZKZ-GmgpzQ_NA_178.220_189.860_start-source_sbs.mp4  (8.0 s) 
+[14/20] 13_7qzG42GCdfE_NA_394.850_406.900_start-source_sbs.mp4  (8.0 s) 
+[15/20] 14_9q45f5ZTJLg_NA_1120.850_1131.816_start-source_sbs.mp4  (8.0 s) 
+[16/20] 15_A5eFbkT04f0_NA_211.466_219.600_start-source_sbs.mp4  (8.0 s) 
+[17/20] 16_BIHgbsglrTc_NA_1391.766_1415.733_start-source_sbs.mp4  (8.0 s) 
+[18/20] 17_Bb4-ksMPfmk_NA_117.250_133.733_start-source_sbs.mp4  (8.0 s) 
+[19/20] 18_BvYAhM42RC0_NA_82.140_92.420_start-source_sbs.mp4  (8.0 s) 
+[20/20] 19_C-4DnV33TU0_NA_0.100_124.633_start-source_sbs.mp4  (8.0 s) 
+done -> results/extras/lse_m125
