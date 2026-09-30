@@ -86,7 +86,7 @@ def summarise(ms: list[dict], st: dict) -> dict:
          "pause_cover": float(np.mean([m["pause_cover"] for m in ms])),
          "beat_align": float(np.nanmean([m["bas"] for m in ms])),
          "beat_chance": float(np.nanmean([m["chance"] for m in ms]))}
-    for k in ("lip_corr", "lip_std_r", "lip_ccc", "eye_std_r"):
+    for k in ("lip_corr", "lip_std_r", "lip_ccc", "eye_std_r", "lip_self_corr"):
         if ms and k in ms[0]:
             s[k] = float(np.nanmean([m[k] for m in ms]))
     return s
@@ -103,6 +103,9 @@ def main() -> None:
     ap.add_argument("--cfg", type=float, nargs="+", default=None,
                     help="audio guidance values to sweep (default: the run's cfg_audio); columns become mode@cfg")
     ap.add_argument("--steps", type=int, default=None, help="Euler steps (default: the run's sample_steps)")
+    ap.add_argument("--self-corr", action="store_true",
+                    help="also draw a second sample (seed + 1) per clip and report lip_self_corr: correlation "
+                         "between two samples. ~ lip_corr -> take-to-take variability; >> lip_corr -> model bias")
     ap.add_argument("--variants", nargs="+", default=None,
                     help="guidance variants, each 'g=2,mouth=1.5,eyes=1,brow=1,rot=2,rescale=0.7' "
                          "(g = global audio guidance; region keys override it; rescale = CFG-rescale)")
@@ -188,6 +191,13 @@ def main() -> None:
                                           steps=args.steps, cfg_rescale=rescale)
                 infos.update(info)
                 ms.append(measure(norm.untarget(y[0]).cpu(), c, read, st, real=rm))
+                if args.self_corr:
+                    y2, _ = guided_generate(model, c["audio"][None].to(dev), ref, c["n"], cfg, norm, c["wav"],
+                                            guide, mode, args.seed + 1, events=c["events"], cfg_audio=gamma,
+                                            steps=args.steps, cfg_rescale=rescale)
+                    l1 = read["lip"](norm.untarget(y[0]).cpu()).numpy()
+                    l2 = read["lip"](norm.untarget(y2[0]).cpu()).numpy()
+                    ms[-1]["lip_self_corr"] = float(np.corrcoef(l1, l2)[0, 1]) if min(l1.std(), l2.std()) > 1e-8 else float("nan")
             table[col] = summarise(ms, st)
             extra[col] = dict(infos)
             print(f"{col}: {time.time() - t0:.0f} s  {dict(infos)}", flush=True)
