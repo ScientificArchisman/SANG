@@ -61,10 +61,10 @@ def main() -> None:
     ap.add_argument("--start", default="null", choices=["null", "source"],
                     help="first window: 'null' = the dropped-prefix configuration training used; "
                          "'source' = continue from the source photo's own motion after 0.4 s of silence")
-    ap.add_argument("--stitch", action="store_true",
-                    help="LivePortrait's stitching module: pins shoulders and nearby background to the source. On "
-                         "real 70-d motion it held the background still (0.95x) but cost ~7 dB vs ground truth; on "
-                         "the 42-d target (scale/translation already from the source) its cost measured ~0")
+    ap.add_argument("--stitch", action=argparse.BooleanOptionalAction, default=True,
+                    help="LivePortrait's stitching module (default ON; --no-stitch to disable): pins shoulders and nearby "
+                         "background to the source. Generated demos: background motion 2.41x -> 0.56x real (jobs "
+                         "173584/173682); on the 42-d target its cost measured ~0 (mouth corr 0.824 vs 0.809)")
     ap.add_argument("--held", default="camera", choices=["camera", "head"],
                     help="how the 8 non-driven keypoints follow the pose: camera = upstream LivePortrait convention (default); head = rotate them with the head (SANG before 2026-09-29; suspected background-warp cause)")
     ap.add_argument("--voice", default=None,
@@ -128,7 +128,7 @@ def main() -> None:
             stem = (f"{k:02d}_{Path(clip).stem[:40]}" + ("" if args.guide == "none" else f"_{args.guide}")
                     + ("" if args.start == "null" else f"_start-{args.start}")
                     + ("" if args.held == "camera" else f"_held-{args.held}")
-                    + ("_stitch" if args.stitch else ""))
+                    + ("" if args.stitch else "_nostitch"))
             write_mp4(np.concatenate([real[:n], gen[:n]], axis=2), out / f"{stem}_sbs.mp4", fps=FPS, audio=m4a)
             write_mp4(gen[:n], out / f"{stem}_gen.mp4", fps=FPS, audio=m4a)
             if bank is not None:                         # face from the ORIGINAL audio; only the track changes
