@@ -513,24 +513,26 @@ TalkVid 2508.13618 · TalkVerse 2512.14938 · HDTF · EGT (group-robust generati
 
 Every value is copied from the named table, as checked in the research notes. **Values do not transfer between tables**: FLOAT's HDTF FID is 21.10 in its own Tab. 1 but 9.164 in IMTalker's, and SadTalker's is 71.95 in FLOAT's but 21.58 in SoulX's. LSE-C = Sync-C (higher is better); LSE-D = Sync-D (lower is better). Real HDTF video: LSE-C 8.243, LSE-D 6.929 (KDTalker Tab. 1); scores above about 8.1 suggest exaggerated mouths.
 
-| Paper | Main approach | Metrics (dataset · values · source) |
-|---|---|---|
-| FLOAT (ICCV'25, 2412.01064) | Flow matching over a learned motion latent; frame-wise AdaLN audio; speech-emotion vector; 10-frame prefix | HDTF (own Tab. 1): FID 21.10, FVD 162.05, CSIM 0.843, LSE-C 8.222, LSE-D 7.290 · RAVDESS: FID 31.68, FVD 166.36, CSIM 0.810, LSE-C 5.730, LSE-D 6.994 |
-| KDTalker (IJCV'25, 2503.12963) | 43 M diffusion over LivePortrait keypoints; 64-frame windows; canonical-keypoint prior | HDTF (own Tab. 1): LSE-C 7.326, LSE-D 7.548, FID 9.756, CSIM 0.949, 21.7 FPS (4090) |
-| Ditto (MM'25, 2411.19509) | DiT over LivePortrait motion; HSEmotion labels; stitching + paste-back; real time | own ablation: Sync-C 8.069, CSIM 0.864, FID 17.25 · HDTF (IMTalker's table): FID 11.746, CSIM 0.886 · HDTF (SoulX Tab. 3): FID 12.35, FVD 199.13, Sync-C 3.57, Sync-D 10.49 |
-| Teller (2503.18429) | Autoregressive over LivePortrait-keypoint motion tokens; Whisper audio | HDTF (own Tab. 1): FID 21.35, FVD 173.46, Sync-C 7.696, Sync-D 7.536 (real 8.094 / 6.976); codec audio instead of Whisper: Sync-C 4.286 |
-| Playmate (ICML'25, 2502.07203) | DiT in a fine-tuned LivePortrait keypoint space + frozen-base emotion module | own Tab. 4 (audio only): Sync-C 8.141, Sync-D 7.064; with emotion w_e 1.5: 7.395 · MEAD Emo-A 0.550 |
-| Playmate2 (2510.12089) | Pixel video DiT + DPO with a lip-sync reward | HDTF: Sync-C 7.89 → 8.15, Sync-D 7.53 → 7.32 after DPO |
-| Xemo-Talker (2608.14700) | Diffusion over LivePortrait 70-d motion + zero-initialised emotion branch | MEAD (Tab. 2): LSE-C 6.37, LSE-D 8.21, emotion acc 85.28 % (real 8.04 / 7.52 / 85.38 %) |
-| "Motar" (2609.10317) | 77 M AR transformer + MLP diffusion head over X-NeMo motion; self-forcing + DMD | MEAD: FID 45.0 vs real-motion oracle 44.2; best Std-R 0.704 |
-| IMTalker (2511.22167) | Implicit-motion renderer | HDTF self-reenactment: PSNR 28.458, FID 7.426 (LivePortrait 27.173, 9.049); cross-reenactment CSIM 0.824 vs 0.789 |
-| Hallo (2406.08801) | Pixel diffusion, reference net, audio cross-attention | HDTF (FLOAT Tab. 1): FID 25.36, FVD 197.20, CSIM 0.869, LSE-C 7.582, LSE-D 7.792 · BG-Flicker HDTF 3.33× |
-| EchoMimic (2407.08136) | Pixel diffusion, audio and/or landmarks | HDTF (FLOAT Tab. 1): FID 33.55, FVD 296.76, CSIM 0.823, LSE-C 6.242, LSE-D 8.903 · BG-Flicker HDTF 5.33× |
-| SadTalker (CVPR'23) | Audio → 3DMM coefficients → face-vid2vid-style renderer | HDTF (FLOAT Tab. 1): FID 71.95, FVD 339.06, CSIM 0.644, LSE-C 7.305, LSE-D 7.947 · SoulX: FID 21.58 · BG-Flicker HDTF 1.33× |
-| EDTalk (ECCV'24) | Separate mouth / pose / expression motion bases | HDTF (FLOAT Tab. 1): FID 50.08, FVD 211.28, CSIM 0.626, LSE-C 7.623, LSE-D 8.123 |
-| AniTalker (2024) | Identity-decoupled motion + diffusion generator | HDTF (FLOAT Tab. 1): FID 39.51, FVD 184.45, CSIM 0.643, LSE-C 7.288, LSE-D 7.907 |
-| Sonic (CVPR'25) | Pixel diffusion with global audio perception | HDTF (SoulX Tab. 3): FID 13.53, FVD 113.31, Sync-C 5.17, Sync-D 8.69 · BG-Flicker HDTF 0.89× |
-| SoulX-FlashHead Pro (2026) | Wan2.1 1.3 B video DiT, streaming-distilled; 32 × H20, 782 h | HDTF (own Tab. 3): FID 9.97, FVD 111.38, Sync-C 5.73, Sync-D 8.77 |
-| **SANG-M (ours)** | 53 M bidirectional flow-matching DiT → 42-d LivePortrait motion → frozen LivePortrait (stitching on) | TalkVid val, motion space: audio_gain 1.50; mouth std / velocity ratio 1.06 / 0.975; lip-opening std 1.52× real, corr 0.65 · renderer ceiling: CSIM 0.906–0.911, mouth corr 0.82–0.85 · background 0.56× real; start-up jitter 0.45× real · **HDTF: not measured** |
+| Paper | Main approach | Params | Metrics (dataset · values · source) |
+|---|---|---|---|
+| FLOAT (ICCV'25, 2412.01064) | Flow matching over a learned motion latent; frame-wise AdaLN audio; speech-emotion vector; 10-frame prefix | n/r | HDTF (own Tab. 1): FID 21.10, FVD 162.05, CSIM 0.843, LSE-C 8.222, LSE-D 7.290 · RAVDESS: FID 31.68, FVD 166.36, CSIM 0.810, LSE-C 5.730, LSE-D 6.994 |
+| KDTalker (IJCV'25, 2503.12963) | 43 M diffusion over LivePortrait keypoints; 64-frame windows; canonical-keypoint prior | 42.93 M + LP | HDTF (own Tab. 1): LSE-C 7.326, LSE-D 7.548, FID 9.756, CSIM 0.949, 21.7 FPS (4090) |
+| Ditto (MM'25, 2411.19509) | DiT over LivePortrait motion; HSEmotion labels; stitching + paste-back; real time | n/r + LP | own ablation: Sync-C 8.069, CSIM 0.864, FID 17.25 · HDTF (IMTalker's table): FID 11.746, CSIM 0.886 · HDTF (SoulX Tab. 3): FID 12.35, FVD 199.13, Sync-C 3.57, Sync-D 10.49 |
+| Teller (2503.18429) | Autoregressive over LivePortrait-keypoint motion tokens; Whisper audio | n/r (Qwen1.5-4B-style AR) | HDTF (own Tab. 1): FID 21.35, FVD 173.46, Sync-C 7.696, Sync-D 7.536 (real 8.094 / 6.976); codec audio instead of Whisper: Sync-C 4.286 |
+| Playmate (ICML'25, 2502.07203) | DiT in a fine-tuned LivePortrait keypoint space + frozen-base emotion module | n/r + LP | own Tab. 4 (audio only): Sync-C 8.141, Sync-D 7.064; with emotion w_e 1.5: 7.395 · MEAD Emo-A 0.550 |
+| Playmate2 (2510.12089) | Pixel video DiT + DPO with a lip-sync reward | n/r | HDTF: Sync-C 7.89 → 8.15, Sync-D 7.53 → 7.32 after DPO |
+| Xemo-Talker (2608.14700) | Diffusion over LivePortrait 70-d motion + zero-initialised emotion branch | 115.7 M (75.4 + 40.3) + LP | MEAD (Tab. 2): LSE-C 6.37, LSE-D 8.21, emotion acc 85.28 % (real 8.04 / 7.52 / 85.38 %) |
+| "Motar" (2609.10317) | 77 M AR transformer + MLP diffusion head over X-NeMo motion; self-forcing + DMD | 77 M + 1.7 B renderer | MEAD: FID 45.0 vs real-motion oracle 44.2; best Std-R 0.704 |
+| IMTalker (2511.22167) | Implicit-motion renderer | 39 M + 124 M renderer | HDTF self-reenactment: PSNR 28.458, FID 7.426 (LivePortrait 27.173, 9.049); cross-reenactment CSIM 0.824 vs 0.789 |
+| Hallo (2406.08801) | Pixel diffusion, reference net, audio cross-attention | ≈ 1.7 B est. (2 × SD-1.5 UNet) | HDTF (FLOAT Tab. 1): FID 25.36, FVD 197.20, CSIM 0.869, LSE-C 7.582, LSE-D 7.792 · BG-Flicker HDTF 3.33× |
+| EchoMimic (2407.08136) | Pixel diffusion, audio and/or landmarks | ≈ 1.7 B est. (2 × SD-1.5 UNet) | HDTF (FLOAT Tab. 1): FID 33.55, FVD 296.76, CSIM 0.823, LSE-C 6.242, LSE-D 8.903 · BG-Flicker HDTF 5.33× |
+| SadTalker (CVPR'23) | Audio → 3DMM coefficients → face-vid2vid-style renderer | n/r | HDTF (FLOAT Tab. 1): FID 71.95, FVD 339.06, CSIM 0.644, LSE-C 7.305, LSE-D 7.947 · SoulX: FID 21.58 · BG-Flicker HDTF 1.33× |
+| EDTalk (ECCV'24) | Separate mouth / pose / expression motion bases | n/r | HDTF (FLOAT Tab. 1): FID 50.08, FVD 211.28, CSIM 0.626, LSE-C 7.623, LSE-D 8.123 |
+| AniTalker (2024) | Identity-decoupled motion + diffusion generator | n/r | HDTF (FLOAT Tab. 1): FID 39.51, FVD 184.45, CSIM 0.643, LSE-C 7.288, LSE-D 7.907 |
+| Sonic (CVPR'25) | Pixel diffusion with global audio perception | n/r | HDTF (SoulX Tab. 3): FID 13.53, FVD 113.31, Sync-C 5.17, Sync-D 8.69 · BG-Flicker HDTF 0.89× |
+| SoulX-FlashHead Pro (2026) | Wan2.1 1.3 B video DiT, streaming-distilled; 32 × H20, 782 h | 1.3 B | HDTF (own Tab. 3): FID 9.97, FVD 111.38, Sync-C 5.73, Sync-D 8.77 |
+| **SANG-M (ours)** | 53 M bidirectional flow-matching DiT → 42-d LivePortrait motion → frozen LivePortrait (stitching on) | 53.4 M + LP (+ WavLM-large 316.6 M, frozen) | TalkVid val, motion space: audio_gain 1.50; mouth std / velocity ratio 1.06 / 0.975; lip-opening std 1.52× real, corr 0.65 · renderer ceiling: CSIM 0.906–0.911, mouth corr 0.82–0.85 · background 0.56× real; start-up jitter 0.45× real · **HDTF: not measured** |
+
+Params = the trainable generator as the paper states it; LP = the frozen LivePortrait renderer, ≈ 130 M (counted from its released fp32 weights: motion extractor 28.1 M, warping 45.5 M, SPADE decoder 55.5 M, appearance encoder 0.8 M); n/r = not reported in the paper; est. = estimate from the architecture.
 
 BG-Flicker = FluentAvatar (arXiv 2509.12052) background-only frame-difference ratio to the real video.
