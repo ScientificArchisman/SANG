@@ -352,8 +352,8 @@ class Guide:
 
 def guided_generate(model, audio, ref, n: int, cfg: dict, norm, wav: torch.Tensor, guide: Guide | None,
                     mode: str = "none", seed: int = 0, steps: int | None = None,
-                    cfg_audio: float | None = None, events: list[int] | None = None,
-                    start: torch.Tensor | None = None):
+                    cfg_audio=None, events: list[int] | None = None,
+                    start: torch.Tensor | None = None, cfg_rescale: float = 0.0):
     """generate() with the rule constraints. Blinks need a first, unconstrained pass (same seed)
     to see where the model already blinks; lips alone need only one pass. -> ([1, n, 42], info).
     `start`: see generate() -- None, or a clean first prefix (then `audio` has that many lead frames;
@@ -365,7 +365,7 @@ def guided_generate(model, audio, ref, n: int, cfg: dict, norm, wav: torch.Tenso
         return generate(model, audio, ref, n, window=cfg["frames"], n_prefix=cfg["prefix"],
                         steps=steps or cfg["sample_steps"],
                         cfg_audio=cfg["cfg_audio"] if cfg_audio is None else cfg_audio,
-                        generator=g, bounds=bounds, start=start)
+                        generator=g, bounds=bounds, start=start, cfg_rescale=cfg_rescale)
 
     if mode == "none" or guide is None:
         return run(None), {}

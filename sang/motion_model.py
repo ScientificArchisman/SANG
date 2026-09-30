@@ -203,10 +203,41 @@ def project(z: torch.Tensor, bounds) -> torch.Tensor:
     return z
 
 
+def guidance_vector(g: float, mouth: float | None = None, eyes: float | None = None,
+                    brow: float | None = None, rot: float | None = None):
+    """Audio-guidance scale per target region: a float when uniform, else a [42] tensor.
+
+    The γ sweep (job 173799, 200 val clips) showed guidance sets mouth AMPLITUDE (lip-opening std vs
+    real: 1.04 / 1.34 / 1.59 / 1.79 at γ 1 / 1.5 / 2 / 2.5) while correlation saturates at γ ≈ 1.5,
+    so the mouth can take a lower scale than the rest (AVTR-1 also guides per region)."""
+    per = {"mouth": mouth, "eyes": eyes, "brow": brow, "rot": rot}
+    if all(v is None or v == g for v in per.values()):
+        return float(g)
+    vec = torch.full((T_DIM,), float(g))
+    for name, v in per.items():
+        if v is not None:
+            vec[REGIONS[name]] = float(v)
+    return vec
+
+
+def cfg_combine(v_c: torch.Tensor, v_u: torch.Tensor, gamma, rescale: float = 0.0) -> torch.Tensor:
+    """v_u + gamma * (v_c - v_u), gamma a float or a [42] per-coordinate vector.
+
+    rescale (CFG-rescale, Lin et al. arXiv 2305.08891; 0 = off, they use 0.7): pulls each coordinate's
+    temporal std of the guided velocity back to the conditional one's, blended by `rescale`, so
+    guidance keeps its direction (timing) without inflating amplitude."""
+    g = gamma.to(v_c).view(1, 1, -1) if isinstance(gamma, torch.Tensor) else gamma
+    v = v_u + g * (v_c - v_u)
+    if rescale > 0:
+        ratio = v_c.std(dim=1, keepdim=True) / v.std(dim=1, keepdim=True).clamp_min(1e-6)
+        v = rescale * (v * ratio) + (1.0 - rescale) * v
+    return v
+
+
 @torch.no_grad()
 def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps: int = 10,
-           cfg_audio: float = 2.0, generator: torch.Generator | None = None, bounds=None,
-           prefix_keep: torch.Tensor | None = None) -> torch.Tensor:
+           cfg_audio=2.0, generator: torch.Generator | None = None, bounds=None,
+           prefix_keep: torch.Tensor | None = None, cfg_rescale: float = 0.0) -> torch.Tensor:
     """Euler from t = 1 (noise) to 0. CFG on audio only, gamma = 2 (FLOAT Tab. 6).
 
     The unconditional branch drops audio and keeps the reference and prefix, so guidance pushes
@@ -231,9 +262,10 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
     for i in range(steps):
         t = torch.full((B,), 1.0 - i * dt, device=dev)
         v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep)
-        if cfg_audio != 1.0:
+        uniform_one = not isinstance(cfg_audio, torch.Tensor) and cfg_audio == 1.0
+        if not uniform_one or cfg_rescale > 0:
             v_u = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, drop_audio=null)
-            v = v_u + cfg_audio * (v - v_u)
+            v = cfg_combine(v, v_u, cfg_audio, cfg_rescale)
         if bounds:
             t_now, t_next = 1.0 - i * dt, 1.0 - (i + 1) * dt
             x0 = project(x - t_now * v, bounds)
@@ -246,9 +278,9 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
 
 @torch.no_grad()
 def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tensor, n_frames: int,
-             window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio: float = 2.0,
+             window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio=2.0,
              generator: torch.Generator | None = None, bounds=None,
-             start: torch.Tensor | None = None) -> torch.Tensor:
+             start: torch.Tensor | None = None, cfg_rescale: float = 0.0) -> torch.Tensor:
     """Any length. Windows of `window` NEW frames, each conditioned on the previous `n_prefix`
     generated frames (FLOAT's L'). audio [B, 2*n_frames, 1024] -> [B, n_frames, 42].
     bounds: as in `sample`, with ub over the whole clip, [B, n_frames].
@@ -289,7 +321,7 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
                 u = ub[:, pos:pos + window]
                 wb.append((vec, F.pad(u, (0, window - u.shape[1]), value=float("inf"))))
         y = sample(model, a, ref, window, prefix=prefix, steps=steps, cfg_audio=cfg_audio,
-                   generator=generator, bounds=wb, prefix_keep=keep)
+                   generator=generator, bounds=wb, prefix_keep=keep, cfg_rescale=cfg_rescale)
         out.append(y[:, : n_frames - pos])                   # last window: generate full, keep what fits
         pos += window
     return torch.cat(out, 1)
