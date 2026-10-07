@@ -304,7 +304,7 @@ def main() -> None:
         stats, benefit = [], []
         for i, (c, rec) in enumerate(zip(clips, per)):
             g = torch.Generator(device=dev).manual_seed(args.seed + i)
-            res = shifted_mouth_losses(model, norm.target(c["y"]).to(dev), c["audio"].to(dev), ref_at(c, 0), shifts,
+            res = shifted_mouth_losses(model, norm.target(c["y"].to(dev)), c["audio"].to(dev), ref_at(c, 0), shifts,
                                        mouth, P, L, n_noise=args.offset_noise, generator=g)
             if res is None:
                 continue
