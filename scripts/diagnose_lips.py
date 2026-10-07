@@ -437,7 +437,9 @@ def main() -> None:
         t0 = time.time()
         tmp = out_dir / "syncnet_tmp"
         offs, confs = [], []
-        for c, rec in list(zip(clips, per))[: args.syncnet_n]:
+        todo = list(zip(clips, per))[: args.syncnet_n]
+        print(f"[syncnet] {len(todo)} real clips, ~0.5-1 min each", flush=True)
+        for j, (c, rec) in enumerate(todo, 1):
             r = c["row"]
             mp4 = tmp / f"{rec['clip']}.mp4"
             mp4.parent.mkdir(parents=True, exist_ok=True)
@@ -453,6 +455,8 @@ def main() -> None:
                 print(f"  [syncnet] {rec['clip']}: {type(e).__name__}: {e}", flush=True)
                 off, dist, conf = float("nan"), float("nan"), float("nan")
             rec.update(sn_offset=off, sn_dist=dist, sn_conf=conf)
+            print(f"  [syncnet] {j}/{len(todo)} {rec['clip']:<40} offset {off:+.0f}  conf {conf:.2f}  "
+                  f"model's shift {rec.get('offset_best', float('nan')):+.0f}  ({time.time() - t0:.0f} s)", flush=True)
             if np.isfinite(off):
                 offs.append(off)
                 confs.append(conf)
