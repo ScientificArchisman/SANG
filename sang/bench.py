@@ -9,6 +9,7 @@ Every published number in this field is protocol-dependent (SadTalker's HDTF FID
 one paper and 71.95 in another), so nothing is comparable until the baselines are re-run
 through THIS module.
 """
+import os
 import subprocess
 import sys
 import tempfile
@@ -117,11 +118,14 @@ def lse(video: Path, workdir: Path | None = None, ref: str = "sang", verbose: bo
     (tmp / "work").mkdir(parents=True, exist_ok=True)
     # absolute: syncnet_python runs with cwd=its own checkout, so a relative path does not resolve
     common = ["--data_dir", str(tmp / "work"), "--reference", ref, "--videofile", str(Path(video).resolve())]
+    # Decode as UTF-8 whatever the locale: on the compute nodes it is ASCII, and text=True turned one
+    # '…' or progress-bar glyph in syncnet's output into a UnicodeDecodeError that skipped the whole
+    # clip (every HDTF clip, 2026-10-07). The child gets UTF-8 stdio for the same reason.
+    io = dict(capture_output=True, encoding="utf-8", errors="replace", timeout=600,
+              env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"})
     try:
-        subprocess.run([sys.executable, "run_pipeline.py", *common], cwd=SYNCNET,
-                       check=True, capture_output=True, text=True, timeout=600)
-        r = subprocess.run([sys.executable, "run_syncnet.py", *common], cwd=SYNCNET,
-                           check=True, capture_output=True, text=True, timeout=600)
+        subprocess.run([sys.executable, "run_pipeline.py", *common], cwd=SYNCNET, check=True, **io)
+        r = subprocess.run([sys.executable, "run_syncnet.py", *common], cwd=SYNCNET, check=True, **io)
         # syncnet_python PR #78 (2026-04-17) moved print -> logging, so the result lines ("AV offset",
         # "Min dist", "Confidence") now arrive on STDERR; reading stdout alone gave nan every time.
         out = r.stdout + "\n" + r.stderr

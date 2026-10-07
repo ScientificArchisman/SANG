@@ -106,7 +106,8 @@ def ffmpeg_exe() -> str:
 
 def probe_size(path: Path) -> tuple[int, int]:
     """(width, height) of the first video stream, via ffmpeg's banner (no ffprobe needed)."""
-    out = subprocess.run([ffmpeg_exe(), "-hide_banner", "-i", str(path)], capture_output=True, text=True).stderr
+    out = subprocess.run([ffmpeg_exe(), "-hide_banner", "-i", str(path)], capture_output=True,
+                         encoding="utf-8", errors="replace").stderr       # the banner carries YouTube titles
     m = re.search(r"Video:.*?(\d{2,5})x(\d{2,5})", out)
     if not m:
         raise RuntimeError(f"cannot read the frame size of {path}")

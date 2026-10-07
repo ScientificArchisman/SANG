@@ -58,6 +58,20 @@ def test_frechet_and_paste_back():
     assert out.shape == (1, 300, 300, 3) and out[0, 150, 150, 0] == 255 and out[0, 5, 5, 0] == 0
 
 
+def test_lse_survives_non_ascii_syncnet_output(tmp_path, monkeypatch):
+    """Every HDTF clip was skipped with UnicodeDecodeError: syncnet's output was decoded with the node's
+    ASCII locale. Progress-bar glyphs and even invalid bytes must not stop the three numbers parsing."""
+    import sang.bench as bench
+    fake = tmp_path / "syncnet_python"
+    fake.mkdir()
+    (fake / "run_pipeline.py").write_text(r"import sys; sys.stderr.buffer.write(b'faces \xe2\x96\x88\xe2\x96\x88 100% \xff\n')")
+    (fake / "run_syncnet.py").write_text(
+        r"import sys; sys.stderr.buffer.write(b'2026-10-07 10:01:02 INFO AV offset: \t-1 \xe2\x80\xa6\n"
+        r"2026-10-07 10:01:02 INFO Min dist: \t7.25\n2026-10-07 10:01:02 INFO Confidence: \t6.50\n')")
+    monkeypatch.setattr(bench, "SYNCNET", fake)
+    assert bench.lse(tmp_path / "clip.mp4", tmp_path / "work") == (-1.0, 7.25, 6.5)
+
+
 def test_tables():
     assert {k for k, _ in METRICS} >= {"FID", "FVD", "CSIM", "LSE-C", "LSE-D"}
     for r in SOTA:                                                       # every published value is a known metric

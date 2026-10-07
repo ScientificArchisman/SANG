@@ -150,7 +150,11 @@ class Evaluator:
             save_wav(load_wav(clip, n), tmp_wav)
             write_mp4(gen, vid, fps=FPS, audio=tmp_wav)
             tmp_wav.unlink(missing_ok=True)
-            res["lse_offset"], res["lse_d"], res["lse_c"] = lse(vid)
+            try:                                             # a SyncNet failure must not cost the clip its other metrics
+                res["lse_offset"], res["lse_d"], res["lse_c"] = lse(vid)
+            except Exception as e:
+                print(f"  [lse] {clip.stem} {row}: {type(e).__name__}: {e}", flush=True)
+                res["lse_offset"] = res["lse_d"] = res["lse_c"] = float("nan")
             if not a.save_videos:
                 vid.unlink(missing_ok=True)
         return res, feats
@@ -167,7 +171,8 @@ def run(args) -> None:
     if not clips:
         sys.exit(f"no clips under {crops}; run scripts/download_hdtf.py --out {args.data}")
     (out / "test_list.txt").write_text("".join(f"{c.stem}\n" for c in clips))
-    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
+    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, capture_output=True,
+                            encoding="utf-8", errors="replace").stdout.strip()
     (out / "protocol.json").write_text(json.dumps({**vars(args), "n_clips": len(clips), "commit": commit}, indent=1, default=str))
     print(f"HDTF eval '{args.name}': {len(clips)} clips x {args.seconds:g} s, rows {args.rows} -> {out}", flush=True)
 
