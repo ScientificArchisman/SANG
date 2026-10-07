@@ -262,6 +262,10 @@ huggingface-cli download facebook/wav2vec2-xlsr-53-espeak-cv-ft   # (already in 
 | Openness calibration | `sbatch --time=08:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/calibrate_openness.py` (resumable; rerun the same line after a timeout) |
 | Naturalness metrics | `sbatch bash_scripts/job.sh scripts/naturalness.py --ckpt runs/motion_12k_anneal/best.pt` |
 | Jitter (laptop) | `python scripts/video_jitter.py results/extras/<dir>/*_sbs.mp4` |
+| HDTF install (login) | `bash bash_scripts/install_eval.sh` (yt-dlp, I3D for FVD, Inception for FID) |
+| HDTF download (login, internet) | `python scripts/download_hdtf.py --out /beegfs/work/$USER/HDTF --workers 4` (resumable; `--cookies cookies.txt` if YouTube asks) |
+| HDTF eval | `sbatch --time=12:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/eval_hdtf.py --data /beegfs/work/$USER/HDTF --name g2` (FID, FVD-16, CSIM, LSE-C/D, PSNR, SSIM; rows real / ceiling / SANG) |
+| HDTF table | `python scripts/eval_hdtf.py --table results/hdtf/*/summary.json --write-doc docs/hdtf_results.md` |
 | Voice install (login) | `bash bash_scripts/install_voice.sh [--asr]` |
 | Voice eval | `sbatch bash_scripts/job.sh scripts/eval_voice.py --targets 20 [--asr openai/whisper-large-v3]` |
 | Enrol a person | `sbatch bash_scripts/job.sh scripts/enroll_voice.py --name <name> --audio <files/folders> [--ref clean.wav]` (rerun with more audio to grow the bank) |

@@ -49,3 +49,8 @@ third_party/knn-vc/
 voices/
 *.wav
 results/
+
+# --- HDTF eval: per-clip features/videos and the I3D weights (regenerable) ---
+third_party/fvd/
+results/hdtf/*/clips/
+results/hdtf/*/videos/

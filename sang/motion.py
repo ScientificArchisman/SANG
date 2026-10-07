@@ -208,6 +208,32 @@ def decode_clip(path: str, max_frames: int, fps: float = 25.0) -> np.ndarray:
     return vr.get_batch([int(round(i * stride)) for i in range(n)]).asnumpy()
 
 
+def paste_back(frames: np.ndarray, M_c2o: np.ndarray, background: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:
+    """Rendered crops [T,S,S,3] -> frames of `background`'s size, as LivePortrait's own paste-back:
+    warp each crop with M_c2o (crop -> original coordinates) and blend over the static background
+    with LivePortrait's feathered crop mask (src/utils/resources/mask_template.png: 1.0 except a
+    16-px feather at the border; None = that template if installed, else a 16-px linear feather).
+    Used by scripts/eval_hdtf.py so outputs are scored in the same frame as HDTF's 512 crops."""
+    import cv2
+    H, W = background.shape[:2]
+    S = frames.shape[1]
+    if mask is None:
+        tpl = LP / "src" / "utils" / "resources" / "mask_template.png"
+        if tpl.exists():
+            mask = cv2.resize(cv2.imread(str(tpl), cv2.IMREAD_GRAYSCALE), (S, S)).astype(np.float32) / 255.0
+        else:
+            r = np.minimum(np.arange(S), np.arange(S)[::-1]).astype(np.float32)
+            mask = np.clip(np.minimum(r[:, None], r[None, :]) / 16.0, 0, 1)
+    M = as3x3(M_c2o)[:2]                                       # crop -> original, 2x3 forward map
+    m = cv2.warpAffine(mask.astype(np.float32), M, (W, H))[..., None]
+    bg = background.astype(np.float32)
+    out = np.empty((len(frames), H, W, 3), np.uint8)
+    for i, f in enumerate(frames):
+        warped = cv2.warpAffine(f, M, (W, H), flags=cv2.INTER_LINEAR).astype(np.float32)
+        out[i] = np.clip(m * warped + (1.0 - m) * bg, 0, 255).astype(np.uint8)
+    return out
+
+
 class MotionCodec:
     """Frozen LivePortrait. `extract` maps frames -> motion; `render` maps source + motion -> frames.
 

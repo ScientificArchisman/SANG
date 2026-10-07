@@ -186,12 +186,79 @@ def _frechet(mu1, s1, mu2, s2, eps: float = 1e-6) -> float:
     return float(diff.dot(diff) + np.trace(s1) + np.trace(s2) - 2 * np.trace(covmean))
 
 
-def fvd(*args, **kwargs) -> float:
-    """FVD-16: I3D features over 16-frame sliding windows, as FLOAT computes it.
+# ------------------------------------------------------------------ streaming features (HDTF eval)
+I3D_URL = "https://www.dropbox.com/s/ge9e5ujwgetktms/i3d_torchscript.pt?dl=1"   # StyleGAN-V's I3D port
+I3D_PATH = REPO / "third_party" / "fvd" / "i3d_torchscript.pt"
 
-    ponytail: NOT implemented -- it needs the I3D checkpoint, and the M0 gate does not use it.
-    Land it with M1's eval_full, alongside FID above, and report the window/stride used."""
-    raise NotImplementedError("FVD lands with M1; see docs/recovery_plan_2026-09-16.md 5.6")
+
+class InceptionFeats:
+    """pytorch-fid Inception-v3 pool3 features (2048-d), frames [N,H,W,3] uint8 -> [N, 2048].
+    Same network and resize as `fid` above, but per batch, so features from many clips can be
+    pooled without holding every frame in memory."""
+
+    def __init__(self, device: str = "cuda"):
+        from pytorch_fid.inception import InceptionV3
+        self.m, self.device = InceptionV3([3]).to(device).eval(), device
+
+    def __call__(self, frames: np.ndarray, batch: int = 32) -> np.ndarray:
+        import torch
+        out = []
+        with torch.no_grad():
+            for i in range(0, len(frames), batch):
+                t = torch.from_numpy(np.ascontiguousarray(frames[i:i + batch])).permute(0, 3, 1, 2).float().div_(255.0)
+                t = torch.nn.functional.interpolate(t.to(self.device), size=(299, 299), mode="bilinear", align_corners=False)
+                out.append(self.m(t)[0].squeeze(-1).squeeze(-1).cpu().numpy())
+        return np.concatenate(out) if out else np.zeros((0, 2048))
+
+
+class I3DFeats:
+    """FVD features: the Kinetics-400 I3D TorchScript port used by StyleGAN-V and
+    common_metrics_on_video_quality. A video [T,H,W,3] uint8 is cut into non-overlapping
+    `clip_len`-frame clips (FVD-16 by default); each is resized so the short side is 224,
+    centre-cropped to 224x224, scaled to [-1, 1], and mapped to a 400-d feature
+    (rescale=False, resize=True, return_features=True). Download once on the login node:
+    bash bash_scripts/install_eval.sh."""
+
+    def __init__(self, device: str = "cuda", path: Path = I3D_PATH):
+        import torch
+        if not Path(path).exists():
+            raise FileNotFoundError(f"I3D weights not at {path}; run bash bash_scripts/install_eval.sh")
+        self.m, self.device = torch.jit.load(str(path)).eval().to(device), device
+
+    def __call__(self, video: np.ndarray, clip_len: int = 16, batch: int = 8) -> np.ndarray:
+        import torch
+        import torch.nn.functional as F
+        n = len(video) // clip_len
+        clips, out = [], []
+        for k in range(n):
+            x = torch.from_numpy(np.ascontiguousarray(video[k * clip_len:(k + 1) * clip_len])).float().div_(255.0)
+            x = x.permute(0, 3, 1, 2)                                            # T, C, H, W
+            h, w = x.shape[-2:]
+            s = 224 / min(h, w)
+            x = F.interpolate(x, size=(round(h * s), round(w * s)), mode="bilinear", align_corners=False)
+            h, w = x.shape[-2:]
+            top, left = (h - 224) // 2, (w - 224) // 2
+            x = x[..., top:top + 224, left:left + 224]
+            clips.append(((x - 0.5) * 2).permute(1, 0, 2, 3))                 # C, T, H, W in [-1, 1]
+        with torch.no_grad():
+            for i in range(0, len(clips), batch):
+                b = torch.stack(clips[i:i + batch]).to(self.device)
+                out.append(self.m(b, rescale=False, resize=True, return_features=True).cpu().numpy())
+        return np.concatenate(out) if out else np.zeros((0, 400))
+
+
+def frechet(a: np.ndarray, b: np.ndarray) -> float:
+    """Frechet distance between two feature sets [N, D] (FID / FVD)."""
+    if len(a) < 2 or len(b) < 2:
+        return float("nan")
+    return _frechet(a.mean(0), np.cov(a, rowvar=False), b.mean(0), np.cov(b, rowvar=False))
+
+
+def fvd(real_videos: list[np.ndarray], gen_videos: list[np.ndarray], device: str = "cuda", clip_len: int = 16) -> float:
+    """FVD-16 between two lists of [T,H,W,3] uint8 videos (non-overlapping 16-frame clips)."""
+    i3d = I3DFeats(device)
+    return frechet(np.concatenate([i3d(v, clip_len) for v in real_videos]),
+                   np.concatenate([i3d(v, clip_len) for v in gen_videos]))
 
 
 def background_motion(real: np.ndarray, gen: np.ndarray, quiet_pct: float = 40.0,
