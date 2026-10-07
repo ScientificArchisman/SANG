@@ -11,6 +11,8 @@ workers: 8
 frames: 64                # L. KDTalker Tab. 7: LSE-C 6.875 / 7.256 / 7.326 at 8 / 32 / 64 frames
 prefix: 10                # FLOAT's L' = 10 preceding frames
 windows_per_clip: 8
+sync_offsets: ""          # cache/motion_lp/sync_offsets.json (scripts/sync_offsets.py --merge): shift each clip's
+                          # audio by its SyncNet offset and drop no-sync clips. "" = off (diagnosis job 176657)
 preload: true             # clips in RAM (~2 MB each): per-sample BeeGFS reads capped run 1 at 1.4 it/s
 
 # ---- model: sang/motion_model.py ----

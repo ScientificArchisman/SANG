@@ -41,6 +41,7 @@ from sang.motion_model import Norm, build, guidance_vector
 from sang.naturalness import (FPS, Guide, PhonemeRecognizer, audio_onsets, beat_alignment, blink_events,
                               closure_minima, closure_offset, energy_db, guided_generate, head_beats,
                               load_readouts, load_wav, pauses)
+from sang.sync import SyncOffsets, shift_ticks, shift_wav
 
 
 def pause_near(pause: np.ndarray, reach: int = 5) -> np.ndarray:
@@ -109,6 +110,9 @@ def main() -> None:
     ap.add_argument("--variants", nargs="+", default=None,
                     help="guidance variants, each 'g=2,mouth=1.5,eyes=1,brow=1,rot=2,rescale=0.7' "
                          "(g = global audio guidance; region keys override it; rescale = CFG-rescale)")
+    ap.add_argument("--sync-offsets", default=None,
+                    help="<cache>/sync_offsets.json: drop no-sync val clips and move each clip's audio (features and "
+                         "waveform) by its SyncNet offset, so lip metrics compare against aligned ground truth")
     ap.add_argument("--out", default=str(REPO / "results/naturalness"))
     args = ap.parse_args()
 
@@ -128,6 +132,10 @@ def main() -> None:
     tm = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(tm)
     _, val = tm.split_by_speaker(tm.load_index(cache), cfg["val_frac"], cfg["seed"])
+    so = SyncOffsets.load(args.sync_offsets) if args.sync_offsets else None
+    if so is not None:
+        val, why = so.filter(val)
+        print(f"sync offsets {args.sync_offsets}: dropped {why}", flush=True)
     val = [r for r in sorted(val, key=lambda r: r["clip"]) if r["n"] >= args.min_frames][: args.n]
     print(f"{len(val)} val clips from {len({Path(r['path']).parent.name for r in val})} unseen speakers", flush=True)
 
@@ -138,11 +146,12 @@ def main() -> None:
         try:
             d = torch.load(r["path"], map_location="cpu", weights_only=True)
             n = min(args.max_frames, int(d["n"]))
-            wav = load_wav(r["clip"], r.get("start", 0), n)
+            s = so.shift(r) if so is not None else 0                 # WavLM ticks; 0 = uncorrected
+            wav = shift_wav(load_wav(r["clip"], r.get("start", 0), n), s)
             db = energy_db(wav, n)
             clips.append({"row": r, "n": n, "y": to_target(d["m"][:n].float()), "kp0": d["kp"][0].float(),
-                          "audio": d["audio"][: 2 * n].float(), "wav": wav, "db": db, "pause": pauses(db),
-                          "events": phon.bilabials(wav, n)})
+                          "audio": shift_ticks(d["audio"][: 2 * n].float(), s), "wav": wav, "db": db,
+                          "pause": pauses(db), "events": phon.bilabials(wav, n)})
         except Exception as e:
             print(f"  skip {Path(r['clip']).name}: {type(e).__name__}: {e}", flush=True)
     print(f"audio pass: {len(clips)} clips, {sum(len(c['events']) for c in clips)} bilabials, "
@@ -161,7 +170,8 @@ def main() -> None:
               offset_hist={int(k): v for k, v in sorted(Counter(offs).items())})
     if not ibis:
         raise SystemExit("no blinks found in real motion: the eye readout cannot see them; check openness.json R^2")
-    (cache / "naturalness_stats.json").write_text(json.dumps(st))
+    # the sampling-time Guide reads naturalness_stats.json; an offset-corrected pass must not replace it silently
+    (cache / ("naturalness_stats_sync.json" if so is not None else "naturalness_stats.json")).write_text(json.dumps(st))
     print(f"closure offset {off:+d} frames (hist {st['offset_hist']}), tau_close {st['tau_close']:.3f}, "
           f"eye_closed {st['eye_closed']:.3f}, {len(ibis)} real inter-blink intervals", flush=True)
 
@@ -211,6 +221,7 @@ def main() -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     tag = "_variants" if args.variants else ("" if not args.cfg else "_cfg" + "-".join(f"{g:g}" for g in args.cfg))
+    tag += "_sync" if so is not None else ""
     name = f"{Path(args.ckpt).parent.name}_step{ck['step']}{tag}.json"
     (out / name).write_text(json.dumps({"ckpt": args.ckpt, "step": ck["step"], "stats": {k: v for k, v in st.items() if k != "ibi_s"},
                                         "table": table, "constraints": extra}, indent=1))

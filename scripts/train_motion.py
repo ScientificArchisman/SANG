@@ -30,6 +30,7 @@ sys.path.insert(0, str(REPO))
 
 from sang.motion import REGIONS, to_target
 from sang.motion_model import Norm, build, flow_loss, sample
+from sang.sync import SyncOffsets, clip_key, shift_ticks
 
 TPF = 2
 
@@ -81,9 +82,10 @@ class MotionWindows(Dataset):
     capped the first run at ~1.4 it/s: 256 network file opens per step."""
 
     def __init__(self, rows, L: int, P: int, norm: Norm, per_clip: int, fixed: bool = False,
-                 preload: bool = True, threads: int = 16):
+                 preload: bool = True, threads: int = 16, shifts: dict | None = None):
         self.rows = [r for r in rows if r["n"] >= L + P]
         self.L, self.P, self.norm, self.per_clip = L, P, norm, per_clip
+        self.shifts = shifts or {}        # clip_key -> WavLM ticks the audio is moved by (sang/sync.py)
         self.fixed = fixed                # val: the same windows every eval, so curves are comparable
         if not self.rows:
             raise ValueError(f"no clip has {L + P} frames")
@@ -100,7 +102,8 @@ class MotionWindows(Dataset):
         d = torch.load(r["path"], map_location="cpu", weights_only=True)
         y = self.norm.target(to_target(d["m"].float()))                  # [n, 42]  normalised
         ref = self.norm.ref(d["kp"].float(), to_target(d["m"].float()))  # [n, REF_DIM] one per frame
-        return y, ref, d["audio"].half().contiguous()
+        audio = shift_ticks(d["audio"], self.shifts.get(clip_key(r), 0))  # audio-video offset corrected
+        return y, ref, audio.half().contiguous()
 
     def __len__(self):
         return len(self.rows) * self.per_clip
@@ -198,10 +201,20 @@ def main() -> None:
     else:
         norm = fit_norm(train_rows, seed=cfg["seed"])       # train speakers only: no val leakage
         torch.save({k: v for k, v in norm.state_dict().items()}, norm_path)
+    shifts = None
+    if cfg.get("sync_offsets"):
+        so = SyncOffsets.load(cfg["sync_offsets"])
+        train_rows, why_t = so.filter(train_rows)
+        val_rows, why_v = so.filter(val_rows)
+        shifts = {clip_key(r): so.shift(r) for r in train_rows + val_rows}
+        moved = sum(s != 0 for s in shifts.values())
+        print(f"sync offsets {cfg['sync_offsets']}: audio moved in {moved}/{len(shifts)} clips; "
+              f"dropped train {why_t}, val {why_v} (val loss is not comparable with runs without it)", flush=True)
     L, P = cfg["frames"], cfg["prefix"]
     pre = cfg.get("preload", True)
-    train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], preload=pre)
-    val_ds = MotionWindows(val_rows, L, P, norm, cfg.get("val_windows_per_clip", 4), fixed=True, preload=pre)
+    train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], preload=pre, shifts=shifts)
+    val_ds = MotionWindows(val_rows, L, P, norm, cfg.get("val_windows_per_clip", 4), fixed=True, preload=pre,
+                           shifts=shifts)
     print(f"{len(train_ds.rows)} train / {len(val_ds.rows)} val clips "
           f"({len({Path(r['path']).parent.name for r in val_rows})} unseen val speakers)", flush=True)
     dl = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True, num_workers=cfg["workers"],

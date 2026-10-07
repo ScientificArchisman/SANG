@@ -119,6 +119,7 @@ y [n, 42] ─► from_target(y, m_src) [n, 70] (scale, translation, 8 shape keyp
 | `scripts/calibrate_openness.py` | Fits lip/eye openness readouts → `openness.json` (resumable) |
 | `scripts/naturalness.py` | Rule metrics, real vs none/lips/blinks/both → `naturalness_stats.json` + `results/naturalness/*.json` |
 | `scripts/video_jitter.py` | Start-up jitter: per-frame-range pixel-acceleration ratio gen/real |
+| `sang/sync.py`, `scripts/sync_offsets.py` | Audio–video offsets: SyncNet per video (2 clips), merge rule (keep / drop / video mean), tick and waveform shifts, `SyncOffsets` for loaders |
 | `sang/diagnose.py`, `scripts/diagnose_lips.py` | Lip-sync gap diagnosis: randomness vs bias (r_sy, r_ss, r_inf, mean-of-k), lag, audio-shift offsets, reference shortcut, language split, ridge probes of audio features (encoder × layer × context), SyncNet offsets of real clips; ends with a plain-English verdict |
 | `sang/voice.py` | Voice cloning: kNN-VC loading, `VoiceBank` (enrol → VAD → 3 s chunks → speaker filter → layer-6 frames), `convert`, `knn_features`, `SpeakerEncoder`, CER |
 | `scripts/enroll_voice.py` | Build or grow `voices/<name>/` from a person's recordings |
@@ -186,6 +187,21 @@ Generated/real pixel acceleration (median over clips; lower = steadier):
 - **Why eval missed it:** training eval always passed a clean prefix.
 - **Open:** choose the default between `null` and `source` by eye. Check whether `source` shows a "freeze then start".
 - **General rule learned:** every conditioning slot must be exercised at inference exactly as in training, *including its absent state*. Apply this to the emotion and voice inputs too.
+
+### 3.5 Lip-sync diagnosis (`scripts/diagnose_lips.py`, job 176657, 300 val clips, 41 videos, guidance g=2 mouth=1.25)
+
+| Test | Result | Reading |
+|---|---|---|
+| Randomness | one sample r_sy 0.617; sample vs sample r_ss 0.790; model mean r_inf 0.694; mean of 8 samples 0.678 | Randomness costs ≤ 0.08. The rest is a consistent error. |
+| Timing precision | mouth loss +2.6 % / +8.9 % for a 1 / 2-frame audio shift, +11.3 % with no audio | An 80 ms error costs 79 % of losing the audio: timing is used precisely. |
+| Lag | mean curve peaks at 0; best lag per clip 0.678 → 0.774; 17 % of clips best at \|lag\| ≥ 2 | Per-clip timing disagreements, explained by the next row. |
+| **SyncNet on real clips (100)** | 41 % off by ≥ 2 frames (59 audio-late vs 6 audio-early), 9 % no sync / conf < 3; **constant within a source video** (13 clips of one video all −2) | r_sy by offset: 0 → 0.664, −1 → 0.658, −2 → 0.570, −3/−4 → 0.28, no sync → ≈ 0. The model's preferred shift tracks SyncNet (corr 0.65); best lag tracks it at −0.91. |
+| Language | English 0.645 (n 261) vs other 0.454 (n 37: 36 zh) | 40 % of non-English clips are offset vs 12 % English; on aligned clips the gap is 0.69 vs 0.59 (n 22, ~7 videos): weak evidence. |
+| Audio-feature probes (ridge) | SANG's input (WavLM L24, ±2) 0.641; best WavLM L12 ±6 0.661; Whisper-v3 best 0.655, last layer 0.61; ±12 adds nothing | Features are not the bottleneck (+0.02 at most). |
+| Reference frame | open vs closed reference moves mean opening 0.30 real-std; corr 0.631 / 0.641 | Small offset leak, not timing. |
+
+- **Conclusion:** the leading cause is audio–video misalignment in TalkVid source videos. It depresses the metric (offset val clips) and very likely the training signal. On aligned English clips the current model already scores 0.69 (one sample) and 0.75 (mean).
+- **Fix:** `scripts/sync_offsets.py` (SyncNet on 2 clips per video → `sync_offsets.json`), applied by `train_motion.py` (`sync_offsets=`), `naturalness.py` and `diagnose_lips.py` (`--sync-offsets`). Convention in `sang/sync.py`: SyncNet offset < 0 = audio late; audio moved by round(2 × offset) WavLM ticks.
 
 ---
 
@@ -263,6 +279,10 @@ huggingface-cli download facebook/wav2vec2-xlsr-53-espeak-cv-ft   # (already in 
 | Openness calibration | `sbatch --time=08:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/calibrate_openness.py` (resumable; rerun the same line after a timeout) |
 | Naturalness metrics | `sbatch bash_scripts/job.sh scripts/naturalness.py --ckpt runs/motion_12k_anneal/best.pt` |
 | Lip-sync diagnosis | `sbatch --time=06:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/diagnose_lips.py --ckpt runs/motion_12k_anneal/best.pt` (`--tests lang seeds lag offset ref probe syncnet`; results in `results/diagnose/`, verdict at the end of the log) |
+| AV offsets: measure | `sbatch --array=0-2 --time=12:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/sync_offsets.py --nshards 3` (resumable; 2 clips per video, 4 SyncNet runs per GPU) |
+| AV offsets: merge | `python scripts/sync_offsets.py --merge` → `cache/motion_lp/sync_offsets.json` |
+| Train with offsets | `sbatch bash_scripts/train_motion.sh out_dir=runs/<name> max_steps=15000 warmup_steps=2000 patience=0 sync_offsets=cache/motion_lp/sync_offsets.json` |
+| Metrics on aligned val | add `--sync-offsets cache/motion_lp/sync_offsets.json` to `naturalness.py` / `diagnose_lips.py` (outputs get a `_sync` suffix) |
 | Jitter (laptop) | `python scripts/video_jitter.py results/extras/<dir>/*_sbs.mp4` |
 | HDTF install (login) | `bash bash_scripts/install_eval.sh` (yt-dlp, I3D for FVD, Inception for FID) |
 | HDTF download (login, internet) | `python scripts/download_hdtf.py --out /beegfs/work/$USER/HDTF --workers 4` (resumable; `--cookies cookies.txt` if YouTube asks) |
@@ -287,7 +307,8 @@ huggingface-cli download facebook/wav2vec2-xlsr-53-espeak-cv-ft   # (already in 
 | 5 | Voice install + eval | `bash bash_scripts/install_voice.sh --asr` (login), then `sbatch bash_scripts/job.sh scripts/eval_voice.py --targets 20 --asr openai/whisper-large-v3` | `sim_target` rises with bank seconds toward the 'real T vs T' ceiling; `sim_source` falls; `env_corr` ≈ 1; CER modest |
 | 6 | Emotion data check (after coding, §7.4) | HSEmotion pass over the cache → distribution report | Enough non-neutral mass, or add CREMA-D |
 | 7 | HDTF protocol (§7.7) | Needs HDTF on disk | GT row, GT-motion row, SANG row, baselines |
-| 8 | Lip-sync diagnosis (report `SANG next round improvements.md` §1) | `sbatch --time=06:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/diagnose_lips.py --ckpt runs/motion_12k_anneal/best.pt` | Decides the order of the next changes. randomness MAJOR → mouth anchor (§6c) first; bias / timing precision LOW / probe gap → audio stream (§5) and lip-expert loss (§6a); SyncNet offsets COMMON → offset correction (§3a); language gap → multilingual encoder |
+| 8 | ~~Lip-sync diagnosis~~ done, job 176657 (§3.5) (report `SANG next round improvements.md` §1) | `sbatch --time=06:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/diagnose_lips.py --ckpt runs/motion_12k_anneal/best.pt` | Decides the order of the next changes. randomness MAJOR → mouth anchor (§6c) first; bias / timing precision LOW / probe gap → audio stream (§5) and lip-expert loss (§6a); SyncNet offsets COMMON → offset correction (§3a); language gap → multilingual encoder |
+| 9 | AV-offset correction (§3.5) | measure → merge → retrain with `sync_offsets=` → naturalness and diagnose with `--sync-offsets` for old and new checkpoints | New vs old on the SAME aligned val set: lip corr and CCC up, std_r ≤ 1.3, audio_gain ≥ 1.5; then HDTF LSE-C/D |
 
 ---
 

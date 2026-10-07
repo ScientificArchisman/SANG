@@ -28,7 +28,6 @@ import importlib.util
 import json
 import random
 import shutil
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -46,7 +45,8 @@ from sang.diagnose import (RidgeProbe, by_group, corr, lag_curve, lag_summary, l
                            taps, ticks_to_frames, verdict)
 from sang.motion import REGIONS, to_target
 from sang.motion_model import Norm, build, generate, guidance_vector
-from sang.naturalness import FPS, SR, load_readouts, load_wav
+from sang.naturalness import SR, load_readouts, load_wav
+from sang.sync import SyncOffsets, real_clip_mp4, shift_ticks, shift_wav
 
 TESTS = ("lang", "seeds", "lag", "offset", "ref", "probe", "syncnet")
 
@@ -152,6 +152,8 @@ def main() -> None:
     ap.add_argument("--probe-train", type=int, default=600, help="train clips the probes are fitted on")
     ap.add_argument("--probe-dim", type=int, default=256, help="PCA dims per frame before stacking context")
     ap.add_argument("--syncnet-n", type=int, default=100, help="val clips checked with SyncNet")
+    ap.add_argument("--sync-offsets", default=None,
+                    help="<cache>/sync_offsets.json: drop no-sync clips and move each clip's audio by its SyncNet offset")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--out", default=str(REPO / "results/diagnose"))
@@ -173,6 +175,11 @@ def main() -> None:
 
     tm = load_train_module()
     train_rows, val_rows = tm.split_by_speaker(tm.load_index(cache), cfg["val_frac"], cfg["seed"])
+    so = SyncOffsets.load(args.sync_offsets) if args.sync_offsets else None
+    if so is not None:
+        train_rows, why_t = so.filter(train_rows)
+        val_rows, why_v = so.filter(val_rows)
+        print(f"sync offsets {args.sync_offsets}: dropped val {why_v}, train {why_t}", flush=True)
     val_rows = [r for r in sorted(val_rows, key=lambda r: r["clip"]) if r["n"] >= args.min_frames][: args.n]
     want_wav = bool({"lang", "probe"} & set(args.tests))
 
@@ -180,10 +187,11 @@ def main() -> None:
         d = torch.load(r["path"], map_location="cpu", weights_only=True)
         n = min(args.max_frames, int(d["n"]))
         y = to_target(d["m"][:n].float())
-        c = {"row": r, "n": n, "y": y, "kp": d["kp"][:n].float(), "audio": d["audio"][: 2 * n].float(),
-             "lip": lip_read(y).numpy(), "speaker": Path(r["path"]).parent.name}
+        s = so.shift(r) if so is not None else 0                     # WavLM ticks; 0 = uncorrected
+        c = {"row": r, "n": n, "y": y, "kp": d["kp"][:n].float(), "audio": shift_ticks(d["audio"][: 2 * n].float(), s),
+             "lip": lip_read(y).numpy(), "speaker": Path(r["path"]).parent.name, "shift": s}
         if want_wav:
-            c["wav"] = load_wav(r["clip"], r.get("start", 0), n)
+            c["wav"] = shift_wav(load_wav(r["clip"], r.get("start", 0), n), s)
         return c
 
     t0 = time.time()
@@ -193,15 +201,16 @@ def main() -> None:
             clips.append(load_clip(r))
         except Exception as e:
             print(f"  skip {Path(r['clip']).name}: {type(e).__name__}: {e}", flush=True)
-    per = [{"clip": Path(c["row"]["clip"]).stem, "speaker": c["speaker"], "n": c["n"]} for c in clips]
+    per = [{"clip": Path(c["row"]["clip"]).stem, "speaker": c["speaker"], "n": c["n"], "sync_shift": c["shift"]}
+           for c in clips]
     print(f"{len(clips)} val clips, {len({c['speaker'] for c in clips})} unseen speakers, loaded in "
           f"{time.time() - t0:.0f} s; guidance '{args.variant}', {steps} steps", flush=True)
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{Path(args.ckpt).parent.name}_step{ck['step']}.json"
+    out_path = out_dir / f"{Path(args.ckpt).parent.name}_step{ck['step']}{'_sync' if so is not None else ''}.json"
     R = {"ckpt": args.ckpt, "step": ck["step"], "variant": args.variant, "steps": steps, "clips": len(clips),
-         "speakers": len({c["speaker"] for c in clips}), "tests": args.tests}
+         "speakers": len({c["speaker"] for c in clips}), "tests": args.tests, "sync_offsets": args.sync_offsets}
 
     def save():
         out_path.write_text(json.dumps({"results": R, "per_clip": per}, indent=1, default=float))
@@ -361,7 +370,8 @@ def main() -> None:
                 d = torch.load(r["path"], map_location="cpu", weights_only=True)
                 n = min(args.max_frames, int(d["n"]))
                 y = to_target(d["m"][:n].float())
-                train_clips.append({"n": n, "lip": lip_read(y).numpy(), "wav": load_wav(r["clip"], r.get("start", 0), n)})
+                wav = shift_wav(load_wav(r["clip"], r.get("start", 0), n), so.shift(r) if so is not None else 0)
+                train_clips.append({"n": n, "lip": lip_read(y).numpy(), "wav": wav})
             except Exception as e:
                 print(f"  [probe] skip {Path(r['clip']).name}: {type(e).__name__}", flush=True)
         n_fit = int(0.8 * len(train_clips))
@@ -429,27 +439,16 @@ def main() -> None:
         print(f"[syncnet] skipped: no syncnet_python at {SYNCNET} (bash_scripts/install_motion.sh)", flush=True)
     elif "syncnet" in args.tests:
         from sang.bench import lse
-        try:
-            import imageio_ffmpeg
-            ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-        except ImportError:
-            ffmpeg = "ffmpeg"
         t0 = time.time()
         tmp = out_dir / "syncnet_tmp"
         offs, confs = [], []
         todo = list(zip(clips, per))[: args.syncnet_n]
-        print(f"[syncnet] {len(todo)} real clips, ~0.5-1 min each", flush=True)
+        print(f"[syncnet] {len(todo)} real clips, ~0.5-1 min each"
+              + (" (measures the RAW clip: --sync-offsets does not apply here)" if so is not None else ""), flush=True)
         for j, (c, rec) in enumerate(todo, 1):
-            r = c["row"]
             mp4 = tmp / f"{rec['clip']}.mp4"
-            mp4.parent.mkdir(parents=True, exist_ok=True)
-            s0 = r.get("start", 0) / FPS
             try:
-                subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-ss", f"{s0:.3f}", "-i", str(r["clip"]),
-                                "-ss", f"{s0:.3f}", "-i", str(Path(r["clip"]).with_suffix(".m4a")),
-                                "-t", f"{c['n'] / FPS:.3f}", "-map", "0:v:0", "-map", "1:a:0", "-r", str(FPS),
-                                "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", str(mp4)],
-                               check=True)
+                real_clip_mp4(c["row"], c["n"], mp4)
                 off, dist, conf = lse(mp4, tmp / f"{rec['clip']}_work")
             except Exception as e:
                 print(f"  [syncnet] {rec['clip']}: {type(e).__name__}: {e}", flush=True)
