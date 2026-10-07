@@ -119,6 +119,7 @@ y [n, 42] ─► from_target(y, m_src) [n, 70] (scale, translation, 8 shape keyp
 | `scripts/calibrate_openness.py` | Fits lip/eye openness readouts → `openness.json` (resumable) |
 | `scripts/naturalness.py` | Rule metrics, real vs none/lips/blinks/both → `naturalness_stats.json` + `results/naturalness/*.json` |
 | `scripts/video_jitter.py` | Start-up jitter: per-frame-range pixel-acceleration ratio gen/real |
+| `sang/diagnose.py`, `scripts/diagnose_lips.py` | Lip-sync gap diagnosis: randomness vs bias (r_sy, r_ss, r_inf, mean-of-k), lag, audio-shift offsets, reference shortcut, language split, ridge probes of audio features (encoder × layer × context), SyncNet offsets of real clips; ends with a plain-English verdict |
 | `sang/voice.py` | Voice cloning: kNN-VC loading, `VoiceBank` (enrol → VAD → 3 s chunks → speaker filter → layer-6 frames), `convert`, `knn_features`, `SpeakerEncoder`, CER |
 | `scripts/enroll_voice.py` | Build or grow `voices/<name>/` from a person's recordings |
 | `scripts/eval_voice.py` | Speaker similarity to the target vs bank size (5/10/30/60 s/all), leakage, timing, optional Whisper CER, on unseen val speakers |
@@ -261,6 +262,7 @@ huggingface-cli download facebook/wav2vec2-xlsr-53-espeak-cv-ft   # (already in 
 | Photo + audio | `python scripts/infer_motion.py --ckpt runs/motion_12k_anneal/best.pt --image face.jpg --audio speech.wav --out out.mp4 [--start source] [--guide both]` |
 | Openness calibration | `sbatch --time=08:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/calibrate_openness.py` (resumable; rerun the same line after a timeout) |
 | Naturalness metrics | `sbatch bash_scripts/job.sh scripts/naturalness.py --ckpt runs/motion_12k_anneal/best.pt` |
+| Lip-sync diagnosis | `sbatch --time=06:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/diagnose_lips.py --ckpt runs/motion_12k_anneal/best.pt` (`--tests lang seeds lag offset ref probe syncnet`; results in `results/diagnose/`, verdict at the end of the log) |
 | Jitter (laptop) | `python scripts/video_jitter.py results/extras/<dir>/*_sbs.mp4` |
 | HDTF install (login) | `bash bash_scripts/install_eval.sh` (yt-dlp, I3D for FVD, Inception for FID) |
 | HDTF download (login, internet) | `python scripts/download_hdtf.py --out /beegfs/work/$USER/HDTF --workers 4` (resumable; `--cookies cookies.txt` if YouTube asks) |
@@ -285,6 +287,7 @@ huggingface-cli download facebook/wav2vec2-xlsr-53-espeak-cv-ft   # (already in 
 | 5 | Voice install + eval | `bash bash_scripts/install_voice.sh --asr` (login), then `sbatch bash_scripts/job.sh scripts/eval_voice.py --targets 20 --asr openai/whisper-large-v3` | `sim_target` rises with bank seconds toward the 'real T vs T' ceiling; `sim_source` falls; `env_corr` ≈ 1; CER modest |
 | 6 | Emotion data check (after coding, §7.4) | HSEmotion pass over the cache → distribution report | Enough non-neutral mass, or add CREMA-D |
 | 7 | HDTF protocol (§7.7) | Needs HDTF on disk | GT row, GT-motion row, SANG row, baselines |
+| 8 | Lip-sync diagnosis (report `SANG next round improvements.md` §1) | `sbatch --time=06:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/diagnose_lips.py --ckpt runs/motion_12k_anneal/best.pt` | Decides the order of the next changes. randomness MAJOR → mouth anchor (§6c) first; bias / timing precision LOW / probe gap → audio stream (§5) and lip-expert loss (§6a); SyncNet offsets COMMON → offset correction (§3a); language gap → multilingual encoder |
 
 ---
 
