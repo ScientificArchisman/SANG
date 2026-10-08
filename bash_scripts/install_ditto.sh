@@ -16,8 +16,12 @@ echo "ditto commit: $(git -C "$DITTO" rev-parse --short HEAD)"
 conda env list | grep -qE "^ditto\s" || conda create -y -n ditto python=3.10
 conda activate ditto
 pip install "torch==2.5.1" --index-url https://download.pytorch.org/whl/cu121
+# einops and mediapipe are imported by Ditto but missing from its README / environment.yaml
 pip install librosa tqdm filetype imageio imageio-ffmpeg opencv-python-headless scikit-image cython colored \
-            "numpy<2.1" onnxruntime-gpu "huggingface_hub[cli]"
+            einops mediapipe "numpy<2.1" onnxruntime-gpu "huggingface_hub[cli]"
+# mediapipe pulls the GUI build of OpenCV (needs libGL on the node): put the headless one back
+pip uninstall -y opencv-contrib-python opencv-python || true
+pip install --force-reinstall --no-deps opencv-python-headless
 
 # weights: only the PyTorch models and the configs (skips the TensorRT engines and ONNX copies).
 # Python API, not the CLI: huggingface_hub >= 1.0 renamed huggingface-cli to hf.
@@ -28,5 +32,10 @@ snapshot_download("digital-avatar/ditto-talkinghead", allow_patterns=["ditto_pyt
                   local_dir=sys.argv[1])
 EOF
 ls "$DITTO/checkpoints/ditto_pytorch/models" "$DITTO/checkpoints/ditto_cfg"
-python -c "import torch, onnxruntime, librosa, cv2; print('torch', torch.__version__, '| ort', onnxruntime.__version__)"
+# mediapipe needs libGLESv2 from the gl env, as in env.sh
+LD_LIBRARY_PATH="$HOME/miniconda3/envs/gl/lib:${LD_LIBRARY_PATH:-}" python -c "
+import torch, onnxruntime, librosa, cv2, einops, numpy, mediapipe
+from mediapipe.tasks.python import vision, BaseOptions
+print('torch', torch.__version__, '| ort', onnxruntime.__version__, '| mediapipe', mediapipe.__version__,
+      '| cv2', cv2.__version__, '| numpy', numpy.__version__)"
 echo "ditto install ok (test it on a GPU node with scripts/ditto_hdtf.py)"
