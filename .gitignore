@@ -54,3 +54,9 @@ results/
 third_party/fvd/
 results/hdtf/*/clips/
 results/hdtf/*/videos/
+
+# --- local-only notes (kept on disk, not on GitHub) ---
+docs/
+reports/
+research_notes/
+.cursor/
