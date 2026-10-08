@@ -23,6 +23,10 @@ Protocol (also written to <out>/protocol.json):
                        (the renderer ceiling: what perfect audio-to-motion would score)
             sang       SANG-M generated from audio, rendered with stitching, pasted back into
                        frame 0 with LivePortrait's crop mask so the output is in the GT's frame
+            ditto      Ditto (antgroup/ditto-talkinghead, ACM MM 2025) re-run on the same clips by
+                       scripts/ditto_hdtf.py (same source frame, same audio); scored here from
+                       --ditto-dir, so both methods go through the identical metric code
+  test list --list configs/hdtf_test.csv (scripts/hdtf_testset.py) fixes the clips for every run
   metrics   FID     Inception-v3 pool3 over all frames, generated vs ground truth, pooled over clips
             FVD     I3D (StyleGAN-V port), non-overlapping 16-frame clips, pooled over clips
             CSIM    ArcFace (buffalo_l) cosine, source frame vs every 5th output frame
@@ -49,10 +53,35 @@ sys.path.insert(0, str(REPO / "third_party"))
 from sang.sota_hdtf import METRICS, markdown_table
 
 SR, FPS, HOP = 16000, 25, 640
-ROWS = ("real", "gt_motion", "sang")
+ROWS = ("real", "gt_motion", "sang", "ditto")
 
 
 # ---------------------------------------------------------------------- test set
+def read_list(path: str, data: Path, crops: Path) -> list[Path]:
+    """Clips from scripts/hdtf_testset.py's CSV (crop_rel under --data; md5 checked) or a plain
+    file of clip names."""
+    if str(path).endswith(".csv"):
+        import csv
+        with open(path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        clips = [data / r["crop_rel"] if r.get("crop_rel") else crops / f"{r['clip']}.mp4" for r in rows]
+        changed = []
+        for r, c in zip(rows, clips):
+            if r.get("md5") and c.exists():
+                h = hashlib.md5()
+                with open(c, "rb") as fh:
+                    for block in iter(lambda: fh.read(1 << 20), b""):
+                        h.update(block)
+                if h.hexdigest() != r["md5"]:
+                    changed.append(c.stem)
+        missing = [c.stem for c in clips if not c.exists()]
+        if missing or changed:
+            print(f"WARNING: test list {path}: {len(missing)} missing {missing[:5]}, {len(changed)} changed since "
+                  f"it was frozen {changed[:5]}", flush=True)
+        return clips
+    return [crops / f"{l.strip()}.mp4" for l in Path(path).read_text().splitlines() if l.strip()]
+
+
 def test_list(crops: Path, n: int) -> list[Path]:
     """One clip per video (prefer _0), videos in md5-hash order, first n."""
     by_video = {}
@@ -168,7 +197,7 @@ def run(args) -> None:
     (out / "clips").mkdir(parents=True, exist_ok=True)
     crops = Path(args.data) / "crops512"
     if args.list:
-        clips = [crops / f"{l.strip()}.mp4" for l in Path(args.list).read_text().splitlines() if l.strip()]
+        clips = read_list(args.list, Path(args.data), crops)
     else:
         clips = test_list(crops, args.n)
     if not clips:
@@ -194,6 +223,12 @@ def run(args) -> None:
                     gen, gt = frames, frames
                 elif row == "gt_motion":
                     gen, gt = ev.gen_gt_motion(frames, wav)
+                elif row == "ditto":
+                    vid = Path(args.ditto_dir) / f"{clip.stem}.mp4"
+                    if not vid.exists():
+                        raise FileNotFoundError(f"{vid}: run scripts/ditto_hdtf.py first")
+                    gen = decode_clip(str(vid), len(frames))
+                    gt = frames[: len(gen)]
                 else:
                     gen, gt = ev.gen_sang(frames, wav)
                 res, feats = ev.score(row, clip, out, gen, gt, frames[0])
@@ -235,7 +270,8 @@ def summarise(out: Path, args) -> dict:
 
 
 LABELS = {"real": ("Real video", "-"), "gt_motion": ("Real motion → LivePortrait (ceiling)", "renderer ceiling"),
-          "sang": ("SANG-M", "flow-matching DiT, 42-d")}
+          "sang": ("SANG-M", "flow-matching DiT, 42-d"),
+          "ditto": ("Ditto (re-run, our protocol)", "LivePortrait motion, diffusion")}
 
 
 def ours_rows(summaries: list[dict]) -> list[dict]:
@@ -254,7 +290,8 @@ def ours_rows(summaries: list[dict]) -> list[dict]:
                 continue
             seen.add(row)
             out.append({"source": f"Ours (n={s['rows'][row]['n_clips']}, {p.get('seconds', '?'):g} s)", "method": label,
-                        "family": fam, "params": "53.4 M +LP" if row == "sang" else None, "m": s["rows"][row]["m"]})
+                        "family": fam, "params": {"sang": "53.4 M +LP", "ditto": "n/r +LP"}.get(row),
+                        "m": s["rows"][row]["m"]})
     return out
 
 
@@ -279,9 +316,12 @@ def main() -> None:
     ap.add_argument("--name", default="sang", help="run name -> results/hdtf/<name>")
     ap.add_argument("--out", default=None)
     ap.add_argument("--n", type=int, default=75, help="test clips (one per video)")
-    ap.add_argument("--list", default=None, help="file of clip names (overrides --n)")
+    ap.add_argument("--list", default=None, help="configs/hdtf_test.csv (scripts/hdtf_testset.py) or a file of clip names; overrides --n")
+    ap.add_argument("--ditto-dir", default=str(REPO / "results" / "hdtf" / "ditto_videos"),
+                    help="Ditto's videos for the ditto row (scripts/ditto_hdtf.py --out)")
     ap.add_argument("--seconds", type=float, default=10.0, help="evaluated length per clip")
-    ap.add_argument("--rows", nargs="+", default=list(ROWS), choices=ROWS)
+    ap.add_argument("--rows", nargs="+", default=["real", "gt_motion", "sang"], choices=ROWS,
+                    help="ditto needs --ditto-dir from scripts/ditto_hdtf.py, so it is opt-in")
     ap.add_argument("--start", default="source", choices=["null", "source"])
     ap.add_argument("--cfg", type=float, default=None, help="audio guidance (default: the run's, 2.0)")
     ap.add_argument("--cfg-mouth", type=float, default=None, help="audio guidance on the mouth only")
