@@ -1,0 +1,29 @@
+[job] 176859 on gpu06 | gpu: NVIDIA A100-PCIE-40GB | cpus: 2 | env: avcodec | commit: b42f178 | 2026-10-08 07:24:03
+[job] python -u scripts/naturalness.py --ckpt runs/motion_sync/last.pt --modes none --sync-offsets cache/motion_lp/sync_offsets.json --name a_confirm --variants g=2,mouth=1.25 g=2,mouth=1.25,steps=6 g=2,mouth=1.25,steps=4 g=2,mouth=1.25,steps=5 g=2,mouth=1.25,tau=0.5,steps=6 g=2,mouth=1.25,tau=0.5,avg=4 g=2,mouth=1.25,tau=0.5,avg=4,steps=6 g=2,mouth=1.25,tau=0.3,avg=4,steps=6
+readout lip: held-out R^2 0.763
+readout eye: held-out R^2 0.706
+sync offsets cache/motion_lp/sync_offsets.json: dropped {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}
+300 val clips from 41 unseen speakers
+audio pass: 300 clips, 1860 bilabials, 103 s
+closure offset -2 frames (hist {-4: 85, -3: 309, -2: 633, -1: 450, 0: 140, 1: 37, 2: 41, 3: 42, 4: 68}), tau_close 0.040, eye_closed 0.142, 1075 real inter-blink intervals
+none@g=2,mouth=1.25: 107 s  {}
+none@g=2,mouth=1.25,steps=6: 65 s  {}
+none@g=2,mouth=1.25,steps=4: 44 s  {}
+none@g=2,mouth=1.25,steps=5: 55 s  {}
+none@g=2,mouth=1.25,tau=0.5,steps=6: 66 s  {}
+none@g=2,mouth=1.25,tau=0.5,avg=4: 105 s  {}
+none@g=2,mouth=1.25,tau=0.5,avg=4,steps=6: 64 s  {}
+none@g=2,mouth=1.25,tau=0.3,avg=4,steps=6: 65 s  {}
+
+setting                                           lip_corr        lip_ccc      lip_std_r   closure_viol  closure_depth      eye_std_r blinks_per_min     beat_align          gen_s
+real                                                   nan            nan            nan          0.100          0.040            nan         31.600          0.630            nan
+none@g=2,mouth=1.25                                  0.727          0.664          1.217          0.073          0.032          1.271         30.836          0.633        107.461
+none@g=2,mouth=1.25,steps=6                          0.737          0.674          1.195          0.072          0.032          1.126         28.173          0.635         65.338
+none@g=2,mouth=1.25,steps=4                          0.747          0.683          1.177          0.068          0.033          0.976         24.909          0.633         44.496
+none@g=2,mouth=1.25,steps=5                          0.741          0.678          1.187          0.071          0.033          1.062         26.993          0.634         54.788
+none@g=2,mouth=1.25,tau=0.5,steps=6                  0.764          0.695          1.098          0.062          0.035          1.123         28.104          0.631         65.501
+none@g=2,mouth=1.25,tau=0.5,avg=4                    0.772          0.705          1.107          0.059          0.033          1.262         30.697          0.635        105.399
+none@g=2,mouth=1.25,tau=0.5,avg=4,steps=6            0.773          0.707          1.108          0.060          0.033          1.123         28.104          0.631         64.475
+none@g=2,mouth=1.25,tau=0.3,avg=4,steps=6            0.775          0.707          1.099          0.058          0.033          1.124         28.382          0.633         64.519
+
+wrote /beegfs/work/achakraborti/SANG/results/naturalness/motion_sync_step15000_variants_sync_a_confirm.json
