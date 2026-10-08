@@ -1,0 +1,23 @@
+[job] 176834 on gpu09 | gpu: NVIDIA H100 NVL | cpus: 2 | env: avcodec | commit: cc2120b | 2026-10-08 05:59:09
+[job] python -u scripts/diagnose_lips.py --ckpt runs/motion_sync/best.pt --tests seeds lag offset --sync-offsets cache/motion_lp/sync_offsets.json
+sync offsets cache/motion_lp/sync_offsets.json: dropped val {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}, train {'low confidence': 88, 'video offsets disagree': 218, 'no sync': 43, 'no sync in video': 54, 'not measured': 5}
+300 val clips, 41 unseen speakers, loaded in 47 s; guidance 'g=2,mouth=1.25', 10 steps
+[seeds] K=8: r_sy 0.703  r_ss 0.811  r_inf 0.781  wrong-audio floor -0.004  (148 s)
+        mean of  1: corr 0.722 (expected 0.703)  ccc 0.660  std_r 1.194
+        mean of  2: corr 0.746 (expected 0.739)  ccc 0.664  std_r 1.120
+        mean of  4: corr 0.759 (expected 0.759)  ccc 0.695  std_r 1.159
+        mean of  8: corr 0.767 (expected 0.770)  ccc 0.702  std_r 1.149
+[lag] mean curve peak +0; corr lag0 0.767 -> best lag 0.796; |lag|>=2 in 5% of clips; hist {-6: 3, -5: 1, -4: 1, -2: 3, -1: 46, 0: 164, 1: 75, 2: 4, 5: 1, 6: 2}  (0 s)
+      -6:0.062  -5:0.090  -4:0.148  -3:0.266  -2:0.457  -1:0.663  +0:0.767  +1:0.695  +2:0.502  +3:0.309  +4:0.182  +5:0.115  +6:0.081
+[offset] loss-minimising audio shift: median +0.0, |shift|>=2 in 4% of clips, hist {-5: 2, -2: 3, -1: 60, 0: 168, 1: 60, 2: 2, 3: 1, 4: 3, 5: 1}; mouth loss +5.4% at +/-1, +17.5% at +/-2; dropping audio +15.7%  (89 s)
+         -5:1.4226  -4:1.3678  -3:1.2739  -2:1.1491  -1:1.0396  +0:1.0000  +1:1.0678  +2:1.2006  +3:1.3206  +4:1.3964  +5:1.4369
+
+================ DIAGNOSIS ================
+[randomness: minor] one sample r_sy=0.703, two samples r_ss=0.811, model mean r_inf=0.781: removing mouth randomness is worth +0.078. -> the gap is mostly not sampling noise.
+[bias] samples agree with each other (r_ss=0.811) more than with the real lips (r_sy=0.703): a consistent error, i.e. bias -> audio features, data, supervision.
+[ceiling for this model] even its mean prediction reaches only 0.781; 1 - r_inf = 0.219 is bias plus what audio cannot determine (see probe).
+[timing] 5% of clips peak at |lag| >= 2 frames; allowing the best lag per clip raises corr 0.767 -> 0.796 (+0.029).
+[timing precision: ok] dropping the audio raises the model's mouth loss +15.7%; shifting it 1 / 2 frames raises it +5.4% / +17.5%, i.e. an 80 ms error costs 112% of losing the audio.
+[data offsets (model's view): rare] the model fits 4% of clips best with the audio shifted >= 2 frames (median shift +0.0).
+
+wrote /beegfs/work/achakraborti/SANG/results/diagnose/motion_sync_step9000_sync.json

@@ -1,0 +1,27 @@
+[job] 176833 on gpu06 | gpu: NVIDIA A100-PCIE-40GB | cpus: 2 | env: avcodec | commit: cc2120b | 2026-10-08 06:00:02
+[job] python -u scripts/naturalness.py --ckpt runs/motion_sync/best.pt --modes none --variants g=2,mouth=1.25 --sync-offsets cache/motion_lp/sync_offsets.json
+readout lip: held-out R^2 0.763
+readout eye: held-out R^2 0.706
+sync offsets cache/motion_lp/sync_offsets.json: dropped {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}
+300 val clips from 41 unseen speakers
+audio pass: 300 clips, 1860 bilabials, 45 s
+closure offset -2 frames (hist {-4: 85, -3: 309, -2: 633, -1: 450, 0: 140, 1: 37, 2: 41, 3: 42, 4: 68}), tau_close 0.040, eye_closed 0.142, 1075 real inter-blink intervals
+none@g=2,mouth=1.25: 106 s  {}
+
+metric                  real  none@g=2,mouth=1.25
+closure_depth          0.040                0.033
+closure_viol           0.100                0.079
+blinks_per_min        31.600               29.447
+ibi_median_s           1.240                1.360
+ibi_cv                 0.673                0.603
+blink_ms             120.000              120.000
+blink_at_pause         0.089                0.092
+pause_cover            0.083                0.083
+beat_align             0.630                0.633
+beat_chance            0.603                0.605
+lip_corr                 nan                0.722
+lip_std_r                nan                1.194
+lip_ccc                  nan                0.660
+eye_std_r                nan                1.219
+
+wrote /beegfs/work/achakraborti/SANG/results/naturalness/motion_sync_step9000_variants_sync.json
