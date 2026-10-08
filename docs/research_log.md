@@ -113,7 +113,7 @@ y [n, 42] ─► from_target(y, m_src) [n, 70] (scale, translation, 8 shape keyp
 | File | What it does |
 |---|---|
 | `sang/motion.py` | Frozen LivePortrait codec (`MotionCodec`: landmarks, fixed-box crop, extract, source_motion with lip normalisation, render), pure-torch transforms (`to_target`, `from_target`, rotation), `motion_fidelity`, `first_cut`, `decode_clip` |
-| `sang/motion_model.py` | `MotionFlowTransformer`, `flow_loss`, `sample` (Euler + CFG + bound projection + `prefix_keep`; autoguidance, guidance interval, Sway steps, noise scale), `generate` (windows, `start`, bounds, `mouth_avg`), `parse_spec` / `sampler_kwargs` / `load_ema`, `project`, `Norm`, `build` |
+| `sang/motion_model.py` | `MotionFlowTransformer`, `flow_loss`, `sample` (Euler + CFG + bound projection + `prefix_keep`; autoguidance, guidance interval, Sway steps, noise scale), `generate` (windows, `start`, bounds, `mouth_avg`), `parse_spec` / `sampler_kwargs` / `load_ema`, `flow_loss` options (logit-normal shift, contrastive FM, `lip_ccc_loss`, `spectral_loss`), `ema_weights`, `project`, `Norm`, `build` |
 | `sang/naturalness.py` | Landmark lip/eye ratios, linear `Readout`s, phoneme recogniser (wav2vec2 XLSR-53 espeak), bilabial events, pauses, blink detector, beat alignment, closure/blink bounds, blink scheduler, `Guide`, `guided_generate` |
 | `sang/bench.py` | PSNR, SSIM, CSIM (ArcFace buffalo_l), LSE via syncnet_python, FID, `write_mp4` |
 | `scripts/motion_ceiling.py` | M0: extract → render → re-extract; gates |
@@ -365,6 +365,7 @@ huggingface-cli download facebook/wav2vec2-xlsr-53-espeak-cv-ft   # (already in 
 | Train with offsets | `sbatch bash_scripts/train_motion.sh out_dir=runs/<name> max_steps=15000 warmup_steps=2000 patience=0 sync_offsets=cache/motion_lp/sync_offsets.json` |
 | Metrics on aligned val | add `--sync-offsets cache/motion_lp/sync_offsets.json` to `naturalness.py` / `diagnose_lips.py` (outputs get a `_sync` suffix) |
 | Sampler sweep | `naturalness.py --variants "g=2,mouth=1.25,avg=4" "...,tau=0.7" "...,steps=6,sway=-0.8" "...,gmax=0.7" "...,ag_mouth=1.5" --guide-ckpt runs/guide_xs/best.pt --name <tag>`. Keys: `g mouth eyes brow rot rescale steps sway gmin gmax ag ag_mouth tau temp avg` (`sang.motion_model.SAMPLER_KEYS`). The same spec goes to `infer_motion.py` / `demo_motion.py` / `eval_hdtf.py` as `--sampler` |
+| Phase B batch | `bash bash_scripts/phase_b.sh` (7 runs + 9 evals, chained; `GRES=gpu:h100:1` to change card, `EVAL_SPECS="..."` to change the eval samplers, run names to submit a subset). Options are config keys: `t_dist=logit_normal t_mean=`, `lam_cfm=` (`cfm_neg=clip\|batch`), `lam_ccc=`, `lam_spec=` (`spec_hz`, `aux_tmax`), `ema_extra=[0.999,0.9995]`; evaluate an extra EMA with `--ema 0.999` |
 | Autoguidance guide | `sbatch --gres=gpu:h100:1 bash_scripts/train_motion.sh out_dir=runs/guide_xs dim=256 layers=4 heads=4 max_steps=1000 warmup_steps=100 eval_every=1000 patience=0 sync_offsets=cache/motion_lp/sync_offsets.json` (~5 min) |
 | Jitter (laptop) | `python scripts/video_jitter.py results/extras/<dir>/*_sbs.mp4` |
 | HDTF install (login) | `bash bash_scripts/install_eval.sh` (yt-dlp, I3D for FVD, Inception for FID) |
@@ -394,7 +395,7 @@ huggingface-cli download facebook/wav2vec2-xlsr-53-espeak-cv-ft   # (already in 
 | 9 | ~~AV-offset correction~~ done (§3.6): lip corr 0.687 → 0.722, CCC 0.627 → 0.660 on the aligned val set | | |
 | 10 | ~~Phase A sampler sweep~~ done (§3.7) | | |
 | 11 | Phase A confirmation: combine the winners on last.pt | `sbatch bash_scripts/job.sh scripts/naturalness.py --ckpt runs/motion_sync/last.pt --modes none --sync-offsets cache/motion_lp/sync_offsets.json --name a_confirm --variants "g=2,mouth=1.25" "g=2,mouth=1.25,steps=6" "g=2,mouth=1.25,steps=4" "g=2,mouth=1.25,steps=5" "g=2,mouth=1.25,tau=0.5,steps=6" "g=2,mouth=1.25,tau=0.5,avg=4" "g=2,mouth=1.25,tau=0.5,avg=4,steps=6" "g=2,mouth=1.25,tau=0.3,avg=4,steps=6"` (~13 min) | Pick the default sampler: highest CCC with lip_std_r ≤ 1.2 and blinks ≥ 26/min; then diagnose it (`--tests seeds lag`) to see how close it gets to r_inf |
-| 12 | Phase B: training-recipe batch on aligned data (report §4) | needs code: logit-normal t (flag exists), contrastive FM, lip CCC + spectral loss, multi-EMA | each a 16-min retrain; judge with the chosen sampler on the aligned val set |
+| 12 | Phase B: training-recipe batch on aligned data (report §4) | `bash bash_scripts/phase_b.sh` (coded 2026-10-08: logit-normal t ± shift, contrastive FM with same-clip negatives, lip CCC loss, band-limited spectral loss, extra EMAs) | Compare each run's last.pt with `b0_control` (same seed and recipe) at the same sampler: lip_corr and lip_ccc up, lip_std_r ≤ 1.3, closure_viol near 0.10. Keep a change only if it beats the control by more than ~0.005 |
 | — | HDTF evaluation | deferred by the user until the improvements are in | use `--sampler` with the chosen default and `runs/motion_sync/last.pt` |
 
 ---

@@ -31,6 +31,18 @@ p_audio: 0.1              # FLOAT condition dropout
 p_ref: 0.1
 p_prefix: 0.5             # FLOAT: previous-window dropout, keeps the first window in distribution
 t_dist: uniform           # FLOAT. AVTR-1 uses logit_normal -> ablation
+# Phase B (report 'SANG next round improvements' section 4). All off by default; val loss always uses uniform t.
+t_mean: 0.0               # logit_normal shift: sigmoid(t_mean + t_scale * N(0,1)); > 0 = more training at high noise
+t_scale: 1.0              # SD3: narrow (< 1) distributions hurt few-step sampling, keep 1
+lam_cfm: 0.0              # contrastive flow matching (arXiv 2506.05350), ImageNet optimum 0.05; > 0.1 degenerates
+cfm_neg: clip             # negative = another window of the same clip (same person, other audio); batch = another clip
+cfm_regions: [mouth]
+lam_ccc: 0.0              # 1 - CCC of lip opening on the one-step clean estimate (samples with t <= aux_tmax)
+lam_spec: 0.0             # L1 on the rFFT (< spec_hz) of the clean estimate (FreDF 2402.02399), same t mask
+spec_hz: 10.0             # syllable-rate lip motion is ~3-8 Hz; above 10 Hz is extractor jitter
+spec_regions: [mouth]
+aux_tmax: 0.3             # aux losses only where the clean estimate is sharp (t = 1 is noise)
+ema_extra: []             # extra EMA decays kept in every checkpoint, e.g. [0.999, 0.9995]; pick with --ema at eval
 
 # ---- optimisation ----
 lr: 3.0e-4                # AVTR-1: 3e-4 -> 1e-5 cosine over 200k, on one GPU in 35 h

@@ -44,7 +44,7 @@ from sang.diagnose import (RidgeProbe, by_group, corr, lag_curve, lag_summary, l
                            offset_summary, pca_basis, seed_stats, seeds_summary, shifted_mouth_losses, stack_taps,
                            taps, ticks_to_frames, verdict)
 from sang.motion import REGIONS, to_target
-from sang.motion_model import Norm, build, generate, load_ema, parse_spec, sampler_kwargs
+from sang.motion_model import Norm, build, ema_weights, generate, load_ema, parse_spec, sampler_kwargs
 from sang.naturalness import SR, load_readouts, load_wav
 from sang.sync import SyncOffsets, real_clip_mp4, shift_ticks, shift_wav
 
@@ -132,6 +132,7 @@ def main() -> None:
     ap.add_argument("--max-frames", type=int, default=250)
     ap.add_argument("--variant", default="g=2,mouth=1.25",
                     help="sampler spec as in naturalness.py --variants (e.g. 'g=2,mouth=1.25,avg=4'); '' = the run's defaults")
+    ap.add_argument("--ema", default=None, help="extra EMA decay saved by training with ema_extra (e.g. 0.999); default = the main EMA")
     ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide checkpoint (for ag / ag_mouth in --variant)")
     ap.add_argument("--steps", type=int, default=None, help="Euler steps (default: the run's sample_steps)")
     ap.add_argument("--k", type=int, default=8, help="samples per clip for the seeds test")
@@ -158,7 +159,7 @@ def main() -> None:
     ck = torch.load(args.ckpt, map_location=dev, weights_only=False)
     cfg = ck["cfg"]
     model = build(cfg).to(dev).eval()
-    model.load_state_dict(ck["ema"])
+    model.load_state_dict(ema_weights(ck, args.ema))
     norm = Norm(**ck["norm"]).to(dev)
     cache = Path(cfg["cache_dir"])
     read = load_readouts(cache / "openness.json")
@@ -204,7 +205,8 @@ def main() -> None:
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{Path(args.ckpt).parent.name}_step{ck['step']}{'_sync' if so is not None else ''}.json"
+    out_path = out_dir / (f"{Path(args.ckpt).parent.name}_step{ck['step']}{'_sync' if so is not None else ''}"
+                          f"{f'_ema{args.ema}' if args.ema else ''}.json")
     R = {"ckpt": args.ckpt, "step": ck["step"], "variant": args.variant, "steps": steps, "clips": len(clips),
          "speakers": len({c["speaker"] for c in clips}), "tests": args.tests, "sync_offsets": args.sync_offsets}
 

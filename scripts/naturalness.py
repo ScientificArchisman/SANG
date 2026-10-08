@@ -37,7 +37,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from sang.motion import to_target
-from sang.motion_model import Norm, build, load_ema, parse_spec, sampler_kwargs
+from sang.motion_model import Norm, build, ema_weights, load_ema, parse_spec, sampler_kwargs
 from sang.naturalness import (FPS, Guide, PhonemeRecognizer, audio_onsets, beat_alignment, blink_events,
                               closure_minima, closure_offset, energy_db, guided_generate, head_beats,
                               load_readouts, load_wav, pauses)
@@ -110,6 +110,7 @@ def main() -> None:
     ap.add_argument("--variants", nargs="+", default=None,
                     help="sampler variants, each a spec like 'g=2,mouth=1.25,avg=4,tau=0.7,steps=6,sway=-0.8,gmax=0.7,"
                          "ag_mouth=1.5' (keys: sang.motion_model.SAMPLER_KEYS; ag* need --guide-ckpt)")
+    ap.add_argument("--ema", default=None, help="extra EMA decay saved by training with ema_extra (e.g. 0.999); default = the main EMA")
     ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide: a weaker, less-trained SANG checkpoint")
     ap.add_argument("--sync-offsets", default=None,
                     help="<cache>/sync_offsets.json: drop no-sync val clips and move each clip's audio (features and "
@@ -122,7 +123,7 @@ def main() -> None:
     ck = torch.load(args.ckpt, map_location=dev, weights_only=False)
     cfg = ck["cfg"]
     model = build(cfg).to(dev).eval()
-    model.load_state_dict(ck["ema"])
+    model.load_state_dict(ema_weights(ck, args.ema))
     norm = Norm(**ck["norm"]).to(dev)
     ag_model = load_ema(args.guide_ckpt, dev, norm) if args.guide_ckpt else None
     if args.variants:                                         # fail on a typo now, not after the audio pass
@@ -230,7 +231,7 @@ def main() -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     tag = "_variants" if args.variants else ("" if not args.cfg else "_cfg" + "-".join(f"{g:g}" for g in args.cfg))
-    tag += ("_sync" if so is not None else "") + (f"_{args.name}" if args.name else "")
+    tag += ("_sync" if so is not None else "") + (f"_ema{args.ema}" if args.ema else "") + (f"_{args.name}" if args.name else "")
     name = f"{Path(args.ckpt).parent.name}_step{ck['step']}{tag}.json"
     (out / name).write_text(json.dumps({"ckpt": args.ckpt, "step": ck["step"], "stats": {k: v for k, v in st.items() if k != "ibi_s"},
                                         "table": table, "constraints": extra}, indent=1))

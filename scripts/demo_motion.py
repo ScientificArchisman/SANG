@@ -24,7 +24,7 @@ sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.bench import write_mp4
 from sang.motion import MotionCodec, decode_clip, from_target, to_target
-from sang.motion_model import Norm, build, guidance_vector, load_ema, parse_spec, sampler_kwargs
+from sang.motion_model import Norm, build, ema_weights, guidance_vector, load_ema, parse_spec, sampler_kwargs
 from sang.naturalness import Guide, guided_generate
 
 SR, FPS = 16000, 25
@@ -62,6 +62,7 @@ def main() -> None:
     ap.add_argument("--sampler", default=None,
                     help="sampler spec, e.g. 'g=2,mouth=1.25,avg=4' (sang.motion_model.SAMPLER_KEYS); overrides "
                          "--cfg/--cfg-mouth/--cfg-rescale/--steps")
+    ap.add_argument("--ema", default=None, help="extra EMA decay saved by training with ema_extra (e.g. 0.999); default = the main EMA")
     ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide checkpoint (for ag / ag_mouth in --sampler)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--guide", default="none", choices=["none", "lips", "blinks", "both"],
@@ -86,7 +87,7 @@ def main() -> None:
     ck = torch.load(args.ckpt, map_location=dev, weights_only=False)
     cfg = ck["cfg"]
     model = build(cfg).to(dev).eval()
-    model.load_state_dict(ck["ema"])
+    model.load_state_dict(ema_weights(ck, args.ema))
     norm = Norm(**ck["norm"]).to(dev)
     gamma = guidance_vector(cfg["cfg_audio"] if args.cfg is None else args.cfg, mouth=args.cfg_mouth)
     samp = sampler_kwargs(parse_spec(args.sampler), cfg, load_ema(args.guide_ckpt, dev, norm) if args.guide_ckpt else None

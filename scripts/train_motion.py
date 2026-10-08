@@ -82,9 +82,10 @@ class MotionWindows(Dataset):
     capped the first run at ~1.4 it/s: 256 network file opens per step."""
 
     def __init__(self, rows, L: int, P: int, norm: Norm, per_clip: int, fixed: bool = False,
-                 preload: bool = True, threads: int = 16, shifts: dict | None = None):
+                 preload: bool = True, threads: int = 16, shifts: dict | None = None, neg: bool = False):
         self.rows = [r for r in rows if r["n"] >= L + P]
         self.L, self.P, self.norm, self.per_clip = L, P, norm, per_clip
+        self.neg = neg                    # also return another window of the same clip (contrastive FM)
         self.shifts = shifts or {}        # clip_key -> WavLM ticks the audio is moved by (sang/sync.py)
         self.fixed = fixed                # val: the same windows every eval, so curves are comparable
         if not self.rows:
@@ -116,8 +117,20 @@ class MotionWindows(Dataset):
         s = rng.randint(0, n - span)
         k = rng.randint(0, n - 1)
         y = y_all[s:s + span]
-        return {"prefix": y[: self.P], "target": y[self.P:], "ref": ref_all[k],
+        item = {"prefix": y[: self.P], "target": y[self.P:], "ref": ref_all[k],
                 "audio": audio[TPF * s: TPF * (s + span)]}          # fp16: half the bytes per batch; the model casts
+        if self.neg:
+            item["neg_target"] = y_all[neg_start(n, self.L, s + self.P, rng)][: self.L]
+        return item
+
+
+def neg_start(n: int, L: int, start: int, rng, min_gap: int = 16) -> slice:
+    """A window of L frames from the same clip whose start is >= min_gap frames from `start` when the
+    clip allows it (same speaker and recording, different speech); else any other start."""
+    starts = [s for s in range(0, n - L + 1) if abs(s - start) >= min_gap] or \
+             [s for s in range(0, n - L + 1) if s != start] or [start]
+    s = rng.choice(starts)
+    return slice(s, s + L)
 
 
 # ---------------------------------------------------------------------- eval
@@ -139,7 +152,7 @@ def evaluate(model, loader, cfg, dev, max_batches: int) -> dict:
         batch = {k: v.to(dev) for k, v in batch.items()}
         torch.manual_seed(bi)                              # same t / noise every eval
         loss, _ = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0,
-                            t_dist=cfg["t_dist"])
+                            t_dist="uniform")
         fm += float(loss)
         n += 1
         gt, L = batch["target"], batch["target"].shape[1]
@@ -212,7 +225,8 @@ def main() -> None:
               f"dropped train {why_t}, val {why_v} (val loss is not comparable with runs without it)", flush=True)
     L, P = cfg["frames"], cfg["prefix"]
     pre = cfg.get("preload", True)
-    train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], preload=pre, shifts=shifts)
+    neg = cfg.get("lam_cfm", 0) > 0 and cfg.get("cfm_neg", "clip") == "clip"
+    train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], preload=pre, shifts=shifts, neg=neg)
     val_ds = MotionWindows(val_rows, L, P, norm, cfg.get("val_windows_per_clip", 4), fixed=True, preload=pre,
                            shifts=shifts)
     print(f"{len(train_ds.rows)} train / {len(val_ds.rows)} val clips "
@@ -224,6 +238,7 @@ def main() -> None:
 
     model = build(cfg).to(dev)
     ema = copy.deepcopy(model).eval().requires_grad_(False)
+    ema_extra = {float(d): copy.deepcopy(model).eval().requires_grad_(False) for d in cfg.get("ema_extra", []) or []}
     decay = [p for n_, p in model.named_parameters() if p.ndim >= 2 and "pos" not in n_]
     no_decay = [p for n_, p in model.named_parameters() if p.ndim < 2 or "pos" in n_]
     opt = torch.optim.AdamW([{"params": decay, "weight_decay": cfg["weight_decay"]},
@@ -236,11 +251,22 @@ def main() -> None:
         ck = torch.load(cfg["resume"], map_location=dev, weights_only=False)
         model.load_state_dict(ck["model"])
         ema.load_state_dict(ck["ema"])
+        for d, m_ in ema_extra.items():
+            if f"{d:g}" in ck.get("ema_extra", {}):
+                m_.load_state_dict(ck["ema_extra"][f"{d:g}"])
         opt.load_state_dict(ck["opt"])
         step, best = ck["step"], ck.get("best", best)
         print(f"resumed at step {step}", flush=True)
 
     kw = {k: cfg[k] for k in ("lam_vel", "p_audio", "p_ref", "p_prefix", "t_dist")}
+    for k, d in (("t_mean", 0.0), ("t_scale", 1.0), ("lam_cfm", 0.0), ("cfm_regions", ["mouth"]), ("lam_ccc", 0.0),
+                 ("lam_spec", 0.0), ("spec_hz", 10.0), ("spec_regions", ["mouth"]), ("aux_tmax", 0.3)):
+        kw[k] = cfg.get(k, d)
+    if kw["lam_ccc"] > 0:                                  # lip-opening readout, in normalised target space
+        from sang.naturalness import load_readouts
+        kw["lip_a"] = load_readouts(cache / "openness.json")["lip"].in_z(norm)[0].to(dev)
+    on = {k: kw[k] for k in ("t_mean", "lam_cfm", "lam_ccc", "lam_spec") if kw[k]}
+    print(f"objective: t_dist {kw['t_dist']} {on or '(no phase-B terms)'}; extra EMAs {sorted(ema_extra) or 'none'}", flush=True)
     t0 = time.time()
     t_data = t_gpu = 0.0                                   # seconds per logging window: waiting vs computing
     t_prev = time.perf_counter()
@@ -260,6 +286,9 @@ def main() -> None:
             with torch.no_grad():
                 for pe, pm in zip(ema.parameters(), model.parameters()):
                     pe.lerp_(pm, 1.0 - cfg["ema"])
+                for d, m_ in ema_extra.items():
+                    for pe, pm in zip(m_.parameters(), model.parameters()):
+                        pe.lerp_(pm, 1.0 - d)
             step += 1
             if dev == "cuda":
                 torch.cuda.synchronize()                   # so compute time is not billed to data
@@ -278,6 +307,7 @@ def main() -> None:
                 r = evaluate(ema, vdl, cfg, dev, cfg["eval_batches"])
                 print("EVAL step {} ".format(step) + " ".join(f"{k} {v:.4f}" for k, v in r.items()), flush=True)
                 ck = {"model": model.state_dict(), "ema": ema.state_dict(), "opt": opt.state_dict(),
+                      "ema_extra": {f"{d:g}": m_.state_dict() for d, m_ in ema_extra.items()},
                       "step": step, "best": best, "cfg": cfg, "norm": norm.state_dict()}
                 torch.save(ck, out / "last.pt")
                 if r["val_loss"] < best:

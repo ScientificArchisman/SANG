@@ -76,7 +76,7 @@ class Evaluator:
         from sang.bench import ArcFace, I3DFeats, InceptionFeats
         from sang.codec import load_wavlm
         from sang.motion import MotionCodec
-        from sang.motion_model import Norm, build, guidance_vector, load_ema, parse_spec, sampler_kwargs
+        from sang.motion_model import Norm, build, ema_weights, guidance_vector, load_ema, parse_spec, sampler_kwargs
         self.args, self.dev = args, "cuda"
         self.codec = MotionCodec(device=self.dev)
         self.arc = ArcFace(device=self.dev)
@@ -85,7 +85,7 @@ class Evaluator:
             ck = torch.load(args.ckpt, map_location=self.dev, weights_only=False)
             self.cfg = ck["cfg"]
             self.model = build(self.cfg).to(self.dev).eval()
-            self.model.load_state_dict(ck["ema"])
+            self.model.load_state_dict(ema_weights(ck, args.ema))
             self.norm = Norm(**ck["norm"]).to(self.dev)
             self.gamma = guidance_vector(self.cfg["cfg_audio"] if args.cfg is None else args.cfg, mouth=args.cfg_mouth)
             self.sampler = sampler_kwargs(parse_spec(args.sampler), self.cfg,
@@ -287,6 +287,7 @@ def main() -> None:
     ap.add_argument("--cfg-mouth", type=float, default=None, help="audio guidance on the mouth only")
     ap.add_argument("--steps", type=int, default=None)
     ap.add_argument("--sampler", default=None, help="sampler spec, e.g. 'g=2,mouth=1.25,avg=4'; overrides --cfg/--cfg-mouth/--steps")
+    ap.add_argument("--ema", default=None, help="extra EMA decay saved by training with ema_extra (e.g. 0.999); default = the main EMA")
     ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide checkpoint (for ag / ag_mouth in --sampler)")
     ap.add_argument("--held", default="camera", choices=["camera", "head"])
     ap.add_argument("--gt-target", type=int, default=42, choices=[42, 70], help="ceiling row: SANG's 42-d target or full 70-d")

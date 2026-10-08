@@ -157,21 +157,60 @@ def region_mse(pred: torch.Tensor, target: torch.Tensor) -> tuple[torch.Tensor, 
     return sum(parts.values()), parts
 
 
-def sample_t(B: int, device, dist: str = "uniform") -> torch.Tensor:
+def sample_t(B: int, device, dist: str = "uniform", mean: float = 0.0, scale: float = 1.0) -> torch.Tensor:
+    """Flow times (t = 1 is noise). logit_normal: sigmoid(mean + scale * N(0, 1)) (SD3, arXiv 2403.03206);
+    mean > 0 trains more at high noise, where the audio decides the coarse mouth timing."""
     if dist == "logit_normal":                               # AVTR-1, SD3: weight the middle of the path
-        return torch.sigmoid(torch.randn(B, device=device))
+        return torch.sigmoid(mean + scale * torch.randn(B, device=device))
     return torch.rand(B, device=device)                      # FLOAT
+
+
+def lip_ccc_loss(x0_hat: torch.Tensor, x0: torch.Tensor, a: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+    """Weighted mean over the batch of 1 - CCC(lip opening of x0_hat, of x0) over each window.
+
+    a [42]: the lip-opening readout in NORMALISED target space (naturalness.Readout.in_z); its constant
+    cancels in CCC. CCC scores timing and amplitude together, so unlike a pure sync loss it cannot be
+    satisfied by exaggerating the mouth. w [B]: per-sample weight (0 = skip)."""
+    o_hat, o = x0_hat.float() @ a.to(x0_hat).float(), x0.float() @ a.to(x0).float()        # [B, L]
+    mh, m = o_hat.mean(1, keepdim=True), o.mean(1, keepdim=True)
+    cov = ((o_hat - mh) * (o - m)).mean(1)
+    ccc = 2 * cov / (o_hat.var(1, unbiased=False) + o.var(1, unbiased=False) + (mh - m).squeeze(1) ** 2 + 1e-6)
+    return ((1 - ccc) * w).sum() / w.sum().clamp_min(1e-6)
+
+
+def spectral_loss(x0_hat: torch.Tensor, x0: torch.Tensor, cols, k_max: int, w: torch.Tensor) -> torch.Tensor:
+    """Weighted mean of L1 between the time-axis rFFTs (orthonormal) of x0_hat and x0 on `cols`, over
+    bins 0..k_max only (FreDF, arXiv 2402.02399, band-limited here). Bins above k_max are left free:
+    there extractor jitter dominates, and matching it would teach jitter."""
+    f_hat = torch.fft.rfft(x0_hat[..., cols].float(), dim=1, norm="ortho")[:, : k_max + 1]
+    f = torch.fft.rfft(x0[..., cols].float(), dim=1, norm="ortho")[:, : k_max + 1]
+    per = (f_hat - f).abs().mean(dim=(1, 2))                                                # [B]
+    return (per * w).sum() / w.sum().clamp_min(1e-6)
 
 
 def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
               p_audio: float = 0.1, p_ref: float = 0.1, p_prefix: float = 0.5,
-              t_dist: str = "uniform") -> tuple[torch.Tensor, dict]:
-    """batch: target [B,L,42], audio [B,2(P+L),1024], ref [B,REF_DIM], prefix [B,P,42] (optional).
+              t_dist: str = "uniform", t_mean: float = 0.0, t_scale: float = 1.0,
+              lam_cfm: float = 0.0, cfm_regions=("mouth",),
+              lam_ccc: float = 0.0, lip_a: torch.Tensor | None = None,
+              lam_spec: float = 0.0, spec_hz: float = 10.0, spec_regions=("mouth",),
+              aux_tmax: float = 0.3, fps: float = 25.0) -> tuple[torch.Tensor, dict]:
+    """batch: target [B,L,42], audio [B,2(P+L),1024], ref [B,REF_DIM], prefix [B,P,42] (optional),
+    neg_target [B,L,42] (optional, another window of the same clip, for lam_cfm).
 
-    Condition dropout rates are FLOAT's: audio 0.1, reference 0.1, previous-window context 0.5."""
+    Condition dropout rates are FLOAT's: audio 0.1, reference 0.1, previous-window context 0.5.
+
+    Phase B options (all off by default; report 'SANG next round improvements' section 4):
+      t_mean, t_scale  logit-normal time sampling (with t_dist='logit_normal').
+      lam_cfm          contrastive flow matching (arXiv 2506.05350): minus lam * ||v - v_neg||^2 on
+                       cfm_regions, v_neg = eps - x0_neg with the SAME noise and x0_neg from batch
+                       'neg_target' (same clip, other audio) or else another clip of the batch. A convex
+                       objective for lam < 1; it pushes the prediction to be specific to its own audio.
+      lam_ccc          lip-opening CCC on the one-step clean estimate, for samples with t <= aux_tmax.
+      lam_spec         band-limited (< spec_hz) spectral L1 on the clean estimate, same t mask."""
     x0 = batch["target"]
     B, dev = x0.shape[0], x0.device
-    t = sample_t(B, dev, t_dist)
+    t = sample_t(B, dev, t_dist, t_mean, t_scale)
     eps = torch.randn_like(x0)
     tb = t.view(B, 1, 1)
     x_t = (1 - tb) * x0 + tb * eps
@@ -182,13 +221,43 @@ def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
               drop_ref=torch.rand(B, device=dev) < p_ref)
     loss, parts = region_mse(v, eps - x0)
     out = {"fm": loss.detach(), **{f"fm_{k}": p.detach() for k, p in parts.items()}}
+    if lam_cfm > 0:
+        x0_neg = batch.get("neg_target")
+        x0_neg = x0.roll(1, 0) if x0_neg is None else x0_neg
+        u_neg = eps - x0_neg
+        cfm = sum(F.mse_loss(v[..., REGIONS[r]].float(), u_neg[..., REGIONS[r]].float()) for r in cfm_regions)
+        loss = loss - lam_cfm * cfm
+        out["cfm"] = cfm.detach()
+    x0_hat = x_t - tb * v                                    # one-step clean estimate
     if lam_vel > 0:
-        x0_hat = x_t - tb * v                                # one-step clean estimate
         vel, _ = region_mse(x0_hat[:, 1:] - x0_hat[:, :-1], x0[:, 1:] - x0[:, :-1])
         loss = loss + lam_vel * vel
         out["vel"] = vel.detach()
+    w = (t <= aux_tmax).float()                              # aux losses only where x0_hat is sharp
+    if lam_ccc > 0:
+        if lip_a is None:
+            raise ValueError("lam_ccc needs lip_a, the lip-opening readout in normalised space")
+        ccc = lip_ccc_loss(x0_hat, x0, lip_a, w)
+        loss = loss + lam_ccc * ccc
+        out["ccc"] = ccc.detach()
+    if lam_spec > 0:
+        cols = [c for r in spec_regions for c in REGIONS[r]]
+        spec = spectral_loss(x0_hat, x0, cols, int(spec_hz * x0.shape[1] / fps), w)
+        loss = loss + lam_spec * spec
+        out["spec"] = spec.detach()
     out["loss"] = loss.detach()
     return loss, out
+
+
+def ema_weights(ck: dict, which=None) -> dict:
+    """A checkpoint's EMA state dict: the main one, or an extra decay kept with `ema_extra` (e.g. 0.999)."""
+    if which in (None, "", "main"):
+        return ck["ema"]
+    extra = ck.get("ema_extra", {})
+    key = f"{float(which):g}"
+    if key not in extra:
+        raise ValueError(f"checkpoint has extra EMAs {sorted(extra)} only, not {key}")
+    return extra[key]
 
 
 # ---------------------------------------------------------------------- sampling
