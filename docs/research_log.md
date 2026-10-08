@@ -1,7 +1,7 @@
 # SANG-M research log
 
 **Living document: the single place for the plan, results, commands, ideas and references.**
-Last updated 2026-09-29 (calibration done; voice path coded). Update it whenever a run finishes, a decision is taken or an idea is added.
+Last updated 2026-10-08 (offset-corrected retrain; Phase A sampler sweep). Update it whenever a run finishes, a decision is taken or an idea is added.
 
 Conventions:
 - **measured** means a number from our own logs or scripts, with the job ID or file.
@@ -11,25 +11,27 @@ Conventions:
 
 ---
 
-## 0. Status at a glance (2026-09-29)
+## 0. Status at a glance (2026-10-08)
 
 | Item | State |
 |---|---|
-| Best checkpoint | `runs/motion_12k_anneal/best.pt` (job 172696): val flow loss 1.1460 @ step 12k, audio_gain 1.50 |
-| Renderer ceiling (M0) | Passed: mouth corr 0.871, mouth amp 0.963, CSIM 0.906, stitching off (job 171519) |
-| Start-up jitter | **Fixed**, commit `a911f42`. Frames 0–10: 2.7× → 0.65× real (`--start null`) / 0.44× (`--start source`). §3.4 |
-| Naturalness rules (lip closure, blinks) | Code in `f88d50d`; **`naturalness.py` next** (then the guided demo) |
-| Openness calibration | **Done** (job 173053, 80 clips / 3,937 frames): lip R² 0.763, eye R² 0.706 (borderline: it ranged 0.61–0.72 while clips were added; treat blink numbers as rough) |
-| Background warping | **Diagnosed** (jobs 173579–84): the renderer leaks ANY keypoint motion into the background (real 70-d: 1.25x; 42-d: 1.5x; +real s,t: 1.89x; generated demos 2.4x). The held-keypoint convention changes nothing (2.36x → 2.41x). Stitching held real motion still (0.95x) and costs ~0 on the 42-d target → **next: `--stitch` test**; then slot-0 background lock / compositing. See `reports/SANG background warping fix.md` (Update section) |
-| HDTF benchmark | **Not started**. Blocked on: can the login node reach YouTube, or is HDTF already downloaded? |
-| Voice cloning | **Coded** (kNN-VC + voice bank + `--voice`; 9 CPU tests); needs `install_voice.sh`, then `eval_voice.py` |
-| Emotion control | Researched, design fixed (§7.4); **not coded**; first step is a data check |
+| Model in use | `runs/motion_sync` (job 176832): retrained on audio–video-aligned data. `last.pt` (step 15k) is slightly better than `best.pt` (step 9k) on lips and blinks (§3.7) |
+| Lip sync (aligned val, 300 clips, 41 videos) | One sample **0.722** lip corr / **0.660** CCC at `g=2,mouth=1.25` (was 0.64 / 0.58 before the offset fix). With `avg=4` or `tau=0.5`: **0.759–0.762 / 0.688–0.698**. The model's mean (ceiling for randomness removal) is 0.781 (§3.6, §3.7) |
+| Default sampler | **Pending the confirmation sweep** (§6 #11). Candidates: `g=2,mouth=1.25` + `tau=0.5` and/or `avg=4`, `steps=6` |
+| Lip-sync diagnosis | **Done** (job 176657, §3.5): the main cause was audio–video misalignment in the TalkVid cache (30 % of measured clips off by ≥ 2 frames, constant per source video). Audio features are not the bottleneck |
+| Audio–video offsets | **Done**: `cache/motion_lp/sync_offsets.json` (1,723 videos, 95.5 % usable). Training and evaluation apply it (`sync_offsets=` / `--sync-offsets`). Evaluate on the aligned val set from now on |
+| Renderer ceiling (M0) | Passed: mouth corr 0.871, mouth amp 0.963, CSIM 0.906 (job 171519) |
+| Start-up jitter | **Fixed**, commit `a911f42` (§3.4) |
+| Background warping | **Fixed** by stitching, now the default (generated demos 2.41× → 0.56× real background motion). Report `SANG background warping fix.md` |
+| Naturalness rules | Coded and measured (closures, blinks, beats); rules also usable as sampling constraints (`--guide`) |
+| HDTF benchmark | Data downloaded; `eval_hdtf.py` ready (FID, FVD-16, CSIM, LSE, PSNR, SSIM; UTF-8 SyncNet fix). **Runs deferred** until the improvements are in |
+| Voice cloning | Coded (kNN-VC, voice bank, `--voice`); not yet evaluated |
+| Emotion control | Researched (§7.4); not coded |
 
-**Next runs, in order** (full commands in §6):
-1. `calibrate_openness.py`, then `naturalness.py`, then `demo_motion.py --guide both`.
-2. Pick the default start mode (`null` or `source`) by watching `results/extras/demo_fix`.
-3. Code and run the voice path (§7.3) and the emotion data check (§7.4).
-4. HDTF protocol (§7.7).
+**Next, in order** (commands in §6):
+1. Phase A confirmation sweep on `last.pt` → choose the default sampler (#11).
+2. Phase B training-recipe batch on aligned data (#12; needs code).
+3. Then the randomness and bias items of the next-round report: lip-expert loss, data scaling, head-placement outputs; HDTF when the user asks.
 
 ---
 
@@ -47,6 +49,9 @@ Conventions:
 | commit `95d75b1` | Speaker split by **hash**, stable as the cache grows | Val speakers never move to train |
 | Before M0 | "Replicate SOTA first, paper later" | User |
 | 2026-09-28 | **No audio watermarking** (AudioSeal removed from the plan) | User decision |
+| 2026-10-08 | **Train and evaluate on audio–video-aligned data** (`sync_offsets.json`); lip metrics are reported on the aligned val set | 30 % of TalkVid clips are off by ≥ 2 frames; aligned training gave +0.035 lip corr on the same val set (§3.6) |
+| 2026-10-08 | **Autoguidance dropped** | Worse in all 8 settings tried: amplitude 1.24–1.64, corr 0.645–0.709 vs 0.722 (§3.7) |
+| 2026-10-08 | Mouth guidance stays at **1.25** | Lower values lose more correlation than they gain in amplitude (CCC 0.660 → 0.635 at 1.0) |
 | Workflow | Push from the laptop only; pull on the cluster. Never push from the cluster | Cluster git auth goes through a stale VS Code askpass |
 
 ---
@@ -154,6 +159,9 @@ History:
 | 172386 | 3,685 | dropout 0.1, eval every 1k, patience 8, preload | best 1.196 @5k (old split), early stop @13k; 15 it/s |
 | 172630 → `runs/motion_12k` | 11,477 train / 412 val / 70 val speakers | hash split; `max_steps=40000 warmup_steps=2000` | best 1.154 @10k, plateau; audio_gain ≈ 1.49–1.51 |
 | **172696 → `runs/motion_12k_anneal`** | 12,584 | `max_steps=15000 warmup_steps=2000 patience=0` | **best 1.1460 @12k** |
+| **176832 → `runs/motion_sync`** | 12,786 train / 471 val (offset-corrected, 408 + 11 dropped) | same as 172696 + `sync_offsets=cache/motion_lp/sync_offsets.json` | best 1.1357 @9k on the aligned val set (not comparable); audio_gain 1.59. §3.6 |
+| 176838 → `runs/guide_early` | same | `max_steps=1000 warmup_steps=100 eval_every=1000` | val 1.4095, audio_gain 1.44 (autoguidance guide, §3.7) |
+| → `runs/guide_xs` | same | `dim=256 layers=4 heads=4 max_steps=1000` | autoguidance guide (§3.7) |
 
 Best-checkpoint eval (step 12000, job 172696, unseen speakers, clean-prefix windows):
 
@@ -202,6 +210,79 @@ Generated/real pixel acceleration (median over clips; lower = steadier):
 
 - **Conclusion:** the leading cause is audio–video misalignment in TalkVid source videos. It depresses the metric (offset val clips) and very likely the training signal. On aligned English clips the current model already scores 0.69 (one sample) and 0.75 (mean).
 - **Fix:** `scripts/sync_offsets.py` (SyncNet on 2 clips per video → `sync_offsets.json`), applied by `train_motion.py` (`sync_offsets=`), `naturalness.py` and `diagnose_lips.py` (`--sync-offsets`). Convention in `sang/sync.py`: SyncNet offset < 0 = audio late; audio moved by round(2 × offset) WavLM ticks.
+
+### 3.6 Audio–video offsets of the whole cache, and the retrain on aligned data (2026-10-08)
+
+**Offsets** (`scripts/sync_offsets.py`, jobs 176695/176698/176699, 3 shards, ~2.8–3.9 h each on A100-40GB, 4 SyncNet runs per GPU):
+
+| | |
+|---|---|
+| Measured | 3,066 clips from 1,723 source videos (2 per video) |
+| Usable (conf ≥ 3, \|offset\| < 10) | 95.5 % (conf < 3: 4.2 %; no sync: 1.2 %; 8 SyncNet failures) |
+| Usable clips off by ≥ 1 / ≥ 2 / ≥ 3 frames | 74 % / **30 %** / 9 % |
+| Direction | balanced: mean −0.11, median 0; counts −2: 345, −1: 714, 0: 768, +1: 575, +2: 251 |
+| Consistency within a video (1,256 videos with 2 usable clips) | identical 73 %, within 1 frame **97 %**, ≥ 2 apart 2.9 % |
+| After the merge | audio moved in 10,422 of 13,257 clips; dropped train 408 (low conf 88, video disagrees 218, no sync 43, no sync in video 54, unmeasured 5), val 11 |
+
+Reading: misalignment is per source video and goes both ways, so a model trained on the raw cache learns an averaged alignment with timing blurred over about ±2 frames.
+
+**Retrain** `runs/motion_sync` (job 176832, H100, same recipe as 172696 plus `sync_offsets=`): 12,786 train / 471 val clips; best val flow loss **1.1357 @ 9k** (val set changed, so not comparable with 1.146); flat after 9k while head dynamics keep rising (std_r_rot 0.96 → 1.03, vc_r_rot 0.89 → 0.93); audio_gain 1.50 → **1.59**; ~16 it/s, 15k steps ≈ 16 min.
+
+**Old vs new on the same aligned val set** (300 clips, 41 videos, g=2 mouth=1.25; naturalness jobs 176830 / 176833, diagnosis jobs 176831 / 176834):
+
+| | Uncorrected val (176657) | Old model, aligned val | **New model, aligned val** |
+|---|---|---|---|
+| lip_corr, one sample (naturalness, seed 0) | 0.64–0.65 | 0.687 | **0.722** |
+| r_sy (mean of 8 samples' corr) | 0.617 | 0.668 | **0.703** |
+| lip_ccc | 0.578 | 0.627 | **0.660** |
+| r_inf (the model's mean) | 0.694 | 0.748 | **0.781** |
+| mouth loss at 1 / 2-frame audio shift | +2.6 / +8.9 % | +3.1 / +10.6 % | **+5.4 / +17.5 %** |
+| clips best at \|lag\| ≥ 2 | 17 % | 7 % | 5 % |
+| closure_viol (real 0.10) | — | 0.089 | 0.079 |
+| lip_std_r | 1.20 | 1.19 | 1.19 |
+
+- About **+0.045** of the gain is measurement (offset val clips no longer score against misaligned ground truth); **+0.035** is better motion from aligned training.
+- Remaining: randomness worth +0.078 (one sample 0.703 vs mean 0.781), consistent error 0.22, and a sub-frame lean (corr 0.695 at +1 vs 0.663 at −1).
+
+### 3.7 Phase A: sampler options on `runs/motion_sync` (2026-10-08, aligned val, 300 clips, A100-40GB)
+
+Jobs: 176839 (`a1a2`), 176840 (`a3a4`), 176841 (`last`), 176842 (`ag_xs`), 176843 (`ag_early`); guides `runs/guide_xs` (dim 256, 4 layers, 1k steps) and `runs/guide_early` (job 176838: full size, 1k steps, val 1.4095, audio_gain 1.44). Code: `sang/motion_model.py` sampler options, spec strings in `naturalness.py --variants`. Baseline row = best.pt, `g=2,mouth=1.25`.
+
+| Setting (best.pt unless noted) | lip_corr | lip_ccc | lip_std_r | closure_viol (real 0.10) | eye_std_r | blinks/min (real 31.6) | s per 300 clips |
+|---|---|---|---|---|---|---|---|
+| **baseline** `g=2,mouth=1.25` | 0.722 | 0.660 | 1.194 | 0.079 | 1.219 | 29.4 | 105 |
+| A1 `mouth=1.0` | 0.703 | 0.635 | 1.069 | 0.125 | 1.220 | 29.0 | 105 |
+| A1 `mouth=1.1` | 0.712 | 0.648 | 1.120 | 0.099 | 1.220 | 29.1 | 106 |
+| A1 `mouth=1.25,eyes=1.5` | 0.721 | 0.659 | 1.174 | 0.082 | 1.197 | 28.2 | 104 |
+| A2 `avg=2` | 0.746 | 0.664 | 1.120 | 0.033 | 1.219 | 29.4 | 104 |
+| A2 **`avg=4`** | **0.759** | **0.695** | 1.159 | 0.056 | 1.219 | 29.4 | **103** |
+| A2 `mouth=1.5,avg=4` | **0.763** | **0.699** | 1.282 | 0.036 | 1.218 | 29.4 | 103 |
+| A3 `tau=0.7` | 0.749 | 0.682 | 1.106 | 0.061 | 1.231 | 28.8 | 107 |
+| A3 **`tau=0.5`** | **0.759** | 0.688 | **1.074** | 0.055 | 1.239 | 28.9 | 106 |
+| A4 **`steps=6`** | 0.733 | 0.670 | 1.173 | 0.078 | **1.086** | 26.1 | **65** |
+| A4 `steps=16` | 0.715 | 0.654 | 1.209 | 0.078 | 1.304 | 31.0 | 169 |
+| A4 `sway=-0.8` | 0.724 | 0.662 | 1.186 | 0.076 | 1.242 | 28.0 | 106 |
+| A4 `gmax=0.7` | 0.717 | 0.651 | 1.098 | 0.091 | 1.185 | 29.0 | 91 |
+| A4 `mouth=1.5,gmax=0.7` | 0.727 | 0.664 | 1.157 | 0.059 | 1.185 | 29.1 | 90 |
+| A4 autoguidance, guide_xs `ag_mouth=1.5` | 0.703 | 0.633 | 1.358 | 0.044 | 1.217 | 29.0 | 138 |
+| A4 guide_xs `ag_mouth=2` | 0.667 | 0.566 | 1.640 | 0.036 | 1.214 | 28.9 | 139 |
+| A4 guide_xs `mouth=1,ag_mouth=2` | 0.654 | 0.563 | 1.484 | 0.045 | 1.216 | 28.7 | 139 |
+| A4 guide_xs `g=1,ag=2` (no CFG) | 0.645 | 0.551 | 1.485 | 0.052 | 1.194 | 30.3 | 87 |
+| A4 guide_early `ag_mouth=1.5` | 0.709 | 0.643 | 1.275 | 0.056 | 1.225 | 29.3 | 158 |
+| A4 guide_early `ag_mouth=2` | 0.685 | 0.608 | 1.403 | 0.044 | 1.230 | 29.4 | 159 |
+| A4 guide_early `mouth=1,ag_mouth=2` | 0.671 | 0.596 | 1.268 | 0.066 | 1.231 | 29.1 | 160 |
+| A4 guide_early `g=1,ag=2` | 0.661 | 0.584 | 1.243 | 0.083 | 1.081 | 28.9 | 107 |
+| A5 **last.pt** (step 15k) baseline | 0.727 | 0.664 | 1.217 | 0.073 | 1.271 | **30.8** | 106 |
+| A5 last.pt `avg=4` | **0.762** | **0.698** | 1.176 | 0.057 | 1.271 | 30.8 | 104 |
+
+Findings:
+- **Reducing mouth randomness is the win.** `avg=4` (+0.037 corr, +0.035 CCC) and `tau=0.5` (+0.037 corr, +0.028 CCC, amplitude 1.07, closest to real) each recover about half the gap to the model's mean (r_inf 0.781). `avg` costs no time (the K samples run as one batch). The two act on the same randomness, so together they can add at most ~0.02 more (ceiling r_inf).
+- **Lower mouth guidance does not help CCC**: correlation falls faster than amplitude improves (CCC 0.660 → 0.648 → 0.635 at mouth 1.25 → 1.1 → 1.0). mouth 1.25 stays. mouth 1.5 with `avg=4` is +0.004 at amplitude 1.28: not worth it.
+- **Fewer steps are better and faster**: 16 → 10 → 6 steps gives corr 0.715 → 0.722 → 0.733, eye amplitude 1.30 → 1.22 → 1.09, at 0.6× the time. Blinks fall to 26/min at 6 steps (real 31.6). 4–5 steps untested.
+- **No gain**: Sway sampling (+0.002), guidance interval (−0.005, or ±0 with mouth 1.5 at 0.86× time), eye guidance 1.5 (eye amplitude 1.22 → 1.20 only).
+- **Autoguidance is worse in every form tried**: it inflates mouth amplitude (1.27–1.64) and lowers correlation (0.645–0.709). The main-minus-weak difference amplifies amplitude, not timing. Dropped (revisit only with a guide from a ≥ 4k-step checkpoint and ag ≤ 1.2).
+- **last.pt ≥ best.pt**: +0.005 corr, blinks 30.8 vs 29.4/min (real 31.6), livelier head (training eval); eye amplitude 1.27 vs 1.22. Selection by val flow loss is not aligned with the lip metrics.
+- **Closures**: averaging and low temperature close the lips at /p b m/ more reliably than real (closure_viol 0.03–0.06, depth 0.02–0.03 vs real 0.10 / 0.04). Not a defect, but check by eye that closures do not look pressed.
 
 ---
 
@@ -310,7 +391,11 @@ huggingface-cli download facebook/wav2vec2-xlsr-53-espeak-cv-ft   # (already in 
 | 6 | Emotion data check (after coding, §7.4) | HSEmotion pass over the cache → distribution report | Enough non-neutral mass, or add CREMA-D |
 | 7 | HDTF protocol (§7.7) | Needs HDTF on disk | GT row, GT-motion row, SANG row, baselines |
 | 8 | ~~Lip-sync diagnosis~~ done, job 176657 (§3.5) (report `SANG next round improvements.md` §1) | `sbatch --time=06:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/diagnose_lips.py --ckpt runs/motion_12k_anneal/best.pt` | Decides the order of the next changes. randomness MAJOR → mouth anchor (§6c) first; bias / timing precision LOW / probe gap → audio stream (§5) and lip-expert loss (§6a); SyncNet offsets COMMON → offset correction (§3a); language gap → multilingual encoder |
-| 9 | AV-offset correction (§3.5) | measure → merge → retrain with `sync_offsets=` → naturalness and diagnose with `--sync-offsets` for old and new checkpoints | New vs old on the SAME aligned val set: lip corr and CCC up, std_r ≤ 1.3, audio_gain ≥ 1.5; then HDTF LSE-C/D |
+| 9 | ~~AV-offset correction~~ done (§3.6): lip corr 0.687 → 0.722, CCC 0.627 → 0.660 on the aligned val set | | |
+| 10 | ~~Phase A sampler sweep~~ done (§3.7) | | |
+| 11 | Phase A confirmation: combine the winners on last.pt | `sbatch bash_scripts/job.sh scripts/naturalness.py --ckpt runs/motion_sync/last.pt --modes none --sync-offsets cache/motion_lp/sync_offsets.json --name a_confirm --variants "g=2,mouth=1.25" "g=2,mouth=1.25,steps=6" "g=2,mouth=1.25,steps=4" "g=2,mouth=1.25,steps=5" "g=2,mouth=1.25,tau=0.5,steps=6" "g=2,mouth=1.25,tau=0.5,avg=4" "g=2,mouth=1.25,tau=0.5,avg=4,steps=6" "g=2,mouth=1.25,tau=0.3,avg=4,steps=6"` (~13 min) | Pick the default sampler: highest CCC with lip_std_r ≤ 1.2 and blinks ≥ 26/min; then diagnose it (`--tests seeds lag`) to see how close it gets to r_inf |
+| 12 | Phase B: training-recipe batch on aligned data (report §4) | needs code: logit-normal t (flag exists), contrastive FM, lip CCC + spectral loss, multi-EMA | each a 16-min retrain; judge with the chosen sampler on the aligned val set |
+| — | HDTF evaluation | deferred by the user until the improvements are in | use `--sampler` with the chosen default and `runs/motion_sync/last.pt` |
 
 ---
 

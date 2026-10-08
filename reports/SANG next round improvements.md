@@ -365,3 +365,28 @@ SANG's lip deficit is mostly a timing problem, and timing is set by four things 
 - enough data to get past a 70-hour plateau.
 
 All four are fixable at 53 M parameters. The ideas come from video-to-audio, TTS, image diffusion and 3D face animation, where comparable fixes halved sync error or added 0.07 lip correlation. First, a few hours of diagnosis will say whether the 0.64 is randomness or bias. That decides whether the mouth anchor or the audio stream comes first. Image quality is a separate problem with a separate fix in the decoder, and it can proceed in parallel.
+
+## Update 2026-10-08: what the diagnosis and Phase A measured
+
+The diagnosis this report asked for (section 1) has run, and the first fixes have been measured. Details and job IDs are in `docs/research_log.md` §3.5–3.7.
+
+**The main cause was the data, not the model.**
+- 30 % of TalkVid clips have audio and video off by 2 or more frames. The offset is constant within a source video (97 % of videos agree within one frame across clips) and goes both ways.
+- The audio-feature probes found little to gain from other WavLM layers, Whisper or a wider window (+0.02 at most for a linear map). The audio front-end changes in section 5 move down.
+
+**Offset correction (section 3a), measured on the same aligned val set.**
+- Retraining on SyncNet-aligned audio raised lip correlation 0.687 → 0.722 and CCC 0.627 → 0.660. Timing became sharper: a 2-frame audio shift now costs +17.5 % mouth loss, against +10.6 % before.
+- Scoring against aligned ground truth also lifts the reported number for any model by about 0.045.
+
+**Sampler options (section 2), measured.**
+- *Reducing mouth randomness* recovers half the remaining randomness gap at no cost. Averaging 4 samples' mouths, or starting the mouth from smaller noise (`tau=0.5`), each gives 0.759 correlation (from 0.722). `tau=0.5` also brings amplitude to 1.07.
+- *Fewer steps:* 6 steps give +0.011 correlation, eye amplitude 1.09 instead of 1.22, and 40 % less time.
+- *No gain:* Sway sampling and the guidance interval.
+- *Worse:* autoguidance in every form tried. It inflates mouth amplitude (1.24–1.64) and lowers correlation; dropped.
+- Lower mouth guidance loses more correlation than it gains in amplitude, so it stays at 1.25.
+
+**Revised order.**
+1. Combine the sampler winners (randomness removal can reach at most r_inf = 0.781).
+2. The training-recipe batch (section 4) on aligned data.
+3. The lip-expert loss (section 6a) and data scaling (section 7) for the remaining consistent error (about 0.22).
+4. The deterministic mouth anchor (section 6c) now matters less: averaging and temperature already capture most of what it targets.
