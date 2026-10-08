@@ -1,0 +1,21 @@
+sync offsets cache/motion_lp/sync_offsets.json: audio moved in 10422/13257 clips; dropped train {'low confidence': 88, 'video offsets disagree': 218, 'no sync': 43, 'no sync in video': 54, 'not measured': 5}, val {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3} (val loss is not comparable with runs without it)
+  preloaded 12786 clips in 187 s, audio 13.1 GB
+  preloaded 471 clips in 4 s, audio 0.5 GB
+12786 train / 471 val clips (70 unseen val speakers)
+/home/achakraborti/miniconda3/envs/sang_bw/lib/python3.10/site-packages/torch/utils/data/dataloader.py:424: UserWarning: This DataLoader will create 8 worker processes in total. Our suggested max number of worker in current system is 4, which is smaller than what this DataLoader is going to create. Please be aware that excessive worker creation might get DataLoader running slow or even freeze, lower the worker number to avoid potential slowness/freeze if necessary.
+  self.check_worker_number_rationality()
+MotionFlowTransformer: 53.4 M params
+/home/achakraborti/miniconda3/envs/sang_bw/lib/python3.10/site-packages/torch/utils/data/dataloader.py:432: UserWarning: This DataLoader will create 8 worker processes in total. Our suggested max number of worker in current system is 4, which is smaller than what this DataLoader is going to create. Please be aware that excessive worker creation might get DataLoader running slow or even freeze, lower the worker number to avoid potential slowness/freeze if necessary.
+  self.check_worker_number_rationality()
+step     100 lr 3.00e-04 fm 3.3176 fm_rot 0.6404 fm_brow 0.7392 fm_eyes 0.9045 fm_mouth 1.0335 vel 0.2903 loss 3.6079 gnorm 6.489 6.7 it/s  (data 0.042 s + gpu 0.108 s per step)
+step     200 lr 2.91e-04 fm 2.5638 fm_rot 0.4972 fm_brow 0.5915 fm_eyes 0.7139 fm_mouth 0.7613 vel 0.1777 loss 2.7415 gnorm 8.446 14.0 it/s  (data 0.002 s + gpu 0.069 s per step)
+step     300 lr 2.66e-04 fm 3.2592 fm_rot 0.4120 fm_brow 0.8933 fm_eyes 1.0787 fm_mouth 0.8752 vel 0.1781 loss 3.4373 gnorm 9.209 14.5 it/s  (data 0.001 s + gpu 0.068 s per step)
+step     400 lr 2.28e-04 fm 1.7037 fm_rot 0.3691 fm_brow 0.3788 fm_eyes 0.4393 fm_mouth 0.5165 vel 0.1238 loss 1.8275 gnorm 3.428 13.7 it/s  (data 0.008 s + gpu 0.065 s per step)
+step     500 lr 1.81e-04 fm 1.7017 fm_rot 0.3633 fm_brow 0.3980 fm_eyes 0.4322 fm_mouth 0.5082 vel 0.1264 loss 1.8281 gnorm 3.502 14.4 it/s  (data 0.002 s + gpu 0.067 s per step)
+step     600 lr 1.30e-04 fm 1.5219 fm_rot 0.3201 fm_brow 0.3481 fm_eyes 0.3950 fm_mouth 0.4587 vel 0.1139 loss 1.6358 gnorm 2.628 14.9 it/s  (data 0.001 s + gpu 0.066 s per step)
+step     700 lr 8.29e-05 fm 1.5365 fm_rot 0.3349 fm_brow 0.3478 fm_eyes 0.3863 fm_mouth 0.4674 vel 0.1069 loss 1.6434 gnorm 3.368 15.1 it/s  (data 0.002 s + gpu 0.065 s per step)
+step     800 lr 4.42e-05 fm 1.4359 fm_rot 0.3212 fm_brow 0.3129 fm_eyes 0.3626 fm_mouth 0.4393 vel 0.1370 loss 1.5730 gnorm 2.590 14.4 it/s  (data 0.008 s + gpu 0.062 s per step)
+step     900 lr 1.89e-05 fm 1.4099 fm_rot 0.2961 fm_brow 0.3242 fm_eyes 0.3585 fm_mouth 0.4311 vel 0.1075 loss 1.5174 gnorm 2.320 15.2 it/s  (data 0.001 s + gpu 0.065 s per step)
+step    1000 lr 1.00e-05 fm 1.7966 fm_rot 0.3031 fm_brow 0.4289 fm_eyes 0.4991 fm_mouth 0.5654 vel 0.1126 loss 1.9092 gnorm 9.555 15.9 it/s  (data 0.001 s + gpu 0.062 s per step)
+EVAL step 1000 val_loss 1.4095 mse_mouth 0.5637 mse_rot 0.4959 std_r_mouth 1.1573 vc_r_mouth 1.0342 std_r_rot 0.9082 vc_r_rot 0.9455 audio_gain 1.4360
+done. best val_loss 1.4095 -> runs/guide_early/best.pt

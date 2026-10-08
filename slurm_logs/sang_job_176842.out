@@ -1,0 +1,37 @@
+[job] 176842 on gpu06 | gpu: NVIDIA A100-PCIE-40GB | cpus: 2 | env: avcodec | commit: 62f4f48 | 2026-10-08 06:42:08
+[job] python -u scripts/naturalness.py --ckpt runs/motion_sync/best.pt --modes none --sync-offsets cache/motion_lp/sync_offsets.json --name ag_xs --guide-ckpt runs/guide_xs/best.pt --variants g=2,mouth=1.25,ag_mouth=1.5 g=2,mouth=1.25,ag_mouth=2 g=2,mouth=1,ag_mouth=2 g=1,ag=2
+readout lip: held-out R^2 0.763
+readout eye: held-out R^2 0.706
+sync offsets cache/motion_lp/sync_offsets.json: dropped {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}
+300 val clips from 41 unseen speakers
+audio pass: 300 clips, 1860 bilabials, 44 s
+closure offset -2 frames (hist {-4: 85, -3: 309, -2: 633, -1: 450, 0: 140, 1: 37, 2: 41, 3: 42, 4: 68}), tau_close 0.040, eye_closed 0.142, 1075 real inter-blink intervals
+none@g=2,mouth=1.25,ag_mouth=1.5: 138 s  {}
+none@g=2,mouth=1.25,ag_mouth=2: 139 s  {}
+none@g=2,mouth=1,ag_mouth=2: 139 s  {}
+none@g=1,ag=2: 87 s  {}
+
+metric                  real  none@g=2,mouth=1.25,ag_mouth=1.5  none@g=2,mouth=1.25,ag_mouth=2  none@g=2,mouth=1,ag_mouth=2  none@g=1,ag=2
+closure_depth          0.040                             0.016                          -0.008                        0.004          0.002
+closure_viol           0.100                             0.044                           0.036                        0.045          0.052
+blinks_per_min        31.600                            28.961                          28.891                       28.706         30.303
+ibi_median_s           1.240                             1.320                           1.340                        1.320          1.160
+ibi_cv                 0.673                             0.604                           0.604                        0.596          0.638
+blink_ms             120.000                           120.000                         120.000                      120.000        160.000
+blink_at_pause         0.089                             0.094                           0.098                        0.098          0.087
+pause_cover            0.083                             0.083                           0.083                        0.083          0.083
+beat_align             0.630                             0.635                           0.633                        0.634          0.614
+beat_chance            0.603                             0.605                           0.605                        0.605          0.605
+lip_corr                 nan                             0.703                           0.667                        0.654          0.645
+lip_std_r                nan                             1.358                           1.640                        1.484          1.485
+lip_ccc                  nan                             0.633                           0.566                        0.563          0.551
+eye_std_r                nan                             1.217                           1.214                        1.216          1.194
+
+setting                                  lip_corr        lip_ccc      lip_std_r   closure_viol  closure_depth      eye_std_r blinks_per_min     beat_align          gen_s
+real                                          nan            nan            nan          0.100          0.040            nan         31.600          0.630            nan
+none@g=2,mouth=1.25,ag_mouth=1.5            0.703          0.633          1.358          0.044          0.016          1.217         28.961          0.635        138.266
+none@g=2,mouth=1.25,ag_mouth=2              0.667          0.566          1.640          0.036         -0.008          1.214         28.891          0.633        138.619
+none@g=2,mouth=1,ag_mouth=2                 0.654          0.563          1.484          0.045          0.004          1.216         28.706          0.634        138.589
+none@g=1,ag=2                               0.645          0.551          1.485          0.052          0.002          1.194         30.303          0.614         86.924
+
+wrote /beegfs/work/achakraborti/SANG/results/naturalness/motion_sync_step9000_variants_sync_ag_xs.json
