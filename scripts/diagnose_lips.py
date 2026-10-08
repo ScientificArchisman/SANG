@@ -44,7 +44,7 @@ from sang.diagnose import (RidgeProbe, by_group, corr, lag_curve, lag_summary, l
                            offset_summary, pca_basis, seed_stats, seeds_summary, shifted_mouth_losses, stack_taps,
                            taps, ticks_to_frames, verdict)
 from sang.motion import REGIONS, to_target
-from sang.motion_model import Norm, build, generate, guidance_vector
+from sang.motion_model import Norm, build, generate, load_ema, parse_spec, sampler_kwargs
 from sang.naturalness import SR, load_readouts, load_wav
 from sang.sync import SyncOffsets, real_clip_mp4, shift_ticks, shift_wav
 
@@ -57,12 +57,6 @@ def load_train_module():
     spec.loader.exec_module(tm)
     return tm
 
-
-def parse_variant(v: str, cfg: dict):
-    spec = {k: float(x) for k, x in (kv.split("=") for kv in v.split(","))} if v else {}
-    gamma = guidance_vector(spec.get("g", cfg["cfg_audio"]), mouth=spec.get("mouth"), eyes=spec.get("eyes"),
-                            brow=spec.get("brow"), rot=spec.get("rot"))
-    return gamma, spec.get("rescale", 0.0)
 
 
 # ---------------------------------------------------------------------- audio models
@@ -137,7 +131,8 @@ def main() -> None:
     ap.add_argument("--min-frames", type=int, default=125)
     ap.add_argument("--max-frames", type=int, default=250)
     ap.add_argument("--variant", default="g=2,mouth=1.25",
-                    help="guidance as in naturalness.py --variants; '' = the run's cfg_audio")
+                    help="sampler spec as in naturalness.py --variants (e.g. 'g=2,mouth=1.25,avg=4'); '' = the run's defaults")
+    ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide checkpoint (for ag / ag_mouth in --variant)")
     ap.add_argument("--steps", type=int, default=None, help="Euler steps (default: the run's sample_steps)")
     ap.add_argument("--k", type=int, default=8, help="samples per clip for the seeds test")
     ap.add_argument("--max-lag", type=int, default=6)
@@ -168,8 +163,9 @@ def main() -> None:
     cache = Path(cfg["cache_dir"])
     read = load_readouts(cache / "openness.json")
     lip_read = read["lip"]
-    gamma, rescale = parse_variant(args.variant, cfg)
-    steps = args.steps or cfg["sample_steps"]
+    samp = sampler_kwargs(parse_spec(args.variant), cfg, load_ema(args.guide_ckpt, dev, norm) if args.guide_ckpt else None,
+                          steps=args.steps)
+    steps = samp["steps"]
     P, L = cfg["prefix"], cfg["frames"]
     mouth = REGIONS["mouth"]
 
@@ -222,8 +218,7 @@ def main() -> None:
     def sample_lips(c: dict, ref: torch.Tensor, k: int, seed: int, audio: torch.Tensor | None = None) -> np.ndarray:
         a = (c["audio"] if audio is None else audio)[None].to(dev).expand(k, -1, -1).contiguous()
         g = torch.Generator(device=dev).manual_seed(seed)
-        y = generate(model, a, ref.expand(k, -1).contiguous(), c["n"], window=L, n_prefix=P, steps=steps,
-                     cfg_audio=gamma, generator=g, cfg_rescale=rescale)
+        y = generate(model, a, ref.expand(k, -1).contiguous(), c["n"], window=L, n_prefix=P, generator=g, **samp)
         return lip_read(norm.untarget(y)).cpu().numpy()               # [k, n]
 
     samples = {}

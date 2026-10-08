@@ -108,7 +108,7 @@ y [n, 42] ─► from_target(y, m_src) [n, 70] (scale, translation, 8 shape keyp
 | File | What it does |
 |---|---|
 | `sang/motion.py` | Frozen LivePortrait codec (`MotionCodec`: landmarks, fixed-box crop, extract, source_motion with lip normalisation, render), pure-torch transforms (`to_target`, `from_target`, rotation), `motion_fidelity`, `first_cut`, `decode_clip` |
-| `sang/motion_model.py` | `MotionFlowTransformer`, `flow_loss`, `sample` (Euler + CFG + bound projection + `prefix_keep`), `generate` (windows, `start`, bounds), `project`, `Norm`, `build` |
+| `sang/motion_model.py` | `MotionFlowTransformer`, `flow_loss`, `sample` (Euler + CFG + bound projection + `prefix_keep`; autoguidance, guidance interval, Sway steps, noise scale), `generate` (windows, `start`, bounds, `mouth_avg`), `parse_spec` / `sampler_kwargs` / `load_ema`, `project`, `Norm`, `build` |
 | `sang/naturalness.py` | Landmark lip/eye ratios, linear `Readout`s, phoneme recogniser (wav2vec2 XLSR-53 espeak), bilabial events, pauses, blink detector, beat alignment, closure/blink bounds, blink scheduler, `Guide`, `guided_generate` |
 | `sang/bench.py` | PSNR, SSIM, CSIM (ArcFace buffalo_l), LSE via syncnet_python, FID, `write_mp4` |
 | `scripts/motion_ceiling.py` | M0: extract → render → re-extract; gates |
@@ -283,6 +283,8 @@ huggingface-cli download facebook/wav2vec2-xlsr-53-espeak-cv-ft   # (already in 
 | AV offsets: merge | `python scripts/sync_offsets.py --merge` → `cache/motion_lp/sync_offsets.json` |
 | Train with offsets | `sbatch bash_scripts/train_motion.sh out_dir=runs/<name> max_steps=15000 warmup_steps=2000 patience=0 sync_offsets=cache/motion_lp/sync_offsets.json` |
 | Metrics on aligned val | add `--sync-offsets cache/motion_lp/sync_offsets.json` to `naturalness.py` / `diagnose_lips.py` (outputs get a `_sync` suffix) |
+| Sampler sweep | `naturalness.py --variants "g=2,mouth=1.25,avg=4" "...,tau=0.7" "...,steps=6,sway=-0.8" "...,gmax=0.7" "...,ag_mouth=1.5" --guide-ckpt runs/guide_xs/best.pt --name <tag>`. Keys: `g mouth eyes brow rot rescale steps sway gmin gmax ag ag_mouth tau temp avg` (`sang.motion_model.SAMPLER_KEYS`). The same spec goes to `infer_motion.py` / `demo_motion.py` / `eval_hdtf.py` as `--sampler` |
+| Autoguidance guide | `sbatch --gres=gpu:h100:1 bash_scripts/train_motion.sh out_dir=runs/guide_xs dim=256 layers=4 heads=4 max_steps=1000 warmup_steps=100 eval_every=1000 patience=0 sync_offsets=cache/motion_lp/sync_offsets.json` (~5 min) |
 | Jitter (laptop) | `python scripts/video_jitter.py results/extras/<dir>/*_sbs.mp4` |
 | HDTF install (login) | `bash bash_scripts/install_eval.sh` (yt-dlp, I3D for FVD, Inception for FID) |
 | HDTF download (login, internet) | `python scripts/download_hdtf.py --out /beegfs/work/$USER/HDTF --workers 4` (resumable; `--cookies cookies.txt` if YouTube asks) |

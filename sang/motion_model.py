@@ -22,6 +22,8 @@ Long clips follow FLOAT: each window is conditioned on the last P generated fram
 prefix, and that prefix is dropped with p = 0.5 in training so the first window of a clip -- which
 has none -- is in distribution.
 """
+import math
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -234,10 +236,29 @@ def cfg_combine(v_c: torch.Tensor, v_u: torch.Tensor, gamma, rescale: float = 0.
     return v
 
 
+def flow_times(steps: int, sway: float = 0.0) -> list[float]:
+    """steps + 1 flow times from 1 (noise) down to 0. sway = 0: uniform. sway < 0: F5-TTS's Sway
+    Sampling (arXiv 2410.06885, u + s (cos(pi u / 2) - 1 + u) on the noise-to-data axis), which
+    spends more steps near the noise end, where the condition is decided; s = -1 cut F5's WER
+    2.84 -> 2.41 at 32 steps."""
+    if not -1.0 <= sway <= 1.0:
+        raise ValueError("sway must be in [-1, 1]")
+    u = torch.linspace(0.0, 1.0, steps + 1, dtype=torch.float64)
+    if sway:
+        u = u + sway * (torch.cos(math.pi / 2 * u) - 1 + u)
+    return (1.0 - u).tolist()
+
+
+def _per_dim(g, like: torch.Tensor):
+    return g.to(like).view(1, 1, -1) if isinstance(g, torch.Tensor) else g
+
+
 @torch.no_grad()
 def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps: int = 10,
            cfg_audio=2.0, generator: torch.Generator | None = None, bounds=None,
-           prefix_keep: torch.Tensor | None = None, cfg_rescale: float = 0.0) -> torch.Tensor:
+           prefix_keep: torch.Tensor | None = None, cfg_rescale: float = 0.0,
+           ag_model: MotionFlowTransformer | None = None, ag=1.0, g_tmin: float = 0.0, g_tmax: float = 1.0,
+           sway: float = 0.0, noise_scale=None) -> torch.Tensor:
     """Euler from t = 1 (noise) to 0. CFG on audio only, gamma = 2 (FLOAT Tab. 6).
 
     The unconditional branch drops audio and keeps the reference and prefix, so guidance pushes
@@ -251,28 +272,44 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
 
     prefix_keep [B] bool (optional): False = the prefix slot is present but DROPPED, exactly as
     flow_loss drops it with p_prefix -- null tokens, null audio, t = 0 -- which is how training
-    represents 'no previous frames'."""
+    represents 'no previous frames'.
+
+    Sampler options (all off by default; report 'SANG next round improvements' section 2):
+      ag_model, ag    autoguidance (Karras et al., arXiv 2406.02507): add (ag - 1)(v - v_guide), where
+                      v_guide is a weaker, less-trained SANG given the SAME audio and reference.
+                      ag a float or a [42] per-coordinate vector (see guidance_vector).
+      g_tmin, g_tmax  guidance interval (arXiv 2404.07724): guide only while g_tmin <= t <= g_tmax.
+      sway            step schedule, see flow_times.
+      noise_scale     float or [42]: scales the starting noise per coordinate (a mouth temperature)."""
     B, dev = ref.shape[0], ref.device
     x = torch.randn(B, L, T_DIM, device=dev, generator=generator)
+    if noise_scale is not None:
+        x = x * _per_dim(noise_scale, x)
     keep = None
     if prefix is not None:
         keep = torch.ones(B, dtype=torch.bool, device=dev) if prefix_keep is None else prefix_keep.to(dev)
     null = torch.ones(B, dtype=torch.bool, device=dev)
-    dt = 1.0 / steps
+    uniform_one = not isinstance(cfg_audio, torch.Tensor) and cfg_audio == 1.0
+    ag_on = ag_model is not None and (isinstance(ag, torch.Tensor) or ag != 1.0)
+    ts = flow_times(steps, sway)
     for i in range(steps):
-        t = torch.full((B,), 1.0 - i * dt, device=dev)
-        v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep)
-        uniform_one = not isinstance(cfg_audio, torch.Tensor) and cfg_audio == 1.0
-        if not uniform_one or cfg_rescale > 0:
-            v_u = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, drop_audio=null)
-            v = cfg_combine(v, v_u, cfg_audio, cfg_rescale)
+        t_now, t_next = ts[i], ts[i + 1]
+        t = torch.full((B,), t_now, device=dev)
+        v_c = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep)
+        v = v_c
+        if g_tmin <= t_now <= g_tmax:
+            if not uniform_one or cfg_rescale > 0:
+                v_u = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, drop_audio=null)
+                v = cfg_combine(v_c, v_u, cfg_audio, cfg_rescale)
+            if ag_on:
+                v_g = ag_model(x, t, audio, ref, prefix=prefix, prefix_keep=keep)
+                v = v + (_per_dim(ag, v) - 1.0) * (v_c - v_g)
         if bounds:
-            t_now, t_next = 1.0 - i * dt, 1.0 - (i + 1) * dt
             x0 = project(x - t_now * v, bounds)
             eps = x + (1.0 - t_now) * v
             x = (1.0 - t_next) * x0 + t_next * eps
         else:
-            x = x - dt * v
+            x = x - (t_now - t_next) * v
     return x
 
 
@@ -280,10 +317,17 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
 def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tensor, n_frames: int,
              window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio=2.0,
              generator: torch.Generator | None = None, bounds=None,
-             start: torch.Tensor | None = None, cfg_rescale: float = 0.0) -> torch.Tensor:
+             start: torch.Tensor | None = None, cfg_rescale: float = 0.0, mouth_avg: int = 1,
+             **sampler) -> torch.Tensor:
     """Any length. Windows of `window` NEW frames, each conditioned on the previous `n_prefix`
     generated frames (FLOAT's L'). audio [B, 2*n_frames, 1024] -> [B, n_frames, 42].
     bounds: as in `sample`, with ub over the whole clip, [B, n_frames].
+    sampler: ag_model, ag, g_tmin, g_tmax, sway, noise_scale -- passed to `sample`.
+
+    mouth_avg = K > 1: draw K whole trajectories and average their 18 mouth coordinates; head, eyes
+    and brows come from the first, so they keep their sample-to-sample variety. The model's mean
+    mouth is closer to the real one than any single draw (diagnosis job 176834: lip corr 0.722 one
+    sample, 0.746 mean of 2, 0.759 mean of 4).
 
     How the FIRST window starts (`start`):
       None     the prefix slot is present and dropped -- n_prefix null tokens at positions
@@ -298,6 +342,15 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
                must then carry n_prefix frames BEFORE frame 0 (e.g. WavLM of prepended silence).
     """
     tpf, B, dev = model.tpf, ref.shape[0], ref.device
+    if mouth_avg > 1:
+        K = int(mouth_avg)
+        rep = lambda z: None if z is None else z.repeat_interleave(K, 0)
+        kb = None if not bounds else [(vec, ub.repeat_interleave(K, 0)) for vec, ub in bounds]
+        y = generate(model, rep(audio), rep(ref), n_frames, window, n_prefix, steps, cfg_audio, generator, kb,
+                     rep(start), cfg_rescale, 1, **sampler).view(B, K, n_frames, T_DIM)
+        out = y[:, 0].clone()
+        out[..., REGIONS["mouth"]] = y[..., REGIONS["mouth"]].mean(1)
+        return out
     lead = 0 if start is None else start.shape[1]
     if start is not None and start.shape[1] != n_prefix:
         raise ValueError(f"start has {start.shape[1]} frames, the model chains {n_prefix}")
@@ -321,7 +374,7 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
                 u = ub[:, pos:pos + window]
                 wb.append((vec, F.pad(u, (0, window - u.shape[1]), value=float("inf"))))
         y = sample(model, a, ref, window, prefix=prefix, steps=steps, cfg_audio=cfg_audio,
-                   generator=generator, bounds=wb, prefix_keep=keep, cfg_rescale=cfg_rescale)
+                   generator=generator, bounds=wb, prefix_keep=keep, cfg_rescale=cfg_rescale, **sampler)
         out.append(y[:, : n_frames - pos])                   # last window: generate full, keep what fits
         pos += window
     return torch.cat(out, 1)
@@ -355,3 +408,64 @@ def build(cfg: dict) -> MotionFlowTransformer:
         audio_dim={"wavlm-base": 768, "wavlm-large": 1024}[cfg.get("audio_encoder", "wavlm-large")],
         audio_kernel=cfg.get("audio_kernel", 5), attn_window=cfg.get("attn_window", 0),
         max_frames=cfg.get("max_frames", 512), dropout=cfg.get("dropout", 0.0))
+
+
+# ---------------------------------------------------------------------- sampler specs
+SAMPLER_KEYS = {
+    "g": "audio CFG scale on every region (default: the run's cfg_audio)",
+    "mouth": "CFG scale on the 18 mouth coordinates", "eyes": "CFG on the eyes", "brow": "CFG on the brows",
+    "rot": "CFG on head rotation", "rescale": "CFG-rescale (0 = off)",
+    "steps": "Euler steps", "sway": "Sway Sampling coefficient in [-1, 0]",
+    "gmin": "guide only while t >= gmin", "gmax": "guide only while t <= gmax (t = 1 is noise)",
+    "ag": "autoguidance scale on every region (needs a guide checkpoint)", "ag_mouth": "autoguidance on the mouth only",
+    "tau": "mouth temperature: starting-noise scale on the mouth", "temp": "starting-noise scale on every coordinate",
+    "avg": "average the mouth over this many samples",
+}
+
+
+def parse_spec(s: str | None) -> dict:
+    """'g=2,mouth=1.25,avg=4' -> {'g': 2.0, 'mouth': 1.25, 'avg': 4.0}. '' or None -> {}."""
+    out = {}
+    for kv in (s or "").split(","):
+        if not kv.strip():
+            continue
+        k, _, v = kv.partition("=")
+        k = k.strip()
+        if k not in SAMPLER_KEYS:
+            raise ValueError(f"unknown sampler key '{k}' in '{s}'; known: {', '.join(SAMPLER_KEYS)}")
+        out[k] = float(v)
+    return out
+
+
+def sampler_kwargs(spec: dict, cfg: dict, ag_model: MotionFlowTransformer | None = None,
+                   steps: int | None = None) -> dict:
+    """A parsed spec -> keyword arguments for `generate` (and naturalness.guided_generate's `sampler`).
+    Keys left out keep the run's defaults: cfg_audio, sample_steps, no autoguidance, uniform steps."""
+    kw = {"cfg_audio": guidance_vector(spec.get("g", cfg["cfg_audio"]), mouth=spec.get("mouth"),
+                                       eyes=spec.get("eyes"), brow=spec.get("brow"), rot=spec.get("rot")),
+          "cfg_rescale": spec.get("rescale", 0.0),
+          "steps": int(spec.get("steps", steps or cfg["sample_steps"])),
+          "sway": spec.get("sway", 0.0), "g_tmin": spec.get("gmin", 0.0), "g_tmax": spec.get("gmax", 1.0),
+          "mouth_avg": int(spec.get("avg", 1))}
+    if "ag" in spec or "ag_mouth" in spec:
+        if ag_model is None:
+            raise ValueError("autoguidance (ag / ag_mouth) needs a guide model: pass --guide-ckpt")
+        kw["ag_model"] = ag_model
+        kw["ag"] = guidance_vector(spec.get("ag", 1.0), mouth=spec.get("ag_mouth"))
+    if "tau" in spec or "temp" in spec:
+        ns = torch.full((T_DIM,), float(spec.get("temp", 1.0)))
+        if "tau" in spec:
+            ns[REGIONS["mouth"]] = float(spec["tau"])
+        kw["noise_scale"] = ns
+    return kw
+
+
+def load_ema(path, device: str = "cuda", norm: "Norm | None" = None) -> MotionFlowTransformer:
+    """A checkpoint's EMA weights, ready to sample, e.g. an autoguidance guide. With `norm`, refuse a
+    checkpoint whose target normalisation differs (its velocities would be in other units)."""
+    ck = torch.load(path, map_location=device, weights_only=False)
+    if norm is not None and not torch.allclose(torch.as_tensor(ck["norm"]["t_std"]).to(norm.t_std), norm.t_std):
+        raise ValueError(f"{path} was trained with a different target normalisation")
+    m = build(ck["cfg"]).to(device).eval()
+    m.load_state_dict(ck["ema"])
+    return m

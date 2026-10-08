@@ -76,7 +76,7 @@ class Evaluator:
         from sang.bench import ArcFace, I3DFeats, InceptionFeats
         from sang.codec import load_wavlm
         from sang.motion import MotionCodec
-        from sang.motion_model import Norm, build, guidance_vector
+        from sang.motion_model import Norm, build, guidance_vector, load_ema, parse_spec, sampler_kwargs
         self.args, self.dev = args, "cuda"
         self.codec = MotionCodec(device=self.dev)
         self.arc = ArcFace(device=self.dev)
@@ -88,6 +88,9 @@ class Evaluator:
             self.model.load_state_dict(ck["ema"])
             self.norm = Norm(**ck["norm"]).to(self.dev)
             self.gamma = guidance_vector(self.cfg["cfg_audio"] if args.cfg is None else args.cfg, mouth=args.cfg_mouth)
+            self.sampler = sampler_kwargs(parse_spec(args.sampler), self.cfg,
+                                          load_ema(args.guide_ckpt, self.dev, self.norm) if args.guide_ckpt else None,
+                                          steps=args.steps) if args.sampler else None
             self.wavlm = load_wavlm(self.cfg.get("audio_encoder", "wavlm-large"), device=self.dev)
             self.step = ck["step"]
 
@@ -106,7 +109,7 @@ class Evaluator:
         with torch.no_grad():
             audio = self.wavlm.encode(torch.nn.functional.pad(wav, (lead * HOP, 0))[None, None].to(self.dev)).float()
         y, _ = guided_generate(self.model, audio, ref, len(frames), self.cfg, self.norm, wav, None, "none", a.seed,
-                               cfg_audio=self.gamma, start=start, steps=a.steps)
+                               cfg_audio=self.gamma, start=start, steps=a.steps, sampler=self.sampler)
         m = from_target(self.norm.untarget(y[0]), m_src, held=a.held)
         crops = self.codec.render(src, m.cpu(), relative=False, stitch=a.stitch)
         if not a.paste_back:
@@ -244,7 +247,8 @@ def ours_rows(summaries: list[dict]) -> list[dict]:
                 continue
             label, fam = LABELS[row]
             if row == "sang":
-                knobs = [f"γ {p.get('cfg') or 2:g}"] + ([f"mouth γ {p['cfg_mouth']:g}"] if p.get("cfg_mouth") else [])
+                knobs = ([p["sampler"]] if p.get("sampler") else
+                         [f"γ {p.get('cfg') or 2:g}"] + ([f"mouth γ {p['cfg_mouth']:g}"] if p.get("cfg_mouth") else []))
                 label = f"SANG-M ({s['name']}: {', '.join(knobs)})"
             elif row in seen:                                # real / ceiling rows: once is enough
                 continue
@@ -282,6 +286,8 @@ def main() -> None:
     ap.add_argument("--cfg", type=float, default=None, help="audio guidance (default: the run's, 2.0)")
     ap.add_argument("--cfg-mouth", type=float, default=None, help="audio guidance on the mouth only")
     ap.add_argument("--steps", type=int, default=None)
+    ap.add_argument("--sampler", default=None, help="sampler spec, e.g. 'g=2,mouth=1.25,avg=4'; overrides --cfg/--cfg-mouth/--steps")
+    ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide checkpoint (for ag / ag_mouth in --sampler)")
     ap.add_argument("--held", default="camera", choices=["camera", "head"])
     ap.add_argument("--gt-target", type=int, default=42, choices=[42, 70], help="ceiling row: SANG's 42-d target or full 70-d")
     ap.add_argument("--stitch", action=argparse.BooleanOptionalAction, default=True)

@@ -26,7 +26,7 @@ sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.bench import write_mp4
 from sang.motion import MotionCodec, from_target, to_target
-from sang.motion_model import Norm, build, guidance_vector
+from sang.motion_model import Norm, build, guidance_vector, load_ema, parse_spec, sampler_kwargs
 from sang.naturalness import Guide, guided_generate
 from sang.voice import load_knnvc
 
@@ -56,6 +56,10 @@ def main() -> None:
                     help="audio guidance on the 18 mouth coordinates only (per-region guidance); default = --cfg")
     ap.add_argument("--cfg-rescale", type=float, default=0.0,
                     help="CFG-rescale blend (0 = off, 0.7 = Lin et al.): keeps guidance timing, restores amplitude")
+    ap.add_argument("--sampler", default=None,
+                    help="sampler spec, e.g. 'g=2,mouth=1.25,avg=4' (sang.motion_model.SAMPLER_KEYS); overrides "
+                         "--cfg/--cfg-mouth/--cfg-rescale/--steps")
+    ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide checkpoint (for ag / ag_mouth in --sampler)")
     ap.add_argument("--no-lip-norm", action="store_true", help="skip LivePortrait's flag_normalize_lip")
     ap.add_argument("--stitch", action=argparse.BooleanOptionalAction, default=True,
                     help="LivePortrait's stitching module (default ON; --no-stitch to disable): keeps the background "
@@ -82,6 +86,8 @@ def main() -> None:
     model.load_state_dict(ck["model" if args.raw else "ema"])
     norm = Norm(**ck["norm"]).to(dev)
     gamma = guidance_vector(cfg["cfg_audio"] if args.cfg is None else args.cfg, mouth=args.cfg_mouth)
+    samp = sampler_kwargs(parse_spec(args.sampler), cfg, load_ema(args.guide_ckpt, dev, norm) if args.guide_ckpt else None,
+                          steps=args.steps) if args.sampler else None
 
     from sang.codec import load_wavlm
     codec = MotionCodec(device=dev)
@@ -102,7 +108,8 @@ def main() -> None:
         audio = wavlm.encode(torch.nn.functional.pad(wav, (lead * SR // FPS, 0)).to(dev)).float()   # [1, ~2(lead+n), D]
     guide = Guide.load(Path(cfg["cache_dir"]), dev) if args.guide != "none" else None
     y, info = guided_generate(model, audio, ref, n_frames, cfg, norm, wav.flatten(), guide, args.guide,
-                              args.seed, steps=args.steps, cfg_audio=gamma, start=start, cfg_rescale=args.cfg_rescale)
+                              args.seed, steps=args.steps, cfg_audio=gamma, start=start, cfg_rescale=args.cfg_rescale,
+                              sampler=samp)
     if info:
         print(f"constraints: {info}")
     m = from_target(norm.untarget(y[0]), m_src, held=args.held)     # [n, 70], source scale/t/shape

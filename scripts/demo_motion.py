@@ -24,7 +24,7 @@ sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.bench import write_mp4
 from sang.motion import MotionCodec, decode_clip, from_target, to_target
-from sang.motion_model import Norm, build, guidance_vector
+from sang.motion_model import Norm, build, guidance_vector, load_ema, parse_spec, sampler_kwargs
 from sang.naturalness import Guide, guided_generate
 
 SR, FPS = 16000, 25
@@ -59,6 +59,10 @@ def main() -> None:
                     help="audio guidance on the 18 mouth coordinates only (per-region guidance); default = --cfg")
     ap.add_argument("--cfg-rescale", type=float, default=0.0,
                     help="CFG-rescale blend (0 = off, 0.7 = Lin et al.): keeps guidance timing, restores amplitude")
+    ap.add_argument("--sampler", default=None,
+                    help="sampler spec, e.g. 'g=2,mouth=1.25,avg=4' (sang.motion_model.SAMPLER_KEYS); overrides "
+                         "--cfg/--cfg-mouth/--cfg-rescale/--steps")
+    ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide checkpoint (for ag / ag_mouth in --sampler)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--guide", default="none", choices=["none", "lips", "blinks", "both"],
                     help="rule constraints at sampling (sang/naturalness.py); needs openness.json + "
@@ -85,6 +89,8 @@ def main() -> None:
     model.load_state_dict(ck["ema"])
     norm = Norm(**ck["norm"]).to(dev)
     gamma = guidance_vector(cfg["cfg_audio"] if args.cfg is None else args.cfg, mouth=args.cfg_mouth)
+    samp = sampler_kwargs(parse_spec(args.sampler), cfg, load_ema(args.guide_ckpt, dev, norm) if args.guide_ckpt else None
+                          ) if args.sampler else None
     print(f"checkpoint {args.ckpt}: step {ck['step']}, best val {ck.get('best', float('nan')):.4f}", flush=True)
 
     n_frames = int(args.seconds * FPS)
@@ -125,7 +131,8 @@ def main() -> None:
             with torch.no_grad():
                 audio = wavlm.encode(torch.nn.functional.pad(wav, (lead * SR // FPS, 0))[None].to(dev)).float()
             y, info = guided_generate(model, audio, ref, len(frames), cfg, norm, wav[0], guide, args.guide,
-                                      args.seed, cfg_audio=gamma, start=start, cfg_rescale=args.cfg_rescale)
+                                      args.seed, cfg_audio=gamma, start=start, cfg_rescale=args.cfg_rescale,
+                                      sampler=samp)
             m = from_target(norm.untarget(y[0]), m_src, held=args.held)
             gen = codec.render(src, m.cpu(), relative=False, stitch=args.stitch)
 

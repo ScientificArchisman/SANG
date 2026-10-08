@@ -37,7 +37,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from sang.motion import to_target
-from sang.motion_model import Norm, build, guidance_vector
+from sang.motion_model import Norm, build, load_ema, parse_spec, sampler_kwargs
 from sang.naturalness import (FPS, Guide, PhonemeRecognizer, audio_onsets, beat_alignment, blink_events,
                               closure_minima, closure_offset, energy_db, guided_generate, head_beats,
                               load_readouts, load_wav, pauses)
@@ -108,11 +108,13 @@ def main() -> None:
                     help="also draw a second sample (seed + 1) per clip and report lip_self_corr: correlation "
                          "between two samples. ~ lip_corr -> take-to-take variability; >> lip_corr -> model bias")
     ap.add_argument("--variants", nargs="+", default=None,
-                    help="guidance variants, each 'g=2,mouth=1.5,eyes=1,brow=1,rot=2,rescale=0.7' "
-                         "(g = global audio guidance; region keys override it; rescale = CFG-rescale)")
+                    help="sampler variants, each a spec like 'g=2,mouth=1.25,avg=4,tau=0.7,steps=6,sway=-0.8,gmax=0.7,"
+                         "ag_mouth=1.5' (keys: sang.motion_model.SAMPLER_KEYS; ag* need --guide-ckpt)")
+    ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide: a weaker, less-trained SANG checkpoint")
     ap.add_argument("--sync-offsets", default=None,
                     help="<cache>/sync_offsets.json: drop no-sync val clips and move each clip's audio (features and "
                          "waveform) by its SyncNet offset, so lip metrics compare against aligned ground truth")
+    ap.add_argument("--name", default="", help="suffix for the results file, so parallel sweeps do not overwrite")
     ap.add_argument("--out", default=str(REPO / "results/naturalness"))
     args = ap.parse_args()
 
@@ -122,6 +124,10 @@ def main() -> None:
     model = build(cfg).to(dev).eval()
     model.load_state_dict(ck["ema"])
     norm = Norm(**ck["norm"]).to(dev)
+    ag_model = load_ema(args.guide_ckpt, dev, norm) if args.guide_ckpt else None
+    if args.variants:                                         # fail on a typo now, not after the audio pass
+        for v in args.variants:
+            sampler_kwargs(parse_spec(v), cfg, ag_model)
     cache = Path(cfg["cache_dir"])
     read = load_readouts(cache / "openness.json")
     for k, r in read.items():
@@ -180,48 +186,51 @@ def main() -> None:
     table = {"real": summarise(real, st)}
     extra = {}
     if args.variants:
-        variants = [(v, {k: float(x) for k, x in (kv.split("=") for kv in v.split(","))}) for v in args.variants]
+        variants = [(v, parse_spec(v)) for v in args.variants]
     elif args.cfg:
         variants = [(f"{g:g}", {"g": g}) for g in args.cfg]
     else:
-        variants = [("", None)]
+        variants = [("", {})]
     for vname, spec in variants:
-        gamma, rescale = None, 0.0
-        if spec is not None:
-            gamma = guidance_vector(spec.get("g", cfg["cfg_audio"]), mouth=spec.get("mouth"), eyes=spec.get("eyes"),
-                                    brow=spec.get("brow"), rot=spec.get("rot"))
-            rescale = spec.get("rescale", 0.0)
+        samp = sampler_kwargs(spec, cfg, ag_model, steps=args.steps)
         for mode in args.modes:
             col = mode if not vname else f"{mode}@{vname}"
             ms, infos, t0 = [], Counter(), time.time()
             for c, rm in zip(clips, real):
                 ref = norm.ref(c["kp0"][None].to(dev), c["y"][:1].to(dev))
                 y, info = guided_generate(model, c["audio"][None].to(dev), ref, c["n"], cfg, norm, c["wav"],
-                                          guide, mode, args.seed, events=c["events"], cfg_audio=gamma,
-                                          steps=args.steps, cfg_rescale=rescale)
+                                          guide, mode, args.seed, events=c["events"], sampler=samp)
                 infos.update(info)
                 ms.append(measure(norm.untarget(y[0]).cpu(), c, read, st, real=rm))
                 if args.self_corr:
                     y2, _ = guided_generate(model, c["audio"][None].to(dev), ref, c["n"], cfg, norm, c["wav"],
-                                            guide, mode, args.seed + 1, events=c["events"], cfg_audio=gamma,
-                                            steps=args.steps, cfg_rescale=rescale)
+                                            guide, mode, args.seed + 1, events=c["events"], sampler=samp)
                     l1 = read["lip"](norm.untarget(y[0]).cpu()).numpy()
                     l2 = read["lip"](norm.untarget(y2[0]).cpu()).numpy()
                     ms[-1]["lip_self_corr"] = float(np.corrcoef(l1, l2)[0, 1]) if min(l1.std(), l2.std()) > 1e-8 else float("nan")
             table[col] = summarise(ms, st)
+            table[col]["gen_s"] = time.time() - t0
             extra[col] = dict(infos)
             print(f"{col}: {time.time() - t0:.0f} s  {dict(infos)}", flush=True)
 
     first = next(k for k in table if k != "real")
-    keys = [k for k in table[first] if k not in ("clips", "minutes")]
-    wid = {c: max(12, len(c) + 2) for c in table}
-    print("\n" + f"{'metric':<16}" + "".join(f"{c:>{wid[c]}}" for c in table))
-    for k in keys:
-        print(f"{k:<16}" + "".join(f"{table[c].get(k, float('nan')):>{wid[c]}.3f}" for c in table))
+    keys = [k for k in table[first] if k not in ("clips", "minutes", "gen_s")]
+    if len(table) <= 5:
+        wid = {c: max(12, len(c) + 2) for c in table}
+        print("\n" + f"{'metric':<16}" + "".join(f"{c:>{wid[c]}}" for c in table))
+        for k in keys:
+            print(f"{k:<16}" + "".join(f"{table[c].get(k, float('nan')):>{wid[c]}.3f}" for c in table))
+    # one row per setting: readable however many variants were swept
+    cols = [k for k in ("lip_corr", "lip_ccc", "lip_std_r", "closure_viol", "closure_depth", "eye_std_r",
+                        "blinks_per_min", "beat_align", "lip_self_corr", "gen_s") if k in table[first] or k in table["real"]]
+    w = max(len(c) for c in table) + 2
+    print("\n" + f"{'setting':<{w}}" + "".join(f"{k:>15}" for k in cols))
+    for c, s in table.items():
+        print(f"{c:<{w}}" + "".join(f"{s.get(k, float('nan')):>15.3f}" for k in cols))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     tag = "_variants" if args.variants else ("" if not args.cfg else "_cfg" + "-".join(f"{g:g}" for g in args.cfg))
-    tag += "_sync" if so is not None else ""
+    tag += ("_sync" if so is not None else "") + (f"_{args.name}" if args.name else "")
     name = f"{Path(args.ckpt).parent.name}_step{ck['step']}{tag}.json"
     (out / name).write_text(json.dumps({"ckpt": args.ckpt, "step": ck["step"], "stats": {k: v for k, v in st.items() if k != "ibi_s"},
                                         "table": table, "constraints": extra}, indent=1))
