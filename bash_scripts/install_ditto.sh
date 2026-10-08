@@ -19,9 +19,14 @@ pip install "torch==2.5.1" --index-url https://download.pytorch.org/whl/cu121
 pip install librosa tqdm filetype imageio imageio-ffmpeg opencv-python-headless scikit-image cython colored \
             "numpy<2.1" onnxruntime-gpu "huggingface_hub[cli]"
 
-# weights: only the PyTorch models and the configs (skips the TensorRT engines and ONNX copies)
-huggingface-cli download digital-avatar/ditto-talkinghead --include "ditto_pytorch/*" "ditto_cfg/*" \
-    --local-dir "$DITTO/checkpoints"
+# weights: only the PyTorch models and the configs (skips the TensorRT engines and ONNX copies).
+# Python API, not the CLI: huggingface_hub >= 1.0 renamed huggingface-cli to hf.
+python - "$DITTO/checkpoints" <<'EOF'
+import sys
+from huggingface_hub import snapshot_download
+snapshot_download("digital-avatar/ditto-talkinghead", allow_patterns=["ditto_pytorch/*", "ditto_cfg/*"],
+                  local_dir=sys.argv[1])
+EOF
 ls "$DITTO/checkpoints/ditto_pytorch/models" "$DITTO/checkpoints/ditto_cfg"
 python -c "import torch, onnxruntime, librosa, cv2; print('torch', torch.__version__, '| ort', onnxruntime.__version__)"
 echo "ditto install ok (test it on a GPU node with scripts/ditto_hdtf.py)"
