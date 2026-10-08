@@ -1,0 +1,33 @@
+[job] 176959 on gpu06 | gpu: NVIDIA A100-PCIE-40GB | cpus: 2 | env: avcodec | commit: 8832696 | 2026-10-08 08:51:38
+[job] python -u scripts/naturalness.py --ckpt runs/b0_control/last.pt --ema 0.9995 --modes none --sync-offsets cache/motion_lp/sync_offsets.json --name phaseB --variants g=2,mouth=1.25 g=2,mouth=1.25,tau=0.5,avg=4,steps=6
+readout lip: held-out R^2 0.763
+readout eye: held-out R^2 0.706
+sync offsets cache/motion_lp/sync_offsets.json: dropped {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}
+300 val clips from 41 unseen speakers
+audio pass: 300 clips, 1860 bilabials, 45 s
+closure offset -2 frames (hist {-4: 85, -3: 309, -2: 633, -1: 450, 0: 140, 1: 37, 2: 41, 3: 42, 4: 68}), tau_close 0.040, eye_closed 0.142, 1075 real inter-blink intervals
+none@g=2,mouth=1.25: 131 s  {}
+none@g=2,mouth=1.25,tau=0.5,avg=4,steps=6: 79 s  {}
+
+metric                  real  none@g=2,mouth=1.25  none@g=2,mouth=1.25,tau=0.5,avg=4,steps=6
+closure_depth          0.040                0.032                                      0.032
+closure_viol           0.100                0.073                                      0.058
+blinks_per_min        31.600               30.720                                     27.988
+ibi_median_s           1.240                1.320                                      1.200
+ibi_cv                 0.673                0.619                                      0.644
+blink_ms             120.000              120.000                                    120.000
+blink_at_pause         0.089                0.094                                      0.099
+pause_cover            0.083                0.083                                      0.083
+beat_align             0.630                0.633                                      0.632
+beat_chance            0.603                0.605                                      0.605
+lip_corr                 nan                0.728                                      0.775
+lip_std_r                nan                1.215                                      1.109
+lip_ccc                  nan                0.666                                      0.708
+eye_std_r                nan                1.270                                      1.126
+
+setting                                           lip_corr        lip_ccc      lip_std_r   closure_viol  closure_depth      eye_std_r blinks_per_min     beat_align          gen_s
+real                                                   nan            nan            nan          0.100          0.040            nan         31.600          0.630            nan
+none@g=2,mouth=1.25                                  0.728          0.666          1.215          0.073          0.032          1.270         30.720          0.633        131.269
+none@g=2,mouth=1.25,tau=0.5,avg=4,steps=6            0.775          0.708          1.109          0.058          0.032          1.126         27.988          0.632         79.201
+
+wrote /beegfs/work/achakraborti/SANG/results/naturalness/b0_control_step15000_variants_sync_ema0.9995_phaseB.json
