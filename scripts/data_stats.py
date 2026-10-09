@@ -31,12 +31,13 @@ from pathlib import Path
 import numpy as np
 import torch
 import yaml
+from tqdm import tqdm
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from sang.paths import DATA_ROOT, motion_cache
-from sang.talkvid import WHISPER_NAMES, load_lookup, match
+from sang.talkvid import WHISPER_NAMES, build_lookup, match
 from sang.sync import SyncOffsets, clip_key, video_of
 
 FPS = 25
@@ -169,9 +170,8 @@ def label_languages(rows: list[dict], cache: Path, whisper: str, dev: str, batch
         except Exception:
             return None
 
-    t0 = time.time()
     with ThreadPoolExecutor(workers) as ex:
-        for i in range(0, len(todo), batch):
+        for i in tqdm(range(0, len(todo), batch), desc="language ID", unit="batch", mininterval=10):
             chunk = todo[i:i + batch]
             wavs = list(ex.map(load, chunk))
             ok = [(r, w) for r, w in zip(chunk, wavs) if w is not None and len(w) > 1600]
@@ -181,10 +181,8 @@ def label_languages(rows: list[dict], cache: Path, whisper: str, dev: str, batch
             if ok:
                 for (r, _), (code, p) in zip(ok, lid([w for _, w in ok])):
                     langs[clip_key(r)] = {"lang": code, "p": round(p, 3)}
-            if (i // batch) % 20 == 0 or i + batch >= len(todo):
+            if (i // batch) % 20 == 0:
                 path.write_text(json.dumps(langs))
-                done = min(i + batch, len(todo))
-                print(f"  {done}/{len(todo)} clips labelled ({time.time() - t0:.0f} s)", flush=True)
     path.write_text(json.dumps(langs))
     return langs
 
@@ -206,7 +204,9 @@ def main() -> None:
     cfg = yaml.safe_load(Path(args.config).read_text())
     cache = motion_cache(cfg["cache_dir"])
     tm = load_train_module()
+    print(f"reading the cache index in {cache}", flush=True)
     rows = tm.load_index(cache)
+    print(f"{len(rows)} cached clips", flush=True)
     train, val = tm.split_by_speaker(rows, cfg["val_frac"], cfg["seed"])
     so_path = None if args.sync_offsets == "none" else Path(args.sync_offsets or cache / "sync_offsets.json")
     so = SyncOffsets.load(so_path) if so_path and so_path.exists() else None
@@ -226,8 +226,13 @@ def main() -> None:
 
     meta = None
     if args.talkvid_meta != "none" and Path(args.talkvid_meta).exists():
-        lookup = load_lookup(args.talkvid_meta)
-        meta = {clip_key(r): match(lookup, video_of(r), Path(r["clip"]).stem) for r in rows}
+        t0 = time.time()
+        print(f"reading TalkVid metadata {args.talkvid_meta} ...", flush=True)
+        entries = json.loads(Path(args.talkvid_meta).read_text())
+        print(f"{len(entries)} metadata entries read in {time.time() - t0:.0f} s", flush=True)
+        lookup = build_lookup(tqdm(entries, desc="indexing metadata", unit="entry", mininterval=5))
+        meta = {clip_key(r): match(lookup, video_of(r), Path(r["clip"]).stem)
+                for r in tqdm(rows, desc="matching our clips", unit="clip", mininterval=5)}
         meta = {k: v for k, v in meta.items() if v}
         (cache / "talkvid_meta.json").write_text(json.dumps(meta))
         print(f"TalkVid metadata: {len(meta)}/{len(rows)} cached clips matched -> {cache / 'talkvid_meta.json'}", flush=True)
