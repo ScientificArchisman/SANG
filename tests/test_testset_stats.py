@@ -76,6 +76,18 @@ def test_eval_and_ditto_read_the_same_csv_and_flag_changed_files(tmp_path, capsy
     assert "ditto" in ev.ROWS
 
 
+def test_ditto_mux_finds_our_ffmpeg_first(tmp_path, monkeypatch):
+    import shutil
+    fake = tmp_path / "ffmpeg-linux-x86_64-v7"
+    fake.write_text("#!/bin/sh\n")
+    fake.chmod(0o755)
+    monkeypatch.setattr(dh, "ffmpeg_exe", lambda: str(fake))
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    link = dh.ffmpeg_on_path(tmp_path / "_bin")
+    assert shutil.which("ffmpeg") == link and Path(link).resolve() == fake.resolve()
+    assert dh.ffmpeg_on_path(tmp_path / "_bin") == link                                  # rerun replaces the link
+
+
 def test_data_stats_split_summary():
     rows = [{"clip": f"/v/{v}/c{i}.mp4", "path": f"/c/{v}/c{i}.pt", "n": n}
             for v, ns in (("vidA", [250, 250, 125]), ("vidB", [500]), ("vidC", [100]))

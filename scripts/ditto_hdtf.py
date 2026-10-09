@@ -42,6 +42,29 @@ def ffmpeg_exe() -> str:
         return "ffmpeg"
 
 
+def ffmpeg_on_path(bin_dir: Path) -> str:
+    """Ditto muxes with os.system("ffmpeg ..."): put imageio-ffmpeg's static binary first on PATH as
+    `ffmpeg`, so the mux does not depend on whatever ffmpeg the node or env has (none, in the ditto env)."""
+    exe = ffmpeg_exe()
+    if exe == "ffmpeg":
+        return exe
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    link = bin_dir / "ffmpeg"
+    if link.is_symlink() or link.exists():
+        link.unlink()
+    link.symlink_to(exe)
+    os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
+    return str(link)
+
+
+def mux(video: Path, wav: Path, dst: Path) -> None:
+    """Ditto's own mux, run by us when its os.system call left no output."""
+    r = subprocess.run([ffmpeg_exe(), "-loglevel", "error", "-y", "-i", str(video), "-i", str(wav), "-map", "0:v",
+                        "-map", "1:a", "-c:v", "copy", "-c:a", "aac", str(dst)], capture_output=True, text=True)
+    if r.returncode != 0 or not dst.exists():
+        raise RuntimeError(f"mux failed: {r.stderr.strip()[-300:]}")
+
+
 def clip_paths(list_path: str, data: Path) -> list[Path]:
     if list_path.endswith(".csv"):
         with open(list_path, newline="", encoding="utf-8") as f:
@@ -90,6 +113,7 @@ def main() -> None:
     timings = json.loads(tpath.read_text()) if tpath.exists() else {}
     todo = [c for c in clips if not (out / f"{c.stem}.mp4").exists()]
     print(f"Ditto on {len(clips)} clips ({len(todo)} to do), {args.seconds:g} s each, {args.steps} steps -> {out}", flush=True)
+    print(f"ffmpeg for Ditto's mux: {ffmpeg_on_path(out / '_bin')}", flush=True)
 
     t0 = time.time()
     sdk = StreamSDK(str(cfg_pkl), str(model_dir))
@@ -114,8 +138,11 @@ def main() -> None:
                 sdk = StreamSDK(str(cfg_pkl), str(model_dir))     # a fresh pipeline, once, then retry
                 run(sdk, str(wav), str(src), str(dst), {"setup_kwargs": {"sampling_timesteps": args.steps}})
             secs = time.time() - t1
+            tmp_video = Path(str(dst) + ".tmp.mp4")
             if not dst.exists():
-                raise RuntimeError("Ditto wrote no output (is ffmpeg on PATH?)")
+                if not tmp_video.exists():
+                    raise RuntimeError("Ditto rendered no video")
+                mux(tmp_video, wav, dst)
             n = int(round(args.seconds * 25))
             timings[clip.stem] = {"seconds": round(secs, 3), "frames": n, "fps": round(n / secs, 2)}
             tpath.write_text(json.dumps(timings, indent=1))
@@ -123,7 +150,8 @@ def main() -> None:
         except Exception as e:
             print(f"[{i}/{len(todo)}] SKIP {clip.stem}: {type(e).__name__}: {e}", flush=True)
         finally:
-            Path(str(dst) + ".tmp.mp4").unlink(missing_ok=True)
+            if dst.exists():                                  # keep the silent render if the mux failed
+                Path(str(dst) + ".tmp.mp4").unlink(missing_ok=True)
     if timings:
         fps = [v["fps"] for v in timings.values()]
         print(f"done: {len(timings)} clips; Ditto speed {np.median(fps):.1f} frames/s median "
