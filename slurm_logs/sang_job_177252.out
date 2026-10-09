@@ -1,0 +1,133 @@
+[job] 177252 on gpu09 | gpu: NVIDIA H100 NVL | cpus: 8 | env: avcodec | commit: 3a6c181 | 2026-10-09 08:34:18
+[job] python -u scripts/eval_hdtf.py --data /beegfs/work/achakraborti/HDTF --list configs/hdtf_test.csv --name ditto --rows ditto
+HDTF eval 'ditto': 75 clips x 10 s, rows ['ditto'] -> /beegfs/work/achakraborti/SANG/results/hdtf/ditto
+[08:34:48] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+[08:34:49] Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+[08:34:50] Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[08:34:52] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+[08:34:53] Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+[08:34:54] FaceAnalysisDIY warmup time: 1.276s           face_analysis_diy.py:79
+[08:34:56] LandmarkRunner warmup time: 0.907s        human_landmark_runner.py:95
+[33mWARNING: onnxruntime is not built with CUDA 12.x support. Please install a version that supports CUDA 12.x, or call preload_dlls with cuda=False and cudnn=False.[0m
+[1/75] MikeCrapo_0                  ditto     csim 0.956  psnr 22.235  ssim 0.747  lse_offset 1.000  lse_d 8.904  lse_c 5.302
+[2/75] KimSchrier_0                 ditto     csim 0.958  psnr 17.661  ssim 0.549  lse_offset 0.000  lse_d 8.532  lse_c 6.369
+[3/75] DebbieDingell1_0             ditto     csim 0.958  psnr 19.338  ssim 0.618  lse_offset 0.000  lse_d 9.403  lse_c 3.886
+[4/75] SuzanDelBene_0               ditto     csim 0.965  psnr 19.653  ssim 0.706  lse_offset 1.000  lse_d 9.002  lse_c 6.206
+[5/75] RichardNeal1_0               ditto     csim 0.974  psnr 23.335  ssim 0.799  lse_offset 1.000  lse_d 10.791  lse_c 4.947
+[6/75] JohnYarmuth1_0               ditto     csim 0.972  psnr 20.422  ssim 0.714  lse_offset 1.000  lse_d 12.053  lse_c 3.901
+[7/75] KarenBass_0                  ditto     csim 0.965  psnr 18.876  ssim 0.677  lse_offset 0.000  lse_d 9.879  lse_c 5.078
+[8/75] JanSchakowsky1_0             ditto     csim 0.947  psnr 14.894  ssim 0.466  lse_offset 1.000  lse_d 12.585  lse_c 2.485
+[9/75] KristiNoem2_0                ditto     csim 0.957  psnr 27.002  ssim 0.826  lse_offset 1.000  lse_d 10.030  lse_c 4.978
+[10/75] RogerWicker2_0               ditto     csim 0.952  psnr 24.203  ssim 0.815  lse_offset 1.000  lse_d 7.000  lse_c 8.250
+[11/75] TerriSewell1_0               ditto     csim 0.954  psnr 20.750  ssim 0.709  lse_offset 1.000  lse_d 11.679  lse_c 3.478
+[12/75] BillCassidy0_0               ditto     csim 0.970  psnr 18.768  ssim 0.671  lse_offset 1.000  lse_d 10.406  lse_c 4.019
+[13/75] TomCarper_0                  ditto     csim 0.971  psnr 20.547  ssim 0.685  lse_offset 1.000  lse_d 9.911  lse_c 5.402
+[14/75] Radio31_0                    ditto     csim 0.955  psnr 17.478  ssim 0.714  lse_offset 0.000  lse_d 8.358  lse_c 6.921
+[15/75] TomCotton_0                  ditto     csim 0.961  psnr 18.003  ssim 0.711  lse_offset 1.000  lse_d 10.651  lse_c 4.252
+[16/75] DebFischer0_0                ditto     csim 0.961  psnr 21.665  ssim 0.731  lse_offset 0.000  lse_d 10.342  lse_c 4.844
+[17/75] TammyBaldwin1_0              ditto     csim 0.959  psnr 18.803  ssim 0.638  lse_offset 1.000  lse_d 10.830  lse_c 4.145
+[18/75] RichardBlumenthal_0          ditto     csim 0.965  psnr 20.382  ssim 0.731  lse_offset 1.000  lse_d 9.962  lse_c 4.672
+[19/75] CarolynMaloney1_0            ditto     csim 0.956  psnr 20.165  ssim 0.628  lse_offset 1.000  lse_d 8.653  lse_c 6.040
+[20/75] JohnSarbanes0_0              ditto     csim 0.962  psnr 17.878  ssim 0.635  lse_offset 1.000  lse_d 7.496  lse_c 7.831
+[21/75] KevinBrady2_0                ditto     csim 0.969  psnr 19.625  ssim 0.721  lse_offset 1.000  lse_d 12.588  lse_c 3.593
+[22/75] AustinScott2_0               ditto     csim 0.974  psnr 19.061  ssim 0.679  lse_offset 1.000  lse_d 9.339  lse_c 5.002
+[23/75] SteveDaines_0                ditto     csim 0.967  psnr 20.697  ssim 0.757  lse_offset 1.000  lse_d 10.356  lse_c 4.693
+[24/75] Radio30_0                    ditto     csim 0.965  psnr 18.127  ssim 0.657  lse_offset 1.000  lse_d 8.231  lse_c 6.818
+[25/75] PattyMurray1_0               ditto     csim 0.961  psnr 22.003  ssim 0.717  lse_offset 1.000  lse_d 9.870  lse_c 4.715
+[26/75] MarkWarner2_0                ditto     csim 0.975  psnr 19.421  ssim 0.680  lse_offset 1.000  lse_d 10.923  lse_c 3.401
+[27/75] Radio26_0                    ditto     csim 0.974  psnr 20.153  ssim 0.659  lse_offset 0.000  lse_d 8.566  lse_c 5.949
+[28/75] JamesClyburn_0               ditto     csim 0.959  psnr 24.771  ssim 0.790  lse_offset 1.000  lse_d 11.366  lse_c 3.041
+[29/75] Radio10_0                    ditto     csim 0.962  psnr 19.252  ssim 0.679  lse_offset 0.000  lse_d 11.246  lse_c 3.977
+[30/75] BillPascrell_0               ditto     csim 0.968  psnr 19.149  ssim 0.670  lse_offset 1.000  lse_d 11.572  lse_c 3.995
+[31/75] Radio7_0                     ditto     csim 0.965  psnr 22.759  ssim 0.705  lse_offset 1.000  lse_d 11.358  lse_c 4.039
+[32/75] DougJones_0                  ditto     csim 0.953  psnr 21.765  ssim 0.769  lse_offset 1.000  lse_d 7.844  lse_c 7.804
+[33/75] AndyLevin_0                  ditto     csim 0.965  psnr 17.284  ssim 0.623  lse_offset 1.000  lse_d 8.693  lse_c 6.020
+[34/75] HakeemJeffries_0             ditto     csim 0.967  psnr 23.178  ssim 0.825  lse_offset 0.000  lse_d 10.639  lse_c 4.576
+[35/75] BobbySchilling_0             ditto     csim 0.953  psnr 12.548  ssim 0.582  lse_offset 1.000  lse_d 10.445  lse_c 4.197
+[36/75] PeteHoekstra_0               ditto     csim 0.946  psnr 20.772  ssim 0.741  lse_offset 1.000  lse_d 8.820  lse_c 6.571
+[37/75] DianneFeinstein_0            ditto     csim 0.960  psnr 13.809  ssim 0.484  lse_offset 0.000  lse_d 8.365  lse_c 6.841
+[38/75] JoaquinCastro_0              ditto     csim 0.962  psnr 15.827  ssim 0.641  lse_offset 1.000  lse_d 11.953  lse_c 4.221
+[39/75] JonTester1_0                 ditto     csim 0.974  psnr 20.541  ssim 0.746  lse_offset 1.000  lse_d 12.225  lse_c 2.861
+[40/75] PaulRyan0_0                  ditto     csim 0.966  psnr 19.469  ssim 0.664  lse_offset 0.000  lse_d 8.567  lse_c 6.188
+[41/75] JackyRosen1_0                ditto     csim 0.966  psnr 18.865  ssim 0.618  lse_offset 1.000  lse_d 9.999  lse_c 4.940
+[42/75] PatrickLeahy1_0              ditto     csim 0.960  psnr 19.455  ssim 0.750  lse_offset 1.000  lse_d 10.061  lse_c 3.940
+[43/75] BobbyScott_0                 ditto     csim 0.970  psnr 19.427  ssim 0.658  lse_offset 1.000  lse_d 8.482  lse_c 6.715
+[44/75] RogerWicker1_0               ditto     csim 0.973  psnr 22.201  ssim 0.769  lse_offset 1.000  lse_d 8.413  lse_c 5.379
+[45/75] KevinBrady3_0                ditto     csim 0.966  psnr 21.347  ssim 0.765  lse_offset 1.000  lse_d 11.461  lse_c 3.503
+[46/75] BennieThompson1_0            ditto     csim 0.963  psnr 19.755  ssim 0.650  lse_offset 0.000  lse_d 8.109  lse_c 5.891
+[47/75] KellyAyotte_0                ditto     csim 0.966  psnr 22.821  ssim 0.773  lse_offset 1.000  lse_d 10.839  lse_c 4.436
+[48/75] SherrodBrown1_0              ditto     csim 0.958  psnr 20.708  ssim 0.751  lse_offset 1.000  lse_d 7.995  lse_c 6.799
+[49/75] JohnLewis0_0                 ditto     csim 0.974  psnr 18.161  ssim 0.701  lse_offset 1.000  lse_d 8.995  lse_c 4.562
+[50/75] ElijahCummings_0             ditto     csim 0.959  psnr 17.931  ssim 0.656  lse_offset 0.000  lse_d 8.802  lse_c 5.591
+[51/75] OlympiaSnowe_0               ditto     csim 0.967  psnr 20.230  ssim 0.711  lse_offset 1.000  lse_d 8.400  lse_c 6.200
+[52/75] NanHayworth_0                ditto     csim 0.972  psnr 18.755  ssim 0.641  lse_offset 1.000  lse_d 10.422  lse_c 4.722
+[53/75] AdamKinzinger0_0             ditto     csim 0.949  psnr 16.420  ssim 0.747  lse_offset 1.000  lse_d 8.603  lse_c 6.102
+[54/75] RobinKelly_0                 ditto     csim 0.963  psnr 19.135  ssim 0.629  lse_offset 1.000  lse_d 10.593  lse_c 4.123
+[55/75] JamesClyburn1_0              ditto     csim 0.938  psnr 18.919  ssim 0.657  lse_offset 1.000  lse_d 8.814  lse_c 5.326
+[56/75] TammyDuckworth_0             ditto     csim 0.948  psnr 19.998  ssim 0.676  lse_offset 1.000  lse_d 10.017  lse_c 5.276
+[57/75] CoryGardner_0                ditto     csim 0.958  psnr 18.946  ssim 0.729  lse_offset 1.000  lse_d 12.666  lse_c 2.357
+[58/75] Radio43_0                    ditto     csim 0.972  psnr 25.434  ssim 0.826  lse_offset 1.000  lse_d 9.514  lse_c 5.513
+[59/75] LisaMurkowski0_0             ditto     csim 0.968  psnr 22.599  ssim 0.697  lse_offset 1.000  lse_d 10.932  lse_c 3.272
+[60/75] ChrisCoons1_0                ditto     csim 0.979  psnr 20.989  ssim 0.765  lse_offset 1.000  lse_d 10.203  lse_c 4.290
+[61/75] XavierBecerra_0              ditto     csim 0.964  psnr 19.026  ssim 0.712  lse_offset 1.000  lse_d 8.305  lse_c 7.298
+[62/75] NancyPelosi0_0               ditto     csim 0.949  psnr 22.796  ssim 0.761  lse_offset 0.000  lse_d 9.342  lse_c 5.366
+[63/75] Radio45_0                    ditto     csim 0.971  psnr 17.133  ssim 0.515  lse_offset 1.000  lse_d 11.732  lse_c 3.641
+[64/75] MitchDaniels0_0              ditto     csim 0.958  psnr 18.266  ssim 0.666  lse_offset 1.000  lse_d 8.803  lse_c 5.109
+[65/75] Radio50_0                    ditto     csim 0.964  psnr 21.810  ssim 0.767  lse_offset 1.000  lse_d 10.361  lse_c 4.728
+[66/75] CatherineCortezMasto_0       ditto     csim 0.963  psnr 18.970  ssim 0.628  lse_offset 1.000  lse_d 8.930  lse_c 6.349
+[67/75] Radio5_0                     ditto     csim 0.970  psnr 22.489  ssim 0.780  lse_offset 1.000  lse_d 9.477  lse_c 5.310
+[68/75] LloydDoggett0_0              ditto     csim 0.968  psnr 19.943  ssim 0.670  lse_offset 1.000  lse_d 8.700  lse_c 5.874
+[69/75] ToddYoung_0                  ditto     csim 0.975  psnr 19.306  ssim 0.707  lse_offset 1.000  lse_d 8.717  lse_c 5.524
+[70/75] Radio14_0                    ditto     csim 0.964  psnr 21.394  ssim 0.688  lse_offset 0.000  lse_d 9.146  lse_c 5.939
+[71/75] JohnBoehner1_0               ditto     csim 0.967  psnr 20.937  ssim 0.743  lse_offset 1.000  lse_d 10.415  lse_c 4.662
+[72/75] DianaDeGette1_0              ditto     csim 0.956  psnr 25.829  ssim 0.801  lse_offset 0.000  lse_d 9.373  lse_c 4.099
+[73/75] KatherineClark_0             ditto     csim 0.969  psnr 21.541  ssim 0.649  lse_offset 1.000  lse_d 11.275  lse_c 4.063
+[74/75] JimHimes_0                   ditto     csim 0.971  psnr 23.568  ssim 0.797  lse_offset 1.000  lse_d 9.168  lse_c 5.964
+[75/75] CandiceMiller0_0             ditto     csim 0.966  psnr 20.231  ssim 0.733  lse_offset 0.000  lse_d 7.863  lse_c 6.803
+clips done in 6358 s
+
+| Source | Method | Family | Params | FID ↓ | FVD ↓ | CSIM ↑ | LSE-C ↑ | LSE-D ↓ | PSNR ↑ | SSIM ↑ | E-FID ↓ |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Ours (n=75, 10 s) | Ditto (re-run, our protocol) | LivePortrait motion, diffusion | n/r +LP | 17.992 | 87.421 | 0.963 | 5.082 | 9.791 | 20.101 | 0.698 | – |
+| FLOAT Tab. 1 | SadTalker | 3DMM + warping | n/r | 71.95 | 339.06 | 0.644 | 7.305 | 7.947 | – | – | 1.914 |
+| FLOAT Tab. 1 | EDTalk | motion bases | n/r | 50.08 | 211.28 | 0.626 | 7.623 | 8.123 | – | – | 1.579 |
+| FLOAT Tab. 1 | AniTalker | motion | n/r | 39.51 | 184.45 | 0.643 | 7.288 | 7.907 | – | – | 1.83 |
+| FLOAT Tab. 1 | Hallo | pixel (SD-1.5) | ~1.7 B est. | 25.36 | 197.20 | 0.869 | 7.582 | 7.792 | – | – | 1.039 |
+| FLOAT Tab. 1 | EchoMimic | pixel (SD-1.5) | ~1.7 B est. | 33.55 | 296.76 | 0.823 | 6.242 | 8.903 | – | – | 1.234 |
+| FLOAT Tab. 1 | FLOAT | motion latent | n/r | 21.10 | 162.05 | 0.843 | 8.222 | 7.29 | – | – | 1.229 |
+| KDTalker Tab. 1 | Real video | - | n/r | – | – | – | 8.243 | 6.929 | – | – | – |
+| KDTalker Tab. 1 | KDTalker | LivePortrait keypoints | 42.9 M +LP | 9.756 | – | 0.949 | 7.326 | 7.548 | – | – | – |
+| Teller Tab. 1 | Real video | - | n/r | – | – | – | 8.094 | 6.976 | – | – | – |
+| Teller Tab. 1 | Teller | motion tokens (AR) | n/r | 21.352 | 173.463 | – | 7.696 | 7.536 | – | – | – |
+| IMTalker Tab. 2 | FLOAT | motion latent | n/r | 9.164 | 198.964 | 0.843 | – | – | – | – | – |
+| IMTalker Tab. 2 | Ditto | LivePortrait motion | n/r +LP | 11.746 | – | 0.886 | – | – | – | – | – |
+| IMTalker Tab. 2 | IMTalker | implicit motion | 39 M + 124 M | 9.084 | 143.623 | 0.869 | 7.711 | – | – | – | – |
+| SoulX Tab. 3 | EchoMimic | pixel (SD-1.5) | ~1.7 B est. | 9.00 | 155.71 | – | 3.56 | 10.22 | – | – | – |
+| SoulX Tab. 3 | SoulX-FlashHead Pro | pixel (Wan2.1) | 1.3 B | 9.97 | 111.38 | – | 5.73 | 8.77 | – | – | – |
+| SoulX Tab. 3 | SoulX-FlashHead Lite | pixel (Wan2.1) | 1.3 B | 11.37 | 126.52 | – | 4.21 | 9.49 | – | – | – |
+| SoulX Tab. 3 | Ditto | LivePortrait motion | n/r +LP | 12.35 | 199.13 | – | 3.57 | 10.49 | – | – | – |
+| SoulX Tab. 3 | Sonic | pixel | n/r | 13.53 | 113.31 | – | 5.17 | 8.69 | – | – | – |
+| SoulX Tab. 3 | Hallo3 | pixel | n/r | 15.95 | 160.94 | – | 3.18 | 10.72 | – | – | – |
+| SoulX Tab. 3 | AniPortrait | pixel | n/r | 19.83 | 242.29 | – | 1.89 | 11.91 | – | – | – |
+| SoulX Tab. 3 | SadTalker | 3DMM + warping | n/r | 21.58 | 207.67 | – | 4.60 | 9.21 | – | – | – |
+| Playmate2 | Playmate2 (after DPO) | pixel | n/r | – | – | – | 8.15 | 7.32 | – | – | – |

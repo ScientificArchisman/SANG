@@ -1,0 +1,2406 @@
+[job] 177251 on gpu09 | gpu: NVIDIA H100 NVL | cpus: 8 | env: ditto | commit: 3a6c181 | 2026-10-09 08:21:47
+[job] python -u scripts/ditto_hdtf.py --data /beegfs/work/achakraborti/HDTF --list configs/hdtf_test.csv
+Ditto on 75 clips (75 to do), 10 s each, 50 steps -> /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos
+ffmpeg for Ditto's mux: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_bin/ffmpeg
+model loaded in 28 s
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/MikeCrapo_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/MikeCrapo_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/MikeCrapo_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/MikeCrapo_0.mp4
+[1/75] MikeCrapo_0                    15.2 s  (16.5 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KimSchrier_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/KimSchrier_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KimSchrier_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KimSchrier_0.mp4
+[2/75] KimSchrier_0                    9.1 s  (27.4 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DebbieDingell1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/DebbieDingell1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DebbieDingell1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DebbieDingell1_0.mp4
+[3/75] DebbieDingell1_0                8.8 s  (28.5 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/SuzanDelBene_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/SuzanDelBene_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/SuzanDelBene_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/SuzanDelBene_0.mp4
+[4/75] SuzanDelBene_0                  8.8 s  (28.4 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RichardNeal1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/RichardNeal1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RichardNeal1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RichardNeal1_0.mp4
+[5/75] RichardNeal1_0                  8.8 s  (28.4 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnYarmuth1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/JohnYarmuth1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnYarmuth1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnYarmuth1_0.mp4
+[6/75] JohnYarmuth1_0                  8.7 s  (28.7 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KarenBass_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/KarenBass_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KarenBass_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KarenBass_0.mp4
+[7/75] KarenBass_0                     8.7 s  (28.6 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JanSchakowsky1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/JanSchakowsky1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JanSchakowsky1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JanSchakowsky1_0.mp4
+[8/75] JanSchakowsky1_0                8.9 s  (28.2 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KristiNoem2_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/KristiNoem2_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KristiNoem2_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KristiNoem2_0.mp4
+[9/75] KristiNoem2_0                   8.8 s  (28.4 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RogerWicker2_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/RogerWicker2_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RogerWicker2_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RogerWicker2_0.mp4
+[10/75] RogerWicker2_0                  8.6 s  (28.9 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TerriSewell1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/TerriSewell1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TerriSewell1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TerriSewell1_0.mp4
+[11/75] TerriSewell1_0                  9.0 s  (27.9 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BillCassidy0_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/BillCassidy0_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BillCassidy0_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BillCassidy0_0.mp4
+[12/75] BillCassidy0_0                  8.8 s  (28.3 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TomCarper_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/TomCarper_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TomCarper_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TomCarper_0.mp4
+[13/75] TomCarper_0                     9.0 s  (27.6 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio31_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/Radio31_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio31_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio31_0.mp4
+[14/75] Radio31_0                       9.0 s  (27.7 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TomCotton_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/TomCotton_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TomCotton_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TomCotton_0.mp4
+[15/75] TomCotton_0                     9.0 s  (27.9 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DebFischer0_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/DebFischer0_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DebFischer0_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DebFischer0_0.mp4
+[16/75] DebFischer0_0                   9.2 s  (27.3 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TammyBaldwin1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/TammyBaldwin1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TammyBaldwin1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TammyBaldwin1_0.mp4
+[17/75] TammyBaldwin1_0                 8.8 s  (28.4 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RichardBlumenthal_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/RichardBlumenthal_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RichardBlumenthal_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RichardBlumenthal_0.mp4
+[18/75] RichardBlumenthal_0             8.9 s  (28.1 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CarolynMaloney1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/CarolynMaloney1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CarolynMaloney1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CarolynMaloney1_0.mp4
+[19/75] CarolynMaloney1_0               8.9 s  (28.1 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnSarbanes0_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/JohnSarbanes0_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnSarbanes0_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnSarbanes0_0.mp4
+[20/75] JohnSarbanes0_0                 9.0 s  (27.7 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KevinBrady2_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/KevinBrady2_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KevinBrady2_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KevinBrady2_0.mp4
+[21/75] KevinBrady2_0                   9.0 s  (27.9 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/AustinScott2_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/AustinScott2_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/AustinScott2_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/AustinScott2_0.mp4
+[22/75] AustinScott2_0                  9.0 s  (27.8 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/SteveDaines_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/SteveDaines_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/SteveDaines_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/SteveDaines_0.mp4
+[23/75] SteveDaines_0                   8.9 s  (28.1 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio30_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/Radio30_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio30_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio30_0.mp4
+[24/75] Radio30_0                       9.1 s  (27.3 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PattyMurray1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/PattyMurray1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PattyMurray1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PattyMurray1_0.mp4
+[25/75] PattyMurray1_0                  9.1 s  (27.5 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/MarkWarner2_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/MarkWarner2_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/MarkWarner2_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/MarkWarner2_0.mp4
+[26/75] MarkWarner2_0                   8.9 s  (28.0 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio26_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/Radio26_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio26_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio26_0.mp4
+[27/75] Radio26_0                       9.1 s  (27.4 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JamesClyburn_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/JamesClyburn_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JamesClyburn_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JamesClyburn_0.mp4
+[28/75] JamesClyburn_0                  9.2 s  (27.2 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio10_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/Radio10_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio10_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio10_0.mp4
+[29/75] Radio10_0                       9.0 s  (27.8 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BillPascrell_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/BillPascrell_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BillPascrell_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BillPascrell_0.mp4
+[30/75] BillPascrell_0                  9.0 s  (27.7 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio7_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/Radio7_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio7_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio7_0.mp4
+[31/75] Radio7_0                        8.8 s  (28.4 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DougJones_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/DougJones_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DougJones_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DougJones_0.mp4
+[32/75] DougJones_0                     8.8 s  (28.6 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/AndyLevin_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/AndyLevin_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/AndyLevin_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/AndyLevin_0.mp4
+[33/75] AndyLevin_0                     8.8 s  (28.4 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/HakeemJeffries_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/HakeemJeffries_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/HakeemJeffries_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/HakeemJeffries_0.mp4
+[34/75] HakeemJeffries_0                8.8 s  (28.4 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BobbySchilling_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/BobbySchilling_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BobbySchilling_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BobbySchilling_0.mp4
+[35/75] BobbySchilling_0                9.0 s  (27.9 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PeteHoekstra_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/PeteHoekstra_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PeteHoekstra_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PeteHoekstra_0.mp4
+[36/75] PeteHoekstra_0                  8.9 s  (28.1 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DianneFeinstein_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/DianneFeinstein_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DianneFeinstein_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DianneFeinstein_0.mp4
+[37/75] DianneFeinstein_0               8.8 s  (28.5 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JoaquinCastro_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/JoaquinCastro_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JoaquinCastro_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JoaquinCastro_0.mp4
+[38/75] JoaquinCastro_0                 8.8 s  (28.4 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JonTester1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/JonTester1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JonTester1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JonTester1_0.mp4
+[39/75] JonTester1_0                    9.0 s  (27.9 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PaulRyan0_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/PaulRyan0_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PaulRyan0_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PaulRyan0_0.mp4
+[40/75] PaulRyan0_0                     9.0 s  (27.8 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JackyRosen1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/JackyRosen1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JackyRosen1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JackyRosen1_0.mp4
+[41/75] JackyRosen1_0                   8.8 s  (28.4 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PatrickLeahy1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/PatrickLeahy1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PatrickLeahy1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PatrickLeahy1_0.mp4
+[42/75] PatrickLeahy1_0                 8.8 s  (28.6 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BobbyScott_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/BobbyScott_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BobbyScott_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BobbyScott_0.mp4
+[43/75] BobbyScott_0                    8.8 s  (28.3 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RogerWicker1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/RogerWicker1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RogerWicker1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RogerWicker1_0.mp4
+[44/75] RogerWicker1_0                  8.7 s  (28.6 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KevinBrady3_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/KevinBrady3_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KevinBrady3_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KevinBrady3_0.mp4
+[45/75] KevinBrady3_0                   8.7 s  (28.7 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BennieThompson1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/BennieThompson1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BennieThompson1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BennieThompson1_0.mp4
+[46/75] BennieThompson1_0               8.9 s  (27.9 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KellyAyotte_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/KellyAyotte_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KellyAyotte_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KellyAyotte_0.mp4
+[47/75] KellyAyotte_0                   8.8 s  (28.5 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/SherrodBrown1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/SherrodBrown1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/SherrodBrown1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/SherrodBrown1_0.mp4
+[48/75] SherrodBrown1_0                 8.8 s  (28.5 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnLewis0_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/JohnLewis0_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnLewis0_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnLewis0_0.mp4
+[49/75] JohnLewis0_0                    8.9 s  (28.2 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/ElijahCummings_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/ElijahCummings_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/ElijahCummings_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/ElijahCummings_0.mp4
+[50/75] ElijahCummings_0                9.1 s  (27.6 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/OlympiaSnowe_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/OlympiaSnowe_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/OlympiaSnowe_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/OlympiaSnowe_0.mp4
+[51/75] OlympiaSnowe_0                  9.0 s  (27.6 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/NanHayworth_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/NanHayworth_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/NanHayworth_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/NanHayworth_0.mp4
+[52/75] NanHayworth_0                   8.9 s  (28.0 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/AdamKinzinger0_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/AdamKinzinger0_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/AdamKinzinger0_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/AdamKinzinger0_0.mp4
+[53/75] AdamKinzinger0_0                9.3 s  (27.0 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RobinKelly_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/RobinKelly_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RobinKelly_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RobinKelly_0.mp4
+[54/75] RobinKelly_0                    8.9 s  (28.0 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JamesClyburn1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/JamesClyburn1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JamesClyburn1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JamesClyburn1_0.mp4
+[55/75] JamesClyburn1_0                 9.1 s  (27.4 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TammyDuckworth_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/TammyDuckworth_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TammyDuckworth_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TammyDuckworth_0.mp4
+[56/75] TammyDuckworth_0                9.1 s  (27.5 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CoryGardner_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/CoryGardner_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CoryGardner_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CoryGardner_0.mp4
+[57/75] CoryGardner_0                   8.9 s  (28.0 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio43_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/Radio43_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio43_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio43_0.mp4
+[58/75] Radio43_0                       9.2 s  (27.1 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/LisaMurkowski0_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/LisaMurkowski0_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/LisaMurkowski0_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/LisaMurkowski0_0.mp4
+[59/75] LisaMurkowski0_0                9.0 s  (27.7 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/ChrisCoons1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/ChrisCoons1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/ChrisCoons1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/ChrisCoons1_0.mp4
+[60/75] ChrisCoons1_0                   9.0 s  (27.7 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/XavierBecerra_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/XavierBecerra_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/XavierBecerra_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/XavierBecerra_0.mp4
+[61/75] XavierBecerra_0                 9.0 s  (27.7 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/NancyPelosi0_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/NancyPelosi0_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/NancyPelosi0_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/NancyPelosi0_0.mp4
+[62/75] NancyPelosi0_0                  9.5 s  (26.3 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio45_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/Radio45_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio45_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio45_0.mp4
+[63/75] Radio45_0                       9.2 s  (27.3 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/MitchDaniels0_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/MitchDaniels0_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/MitchDaniels0_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/MitchDaniels0_0.mp4
+[64/75] MitchDaniels0_0                 9.0 s  (27.7 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio50_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/Radio50_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio50_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio50_0.mp4
+[65/75] Radio50_0                       9.3 s  (27.0 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CatherineCortezMasto_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/CatherineCortezMasto_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CatherineCortezMasto_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CatherineCortezMasto_0.mp4
+[66/75] CatherineCortezMasto_0          8.9 s  (28.0 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio5_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/Radio5_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio5_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio5_0.mp4
+[67/75] Radio5_0                        9.2 s  (27.1 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/LloydDoggett0_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/LloydDoggett0_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/LloydDoggett0_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/LloydDoggett0_0.mp4
+[68/75] LloydDoggett0_0                 9.1 s  (27.4 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/ToddYoung_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/ToddYoung_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/ToddYoung_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/ToddYoung_0.mp4
+[69/75] ToddYoung_0                     9.0 s  (27.8 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio14_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/Radio14_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio14_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio14_0.mp4
+[70/75] Radio14_0                       8.9 s  (28.1 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnBoehner1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/JohnBoehner1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnBoehner1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnBoehner1_0.mp4
+[71/75] JohnBoehner1_0                  8.9 s  (28.1 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DianaDeGette1_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/DianaDeGette1_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DianaDeGette1_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DianaDeGette1_0.mp4
+[72/75] DianaDeGette1_0                 8.9 s  (28.1 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KatherineClark_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/KatherineClark_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KatherineClark_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KatherineClark_0.mp4
+[73/75] KatherineClark_0                9.0 s  (27.8 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JimHimes_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/JimHimes_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JimHimes_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JimHimes_0.mp4
+[74/75] JimHimes_0                      8.9 s  (28.0 frames/s)
+==================== setup kwargs ====================
+sampling_timesteps <class 'int'> 50
+max_size <class 'int'> 1920
+template_n_frames <class 'int'> -1
+crop_scale <class 'float'> 2.3
+crop_vx_ratio <class 'int'> 0
+crop_vy_ratio <class 'float'> -0.125
+crop_flag_do_rot <class 'bool'> True
+smo_k_s <class 'int'> 13
+emo <class 'numpy.ndarray'> (600, 8)
+eye_f0_mode <class 'bool'> False
+ch_info <class 'dict'>
+overlap_v2 <class 'int'> 10
+fix_kp_cond <class 'int'> 1
+fix_kp_cond_dim <class 'list'> [0, 202]
+online_mode <class 'bool'> False
+v_min_max_for_clip <class 'numpy.ndarray'> (4, 265)
+smo_k_d <class 'int'> 3
+N_d <class 'int'> -1
+use_d_keys <class 'NoneType'> None
+relative_d <class 'bool'> True
+drive_eye <class 'NoneType'> None
+delta_eye_arr <class 'numpy.ndarray'> (15, 63)
+delta_eye_open_n <class 'int'> 0
+fade_type <class 'str'> d0
+fade_out_keys <class 'list'> ['exp']
+flag_stitching <class 'bool'> True
+overall_ctrl_info <class 'dict'> {'delta_pitch': 2}
+==================================================
+ffmpeg -loglevel error -y -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CandiceMiller0_0.mp4.tmp.mp4" -i "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/_inputs/CandiceMiller0_0.wav" -map 0:v -map 1:a -c:v copy -c:a aac "/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CandiceMiller0_0.mp4"
+/beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CandiceMiller0_0.mp4
+[75/75] CandiceMiller0_0                9.0 s  (27.9 frames/s)
+done: 75 clips; Ditto speed 27.9 frames/s median (offline pipeline incl. face detection and mux, 50 steps)
