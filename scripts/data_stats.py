@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Statistics of SANG's training and validation data (the motion cache as training uses it), for
 reports and slides: clips, hours, source videos (= speakers), clips per video, clip lengths,
-spoken language, audio-video offsets.
+spoken language, audio-video offsets, and TalkVid's own labels (language, person, gender, ethnicity, age).
 
     sbatch --time=02:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/data_stats.py
     # -> results/data_stats/data_stats.json (+ a printed summary)
+    python scripts/data_stats.py      # login node is enough once <cache>/lang_lid.json covers every clip
+
+Two language labels per clip: TalkVid's own (metadata/filtered_video_clips.json, matched by video id and
+start/end time, sang/talkvid.py; also written to <cache>/talkvid_meta.json for later filtering) and
+Whisper's (below). Percentages are printed for both, by clips and by hours.
 
 Splits are exactly training's: speaker-disjoint hash split (val_frac, seed from the config), then the
 SyncNet offset filter (<cache>/sync_offsets.json) that drops no-sync clips. TalkVid's own
@@ -30,7 +35,8 @@ import yaml
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.paths import motion_cache
+from sang.paths import DATA_ROOT, motion_cache
+from sang.talkvid import WHISPER_NAMES, load_lookup, match
 from sang.sync import SyncOffsets, clip_key, video_of
 
 FPS = 25
@@ -53,7 +59,34 @@ def bin_counts(values, bins) -> list[dict]:
     return out
 
 
-def split_stats(rows: list[dict], langs: dict, offsets: SyncOffsets | None) -> dict:
+def breakdown(rows: list[dict], label_of) -> list[dict]:
+    """Rows grouped by label_of(row) -> [{label, clips, pct_clips, hours, pct_hours, videos}], largest first."""
+    clips, hours, vids = Counter(), Counter(), {}
+    for r in rows:
+        k = label_of(r)
+        clips[k] += 1
+        hours[k] += r["n"] / FPS / 3600
+        vids.setdefault(k, set()).add(video_of(r))
+    n, h = len(rows), sum(hours.values())
+    return [{"label": k, "clips": c, "pct_clips": round(100 * c / n, 2), "hours": round(hours[k], 2),
+             "pct_hours": round(100 * hours[k] / h, 2) if h else 0.0, "videos": len(vids[k])}
+            for k, c in clips.most_common()]
+
+
+def talkvid_stats(rows: list[dict], langs: dict, meta: dict) -> dict:
+    """TalkVid-label breakdowns of one split, and how often Whisper's language agrees with TalkVid's."""
+    def field(f):
+        return lambda r: (meta.get(clip_key(r)) or {}).get(f, "unmatched")
+    out = {"matched": sum(meta.get(clip_key(r)) is not None for r in rows),
+           "persons": len({meta[clip_key(r)].get("person") for r in rows if meta.get(clip_key(r))}),
+           **{f: breakdown(rows, field(f)) for f in ("language", "gender", "ethnicity", "age", "category")}}
+    agree = [WHISPER_NAMES.get(langs[k]["lang"]) == meta[k].get("language")
+             for k in (clip_key(r) for r in rows) if meta.get(k) and langs.get(k, {}).get("lang", "unk") != "unk"]
+    out["whisper_agrees"] = round(float(np.mean(agree)), 4) if agree else None
+    return out
+
+
+def split_stats(rows: list[dict], langs: dict, offsets: SyncOffsets | None, meta: dict | None = None) -> dict:
     frames = [int(r["n"]) for r in rows]
     per_video = Counter(video_of(r) for r in rows)
     hours_video = Counter()
@@ -84,6 +117,10 @@ def split_stats(rows: list[dict], langs: dict, offsets: SyncOffsets | None) -> d
         "language": {"clips": dict(lang_clips.most_common()), "hours": {k: round(v, 2) for k, v in lang_hours.most_common()},
                      "videos": dict(lang_videos.most_common())},
     }
+    code = lambda r: langs.get(clip_key(r), {}).get("lang", "unk")
+    out["language_whisper"] = breakdown(rows, lambda r: WHISPER_NAMES.get(code(r), code(r)))
+    if meta is not None:
+        out["talkvid"] = talkvid_stats(rows, langs, meta)
     if offsets is not None:
         offs = [abs(offsets.get(r)["offset"]) for r in rows if offsets.get(r) and offsets.get(r).get("keep")]
         out["av_offset_abs_frames"] = {"corrected_clips": int(sum(o > 0 for o in offs)),
@@ -161,6 +198,8 @@ def main() -> None:
     ap.add_argument("--no-lid", action="store_true", help="skip language ID (languages become 'unk')")
     ap.add_argument("--batch", type=int, default=16)
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--talkvid-meta", default=str(DATA_ROOT / "talkvid" / "metadata" / "filtered_video_clips.json"),
+                    help="TalkVid's metadata json; 'none' = skip")
     ap.add_argument("--out", default=str(REPO / "results" / "data_stats" / "data_stats.json"))
     args = ap.parse_args()
 
@@ -185,6 +224,14 @@ def main() -> None:
                                                    args.batch, args.workers)
     langs = {k: (v if v.get("p", 0) >= args.min_prob else {**v, "lang": "unk"}) for k, v in langs.items()}
 
+    meta = None
+    if args.talkvid_meta != "none" and Path(args.talkvid_meta).exists():
+        lookup = load_lookup(args.talkvid_meta)
+        meta = {clip_key(r): match(lookup, video_of(r), Path(r["clip"]).stem) for r in rows}
+        meta = {k: v for k, v in meta.items() if v}
+        (cache / "talkvid_meta.json").write_text(json.dumps(meta))
+        print(f"TalkVid metadata: {len(meta)}/{len(rows)} cached clips matched -> {cache / 'talkvid_meta.json'}", flush=True)
+
     res = {"source": "TalkVid motion cache", "cache": str(cache), "fps": FPS,
            "split": {"rule": "hash of source-video name", "val_frac": cfg["val_frac"], "seed": cfg["seed"]},
            "sync_offsets": str(so_path) if so is not None else None,
@@ -193,7 +240,8 @@ def main() -> None:
            "dropped": {"train": drop_t, "val": drop_v},
            "language_id": None if args.no_lid else {"model": args.whisper, "min_prob": args.min_prob,
                                                      "audio": "first <= 10 s of each clip"},
-           "train": split_stats(train_used, langs, so), "val": split_stats(val_used, langs, so)}
+           "talkvid_meta": args.talkvid_meta if meta is not None else None,
+           "train": split_stats(train_used, langs, so, meta), "val": split_stats(val_used, langs, so, meta)}
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(res, indent=1))
@@ -205,6 +253,24 @@ def main() -> None:
               f"clip {s['clip_seconds']['median']} s median; {s['clips_per_video']['median']:g} clips/video median "
               f"(max {s['clips_per_video']['max']}, top 10% of videos hold {s['clips_per_video']['share_top10pct_videos']:.0%} of clips)")
         print(f"  languages (clips): {top}")
+        tables = [("Whisper", s["language_whisper"])]
+        if "talkvid" in s:
+            t = s["talkvid"]
+            tables.insert(0, (f"TalkVid labels, {t['matched']}/{s['clips']} clips matched", t["language"]))
+        for title, rows_ in tables:
+            print(f"  language ({title}):            clips        hours")
+            for b in rows_:
+                print(f"    {b['label']:<14} {b['clips']:>7} {b['pct_clips']:>7.2f} %  {b['hours']:>7.2f} {b['pct_hours']:>7.2f} %")
+        if "talkvid" in s:
+            print(f"  Whisper agrees with TalkVid's language on {100 * (t['whisper_agrees'] or 0):.1f} % of matched clips; "
+                  f"{t['persons']} distinct TalkVid persons")
+    if meta is not None:
+        def persons(rs):
+            return {meta[clip_key(r)].get("person") for r in rs if meta.get(clip_key(r))}
+        both = persons(train_used) & persons(val_used)
+        n_val = sum(meta.get(clip_key(r), {}).get("person") in both for r in val_used)
+        print(f"\nTalkVid persons in both train and val: {len(both)} ({n_val}/{len(val_used)} val clips); "
+              f"the split is by source video, so one person with several videos can land on both sides")
     print(f"\ncache total {res['cache_total']}; dropped by the offset filter: train {drop_t}, val {drop_v}")
     print(f"wrote {out}")
 

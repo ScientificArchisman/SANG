@@ -88,6 +88,32 @@ def test_ditto_mux_finds_our_ffmpeg_first(tmp_path, monkeypatch):
     assert dh.ffmpeg_on_path(tmp_path / "_bin") == link                                  # rerun replaces the link
 
 
+def test_talkvid_metadata_matches_our_clip_names_and_feeds_the_language_tables():
+    from sang import talkvid
+    entries = [{"id": "video--04ZSRBGcsk-scene3", "start-time": 1150.6236, "end-time": 1155.8458,
+                "info": {"Person ID": "17", "Language": "English", "Gender": "Male",
+                         "Video Link": "https://www.youtube.com/watch?v=-04ZSRBGcsk"}},
+               {"id": "video--04ZSRBGcsk-scene4", "start-time": 1200.0, "end-time": 1206.0,
+                "info": {"Person ID": "17", "Language": "English", "Video Link": "https://www.youtube.com/watch?v=-04ZSRBGcsk"}},
+               {"id": "video-zzz-scene1", "start-time": 3.0, "end-time": 9.0,
+                "info": {"Person ID": "99", "Language": "Chinese", "Video Link": "https://www.youtube.com/watch?v=zzz"}}]
+    lk = talkvid.build_lookup(entries)
+    assert talkvid.match(lk, "-04ZSRBGcsk", "-04ZSRBGcsk_NA_1150.624_1155.846")["language"] == "English"
+    assert talkvid.match(lk, "-04ZSRBGcsk", "-04ZSRBGcsk_NA_1150.900_1155.846") is None        # start too far off
+    assert talkvid.match(lk, "nope", "nope_NA_1.0_2.0") is None and talkvid.clip_times("no_times") is None
+
+    rows = [{"clip": "/t/-04ZSRBGcsk/-04ZSRBGcsk_NA_1150.624_1155.846.mp4", "path": "/c/-04ZSRBGcsk/a.pt", "n": 300},
+            {"clip": "/t/zzz/zzz_NA_3.000_9.000.mp4", "path": "/c/zzz/b.pt", "n": 100},
+            {"clip": "/t/qqq/qqq_NA_1.000_5.000.mp4", "path": "/c/qqq/c.pt", "n": 100}]
+    meta = {k: v for k, v in ((ds.clip_key(r), talkvid.match(lk, ds.video_of(r), Path(r["clip"]).stem)) for r in rows) if v}
+    langs = {"-04ZSRBGcsk/a": {"lang": "en"}, "zzz/b": {"lang": "ja"}}
+    s = ds.split_stats(rows, langs, None, meta)
+    assert {b["label"]: b["pct_clips"] for b in s["talkvid"]["language"]} == {"English": 33.33, "Chinese": 33.33, "unmatched": 33.33}
+    assert {b["label"]: b["pct_hours"] for b in s["talkvid"]["language"]}["English"] == 60.0
+    assert s["talkvid"]["matched"] == 2 and s["talkvid"]["persons"] == 2 and s["talkvid"]["whisper_agrees"] == 0.5
+    assert [b["label"] for b in s["language_whisper"]][:2] == ["English", "Japanese"]
+
+
 def test_data_stats_split_summary():
     rows = [{"clip": f"/v/{v}/c{i}.mp4", "path": f"/c/{v}/c{i}.pt", "n": n}
             for v, ns in (("vidA", [250, 250, 125]), ("vidB", [500]), ("vidC", [100]))
