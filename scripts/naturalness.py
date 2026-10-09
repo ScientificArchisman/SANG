@@ -41,6 +41,7 @@ from sang.motion_model import Norm, build, ema_weights, load_ema, parse_spec, sa
 from sang.naturalness import (FPS, Guide, PhonemeRecognizer, audio_onsets, beat_alignment, blink_events,
                               closure_minima, closure_offset, energy_db, guided_generate, head_beats,
                               load_readouts, load_wav, pauses)
+from sang.paths import motion_cache
 from sang.sync import SyncOffsets, shift_ticks, shift_wav
 
 
@@ -129,7 +130,7 @@ def main() -> None:
     if args.variants:                                         # fail on a typo now, not after the audio pass
         for v in args.variants:
             sampler_kwargs(parse_spec(v), cfg, ag_model)
-    cache = Path(cfg["cache_dir"])
+    cache = motion_cache(cfg["cache_dir"])
     read = load_readouts(cache / "openness.json")
     for k, r in read.items():
         print(f"readout {k}: held-out R^2 {r.r2:.3f}", flush=True)

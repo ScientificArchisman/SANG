@@ -34,6 +34,7 @@ import torch.nn.functional as F
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from sang.paths import MOTION_CACHE
 from sang.voice import (FRAME_S, SR, SpeakerEncoder, auto_k, cer, chunks, fit_length, knn_features,
                         load_knnvc, load_wav, match_level, save_wav, speech_segments)
 
@@ -61,7 +62,7 @@ class Asr:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cache", default=str(REPO / "cache/motion_lp"))
+    ap.add_argument("--cache", default=str(MOTION_CACHE))
     ap.add_argument("--targets", type=int, default=20, help="target speakers")
     ap.add_argument("--sources", type=int, default=3, help="source clips converted per target")
     ap.add_argument("--budgets", type=float, nargs="+", default=[5, 10, 30, 60, 1e9], help="bank seconds; 1e9 = all")

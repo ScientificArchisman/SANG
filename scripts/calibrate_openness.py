@@ -29,11 +29,12 @@ sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.motion import REGIONS, MotionCodec, to_target
 from sang.naturalness import eye_ratio, fit_readout, lip_ratio
+from sang.paths import MOTION_CACHE
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cache", default=str(REPO / "cache/motion_lp"))
+    ap.add_argument("--cache", default=str(MOTION_CACHE))
     ap.add_argument("--n", type=int, default=80, help="clips (identities matter more than frames)")
     ap.add_argument("--frames", type=int, default=150, help="per clip")
     ap.add_argument("--every", type=int, default=3, help="landmark every k-th frame")

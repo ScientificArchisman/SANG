@@ -3,7 +3,7 @@
 # and you are running an ablation, so say so in the run name.
 
 # ---- data (cache from scripts/cache_motion.py) ----
-cache_dir: cache/motion_lp
+cache_dir: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/motion_lp   # sang/paths.py MOTION_CACHE
 out_dir: runs/motion_bidir
 val_frac: 0.05            # split by SPEAKER, as scripts/train.py
 seed: 0
@@ -11,7 +11,7 @@ workers: 8
 frames: 64                # L. KDTalker Tab. 7: LSE-C 6.875 / 7.256 / 7.326 at 8 / 32 / 64 frames
 prefix: 10                # FLOAT's L' = 10 preceding frames
 windows_per_clip: 8
-sync_offsets: ""          # cache/motion_lp/sync_offsets.json (scripts/sync_offsets.py --merge): shift each clip's
+sync_offsets: ""          # <cache_dir>/sync_offsets.json (scripts/sync_offsets.py --merge): shift each clip's
                           # audio by its SyncNet offset and drop no-sync clips. "" = off (diagnosis job 176657)
 preload: true             # clips in RAM (~2 MB each): per-sample BeeGFS reads capped run 1 at 1.4 it/s
 

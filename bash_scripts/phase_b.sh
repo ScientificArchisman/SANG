@@ -12,7 +12,7 @@
 # best-by-val-loss would favour early checkpoints (and last.pt was already >= best.pt in Phase A).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-S=cache/motion_lp/sync_offsets.json
+S=/beegfs/work_fast/shared/li_shared/archi_data/talkvid/motion_lp/sync_offsets.json
 COMMON=(max_steps=15000 warmup_steps=2000 patience=0 "sync_offsets=$S" "ema_extra=[0.999,0.9995]")
 runs_for() {                                        # run name -> its overrides (bash 3 has no associative arrays)
   case "$1" in

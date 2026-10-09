@@ -46,6 +46,7 @@ from sang.diagnose import (RidgeProbe, by_group, corr, lag_curve, lag_summary, l
 from sang.motion import REGIONS, to_target
 from sang.motion_model import Norm, build, ema_weights, generate, load_ema, parse_spec, sampler_kwargs
 from sang.naturalness import SR, load_readouts, load_wav
+from sang.paths import motion_cache
 from sang.sync import SyncOffsets, real_clip_mp4, shift_ticks, shift_wav
 
 TESTS = ("lang", "seeds", "lag", "offset", "ref", "probe", "syncnet")
@@ -161,7 +162,7 @@ def main() -> None:
     model = build(cfg).to(dev).eval()
     model.load_state_dict(ema_weights(ck, args.ema))
     norm = Norm(**ck["norm"]).to(dev)
-    cache = Path(cfg["cache_dir"])
+    cache = motion_cache(cfg["cache_dir"])
     read = load_readouts(cache / "openness.json")
     lip_read = read["lip"]
     samp = sampler_kwargs(parse_spec(args.variant), cfg, load_ema(args.guide_ckpt, dev, norm) if args.guide_ckpt else None,

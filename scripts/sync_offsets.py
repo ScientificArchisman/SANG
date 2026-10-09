@@ -25,16 +25,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from sang.paths import MOTION_CACHE, load_index
 from sang.sync import FPS, clip_key, merge, pick_clips, real_clip_mp4, video_of
-
-
-def load_index(cache: Path) -> list[dict]:
-    rows = []
-    for f in sorted(cache.glob("index_*.jsonl")):
-        rows += [json.loads(l) for l in f.read_text().splitlines() if l.strip()]
-    if not rows:
-        sys.exit(f"no index_*.jsonl in {cache}")
-    return rows
 
 
 def measure(args, cache: Path) -> None:
@@ -104,7 +96,7 @@ def do_merge(args, cache: Path) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--cache", default=str(REPO / "cache/motion_lp"))
+    ap.add_argument("--cache", default=str(MOTION_CACHE))
     ap.add_argument("--merge", action="store_true", help="merge the measurements into <cache>/sync_offsets.json")
     ap.add_argument("--shard", type=int, default=int(os.environ.get("SLURM_ARRAY_TASK_ID", 0)))
     ap.add_argument("--nshards", type=int, default=1)

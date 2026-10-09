@@ -7,7 +7,7 @@ spoken language, audio-video offsets.
     # -> results/data_stats/data_stats.json (+ a printed summary)
 
 Splits are exactly training's: speaker-disjoint hash split (val_frac, seed from the config), then the
-SyncNet offset filter (cache/motion_lp/sync_offsets.json) that drops no-sync clips. TalkVid's own
+SyncNet offset filter (<cache>/sync_offsets.json) that drops no-sync clips. TalkVid's own
 metadata is not in the cache, so the language of each clip is identified here with Whisper-large-v3
 (first <= 10 s of the clip's audio, the language token's probability after <|startoftranscript|>),
 cached per clip in <cache>/lang_lid.json so a rerun only labels new clips. A clip whose top language
@@ -30,6 +30,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from sang.paths import motion_cache
 from sang.sync import SyncOffsets, clip_key, video_of
 
 FPS = 25
@@ -164,7 +165,7 @@ def main() -> None:
     args = ap.parse_args()
 
     cfg = yaml.safe_load(Path(args.config).read_text())
-    cache = Path(cfg["cache_dir"])
+    cache = motion_cache(cfg["cache_dir"])
     tm = load_train_module()
     rows = tm.load_index(cache)
     train, val = tm.split_by_speaker(rows, cfg["val_frac"], cfg["seed"])

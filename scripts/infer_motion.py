@@ -28,6 +28,7 @@ from sang.bench import write_mp4
 from sang.motion import MotionCodec, from_target, to_target
 from sang.motion_model import Norm, build, ema_weights, guidance_vector, load_ema, parse_spec, sampler_kwargs
 from sang.naturalness import Guide, guided_generate
+from sang.paths import motion_cache
 from sang.voice import load_knnvc
 
 SR, FPS = 16000, 25
@@ -107,7 +108,7 @@ def main() -> None:
         start = norm.target(to_target(m_src)).unsqueeze(1).expand(1, lead, -1)
     with torch.no_grad():
         audio = wavlm.encode(torch.nn.functional.pad(wav, (lead * SR // FPS, 0)).to(dev)).float()   # [1, ~2(lead+n), D]
-    guide = Guide.load(Path(cfg["cache_dir"]), dev) if args.guide != "none" else None
+    guide = Guide.load(motion_cache(cfg["cache_dir"]), dev) if args.guide != "none" else None
     y, info = guided_generate(model, audio, ref, n_frames, cfg, norm, wav.flatten(), guide, args.guide,
                               args.seed, steps=args.steps, cfg_audio=gamma, start=start, cfg_rescale=args.cfg_rescale,
                               sampler=samp)

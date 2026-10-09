@@ -26,6 +26,7 @@ from sang.bench import write_mp4
 from sang.motion import MotionCodec, decode_clip, from_target, to_target
 from sang.motion_model import Norm, build, ema_weights, guidance_vector, load_ema, parse_spec, sampler_kwargs
 from sang.naturalness import Guide, guided_generate
+from sang.paths import motion_cache
 
 SR, FPS = 16000, 25
 
@@ -95,7 +96,7 @@ def main() -> None:
     print(f"checkpoint {args.ckpt}: step {ck['step']}, best val {ck.get('best', float('nan')):.4f}", flush=True)
 
     n_frames = int(args.seconds * FPS)
-    clips = args.clips or val_clips(Path(cfg["cache_dir"]), cfg["val_frac"], cfg["seed"], n_frames)[: args.n]
+    clips = args.clips or val_clips(motion_cache(cfg["cache_dir"]), cfg["val_frac"], cfg["seed"], n_frames)[: args.n]
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -103,7 +104,7 @@ def main() -> None:
     from sang.codec import load_wavlm
     codec = MotionCodec(device=dev)
     wavlm = load_wavlm(cfg.get("audio_encoder", "wavlm-large"), device=dev)
-    guide = Guide.load(Path(cfg["cache_dir"]), dev) if args.guide != "none" else None
+    guide = Guide.load(motion_cache(cfg["cache_dir"]), dev) if args.guide != "none" else None
     knnvc = bank = None
     if args.voice:
         from sang.voice import SpeakerEncoder, load_knnvc, voice_bank

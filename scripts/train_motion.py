@@ -30,21 +30,13 @@ sys.path.insert(0, str(REPO))
 
 from sang.motion import REGIONS, to_target
 from sang.motion_model import Norm, build, flow_loss, sample
+from sang.paths import load_index
 from sang.sync import SyncOffsets, clip_key, shift_ticks
 
 TPF = 2
 
 
 # ---------------------------------------------------------------------- data
-def load_index(cache_dir: Path) -> list[dict]:
-    rows = []
-    for f in sorted(cache_dir.glob("index_*.jsonl")):
-        rows += [json.loads(l) for l in f.read_text().splitlines() if l.strip()]
-    if not rows:
-        raise SystemExit(f"no index_*.jsonl in {cache_dir}; run scripts/cache_motion.py first")
-    return rows
-
-
 def split_by_speaker(rows: list[dict], val_frac: float, seed: int):
     """Speaker-disjoint split, decided per speaker by a hash of its name.
 

@@ -32,6 +32,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.motion import MotionCodec, decode_clip
+from sang.paths import MOTION_CACHE
 
 SR, FPS, TPF = 16000, 25, 2
 
@@ -51,7 +52,7 @@ def load_audio(clip: str, start_frame: int, n_frames: int) -> torch.Tensor:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--clips", default=str(REPO / "data/clips_filtered_all.txt"))
-    ap.add_argument("--out", default=str(REPO / "cache/motion_lp"))
+    ap.add_argument("--out", default=str(MOTION_CACHE))
     ap.add_argument("--max-frames", type=int, default=500, help="20 s cap bounds host memory per clip")
     ap.add_argument("--min-frames", type=int, default=74, help="one training window: 64 + 10 prefix")
     ap.add_argument("--shard", type=int, default=int(os.environ.get("SLURM_ARRAY_TASK_ID", 0)))
