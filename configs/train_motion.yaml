@@ -3,7 +3,7 @@
 # and you are running an ablation, so say so in the run name.
 
 # ---- data (cache from scripts/cache_motion.py) ----
-cache_dir: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/motion_lp   # sang/paths.py MOTION_CACHE
+cache_dir: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed   # sang/paths.py MOTION_CACHE
 out_dir: runs/motion_bidir
 val_frac: 0.05            # split by SPEAKER, as scripts/train.py
 seed: 0

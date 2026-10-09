@@ -9,7 +9,7 @@ from sang import paths
 
 
 def test_index_paths_follow_the_cache_and_missing_cache_falls_back(tmp_path, monkeypatch):
-    new = tmp_path / "archi_data" / "talkvid" / "motion_lp"
+    new = tmp_path / "archi_data" / "talkvid" / "preprocessed"
     new.mkdir(parents=True)
     old = "/beegfs/work/someone/SANG/cache/motion_lp"
     rows = [{"clip": "/talkvid/vidA/c0.mp4", "path": f"{old}/vidA/c0.pt", "n": 250, "start": 0},

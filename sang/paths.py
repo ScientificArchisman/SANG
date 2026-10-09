@@ -1,7 +1,7 @@
 """Where SANG's data lives. One place, so moving the data means changing one line (or setting SANG_DATA).
 
     <DATA_ROOT>/talkvid/clips/<video>/<clip>.mp4 + .m4a   segmented TalkVid clips (video and audio)
-    <DATA_ROOT>/talkvid/motion_lp/                       scripts/cache_motion.py: per clip LivePortrait motion,
+    <DATA_ROOT>/talkvid/preprocessed/                    scripts/cache_motion.py: per clip LivePortrait motion,
                                                          keypoints and WavLM features, index_*.jsonl, and the
                                                          derived files (sync_offsets.json, lang_lid.json,
                                                          openness.json, naturalness_stats.json)
@@ -12,7 +12,7 @@ from pathlib import Path
 
 DATA_ROOT = Path(os.environ.get("SANG_DATA", "/beegfs/work_fast/shared/li_shared/archi_data"))
 TALKVID_CLIPS = DATA_ROOT / "talkvid" / "clips"
-MOTION_CACHE = DATA_ROOT / "talkvid" / "motion_lp"
+MOTION_CACHE = DATA_ROOT / "talkvid" / "preprocessed"
 
 
 def motion_cache(path=None) -> Path:
