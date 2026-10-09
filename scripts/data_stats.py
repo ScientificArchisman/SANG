@@ -53,11 +53,18 @@ def load_train_module():
 
 
 def bin_counts(values, bins) -> list[dict]:
+    """Integer bins, both ends included (counts such as clips per video)."""
     out = []
     for lo, hi in bins:
         label = f"{lo}" if lo == hi else (f">{lo - 1}" if hi >= 10 ** 9 else f"{lo}-{hi}")
         out.append({"bin": label, "count": int(sum(lo <= v <= hi for v in values))})
     return out
+
+
+def seconds_hist(values, bins) -> list[dict]:
+    """Half-open [lo, hi) bins for real-valued lengths, so a 10.0 s clip is counted once (in 10-15)."""
+    return [{"bin": f">={lo}" if hi >= 10 ** 9 else f"{lo}-{hi}", "count": int(sum(lo <= v < hi for v in values))}
+            for lo, hi in bins]
 
 
 def breakdown(rows: list[dict], label_of) -> list[dict]:
@@ -109,7 +116,7 @@ def split_stats(rows: list[dict], langs: dict, offsets: SyncOffsets | None, meta
         "videos": len(per_video),
         "clip_seconds": {"mean": round(float(np.mean(frames)) / FPS, 2), "median": round(float(np.median(frames)) / FPS, 2),
                          "min": round(min(frames) / FPS, 2), "max": round(max(frames) / FPS, 2),
-                         "hist": bin_counts([f / FPS for f in frames], SECONDS_BINS)},
+                         "hist": seconds_hist([f / FPS for f in frames], SECONDS_BINS)},
         "clips_per_video": {"mean": round(float(np.mean(counts)), 2), "median": float(np.median(counts)),
                             "max": counts[0], "hist": bin_counts(counts, CLIPS_PER_VIDEO_BINS),
                             "share_top10pct_videos": round(sum(counts[:top10]) / len(rows), 3)},
@@ -274,6 +281,8 @@ def main() -> None:
             return {meta[clip_key(r)].get("person") for r in rs if meta.get(clip_key(r))}
         both = persons(train_used) & persons(val_used)
         n_val = sum(meta.get(clip_key(r), {}).get("person") in both for r in val_used)
+        res["persons_in_both_splits"] = {"persons": len(both), "val_clips": n_val, "val_clips_total": len(val_used)}
+        out.write_text(json.dumps(res, indent=1))
         print(f"\nTalkVid persons in both train and val: {len(both)} ({n_val}/{len(val_used)} val clips); "
               f"the split is by source video, so one person with several videos can land on both sides")
     print(f"\ncache total {res['cache_total']}; dropped by the offset filter: train {drop_t}, val {drop_v}")

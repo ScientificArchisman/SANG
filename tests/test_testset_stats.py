@@ -126,3 +126,5 @@ def test_data_stats_split_summary():
     assert {b["bin"]: b["count"] for b in s["clips_per_video"]["hist"]}["3-5"] == 1
     assert s["clip_seconds"]["max"] == 20.0
     assert [b["bin"] for b in ds.bin_counts([1], [(0, 0), (1, 1), (3, 10 ** 9)])] == ["0", "1", ">2"]
+    h = ds.seconds_hist([3.0, 5.0, 9.96, 10.0, 10.0, 20.0], ds.SECONDS_BINS)                # each clip counted once
+    assert [b["count"] for b in h] == [1, 2, 2, 0, 1] and sum(b["count"] for b in h) == 6
