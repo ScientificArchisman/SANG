@@ -1,0 +1,42 @@
+[job] 177162 on gpu09 | gpu: NVIDIA H100 NVL | cpus: 8 | env: avcodec | commit: 7655924 | 2026-10-08 22:04:47
+[job] python -u scripts/data_stats.py
+language ID: 4176 cached, 9081 to label
+  16/9081 clips labelled (2 s)
+  336/9081 clips labelled (39 s)
+  656/9081 clips labelled (69 s)
+  976/9081 clips labelled (100 s)
+  1296/9081 clips labelled (135 s)
+  1616/9081 clips labelled (168 s)
+  1936/9081 clips labelled (199 s)
+  2256/9081 clips labelled (230 s)
+  2576/9081 clips labelled (259 s)
+  2896/9081 clips labelled (295 s)
+  3216/9081 clips labelled (328 s)
+  3536/9081 clips labelled (361 s)
+  3856/9081 clips labelled (391 s)
+  4176/9081 clips labelled (419 s)
+  4496/9081 clips labelled (448 s)
+  4816/9081 clips labelled (483 s)
+  5136/9081 clips labelled (515 s)
+  5456/9081 clips labelled (545 s)
+  5776/9081 clips labelled (574 s)
+  6096/9081 clips labelled (606 s)
+  6416/9081 clips labelled (636 s)
+  6736/9081 clips labelled (666 s)
+  7056/9081 clips labelled (698 s)
+  7376/9081 clips labelled (730 s)
+  7696/9081 clips labelled (759 s)
+  8016/9081 clips labelled (790 s)
+  8336/9081 clips labelled (819 s)
+  8656/9081 clips labelled (849 s)
+  8976/9081 clips labelled (880 s)
+  9081/9081 clips labelled (890 s)
+
+train: 12786 clips, 35.58 h, 1601 source videos; clip 10.0 s median; 4 clips/video median (max 181, top 10% of videos hold 41% of clips)
+  languages (clips): en 10511, zh 1930, ko 79, es 69, cy 58, hi 39, ja 25, ms 15
+
+val: 471 clips, 1.25 h, 70 source videos; clip 10.0 s median; 4 clips/video median (max 36, top 10% of videos hold 39% of clips)
+  languages (clips): en 399, zh 66, hi 2, unk 2, sw 1, ur 1
+
+cache total {'clips': 13676, 'videos': 1728, 'hours': 37.97}; dropped by the offset filter: train {'low confidence': 88, 'video offsets disagree': 218, 'no sync': 43, 'no sync in video': 54, 'not measured': 5}, val {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}
+wrote /beegfs/work/achakraborti/SANG/results/data_stats/data_stats.json

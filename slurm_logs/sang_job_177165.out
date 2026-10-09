@@ -1,0 +1,283 @@
+[job] 177165 on gpu09 | gpu: NVIDIA H100 NVL | cpus: 8 | env: avcodec | commit: 7655924 | 2026-10-08 22:18:03
+[job] python -u scripts/eval_hdtf.py --data /beegfs/work/achakraborti/HDTF --list configs/hdtf_test.csv --name sang_lognorm03 --ckpt runs/b1_lognorm03/last.pt --sampler g=2,mouth=1.25,tau=0.5,avg=4,steps=6
+HDTF eval 'sang_lognorm03': 75 clips x 10 s, rows ['real', 'gt_motion', 'sang'] -> /beegfs/work/achakraborti/SANG/results/hdtf/sang_lognorm03
+[22:18:21] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+[22:18:22] Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+[22:18:24] Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[22:18:26] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+[22:18:27] Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+[22:18:28] FaceAnalysisDIY warmup time: 1.078s           face_analysis_diy.py:79
+[22:18:30] LandmarkRunner warmup time: 0.936s        human_landmark_runner.py:95
+[33mWARNING: onnxruntime is not built with CUDA 12.x support. Please install a version that supports CUDA 12.x, or call preload_dlls with cuda=False and cudnn=False.[0m
+[1/75] MikeCrapo_0                  sang      csim 0.949  psnr 22.046  ssim 0.747  lse_offset -1.000  lse_d 6.856  lse_c 7.398
+[2/75] KimSchrier_0                 real      csim 0.862  lse_offset -2.000  lse_d 8.400  lse_c 5.989
+[2/75] KimSchrier_0                 gt_motion csim 0.929  psnr 22.305  ssim 0.698  lse_offset -2.000  lse_d 8.606  lse_c 5.828
+[2/75] KimSchrier_0                 sang      csim 0.951  psnr 18.316  ssim 0.566  lse_offset -2.000  lse_d 8.033  lse_c 6.587
+[3/75] DebbieDingell1_0             real      csim 0.872  lse_offset -2.000  lse_d 8.257  lse_c 4.899
+[3/75] DebbieDingell1_0             gt_motion csim 0.934  psnr 22.213  ssim 0.708  lse_offset -2.000  lse_d 8.698  lse_c 4.739
+[3/75] DebbieDingell1_0             sang      csim 0.949  psnr 18.976  ssim 0.606  lse_offset -2.000  lse_d 8.122  lse_c 5.571
+[4/75] SuzanDelBene_0               real      csim 0.912  lse_offset -10.000  lse_d 7.461  lse_c 7.897
+[4/75] SuzanDelBene_0               gt_motion csim 0.945  psnr 21.140  ssim 0.765  lse_offset -10.000  lse_d 7.881  lse_c 7.251
+[4/75] SuzanDelBene_0               sang      csim 0.933  psnr 18.042  ssim 0.669  lse_offset -2.000  lse_d 7.141  lse_c 8.216
+[5/75] RichardNeal1_0               real      csim 0.930  lse_offset -2.000  lse_d 7.680  lse_c 8.039
+[5/75] RichardNeal1_0               gt_motion csim 0.976  psnr 26.642  ssim 0.881  lse_offset -2.000  lse_d 7.866  lse_c 7.343
+[5/75] RichardNeal1_0               sang      csim 0.967  psnr 23.412  ssim 0.809  lse_offset 0.000  lse_d 6.896  lse_c 8.658
+[6/75] JohnYarmuth1_0               real      csim 0.947  lse_offset 0.000  lse_d 7.133  lse_c 6.980
+[6/75] JohnYarmuth1_0               gt_motion csim 0.973  psnr 22.043  ssim 0.759  lse_offset 0.000  lse_d 8.020  lse_c 5.533
+[6/75] JohnYarmuth1_0               sang      csim 0.973  psnr 20.443  ssim 0.713  lse_offset -1.000  lse_d 7.797  lse_c 6.872
+[7/75] KarenBass_0                  real      csim 0.934  lse_offset -1.000  lse_d 7.661  lse_c 7.393
+[7/75] KarenBass_0                  gt_motion csim 0.953  psnr 21.839  ssim 0.768  lse_offset -2.000  lse_d 7.874  lse_c 6.951
+[7/75] KarenBass_0                  sang      csim 0.907  psnr 20.259  ssim 0.720  lse_offset -1.000  lse_d 7.295  lse_c 7.762
+[8/75] JanSchakowsky1_0             real      csim 0.780  lse_offset -2.000  lse_d 7.477  lse_c 6.921
+[8/75] JanSchakowsky1_0             gt_motion csim 0.814  psnr 15.989  ssim 0.494  lse_offset -2.000  lse_d 8.054  lse_c 6.386
+[8/75] JanSchakowsky1_0             sang      csim 0.891  psnr 15.743  ssim 0.493  lse_offset -1.000  lse_d 7.629  lse_c 6.110
+[9/75] KristiNoem2_0                real      csim 0.879  lse_offset 0.000  lse_d 7.802  lse_c 6.618
+[9/75] KristiNoem2_0                gt_motion csim 0.955  psnr 26.979  ssim 0.850  lse_offset 0.000  lse_d 7.861  lse_c 6.511
+[9/75] KristiNoem2_0                sang      csim 0.952  psnr 24.718  ssim 0.787  lse_offset -1.000  lse_d 8.001  lse_c 6.063
+[10/75] RogerWicker2_0               real      csim 0.865  lse_offset -2.000  lse_d 7.334  lse_c 8.273
+[10/75] RogerWicker2_0               gt_motion csim 0.917  psnr 25.352  ssim 0.860  lse_offset -2.000  lse_d 7.525  lse_c 7.644
+[10/75] RogerWicker2_0               sang      csim 0.925  psnr 24.001  ssim 0.815  lse_offset 0.000  lse_d 7.292  lse_c 7.907
+[11/75] TerriSewell1_0               real      csim 0.887  lse_offset -2.000  lse_d 7.179  lse_c 7.963
+[11/75] TerriSewell1_0               gt_motion csim 0.933  psnr 23.773  ssim 0.775  lse_offset -2.000  lse_d 7.432  lse_c 7.684
+[11/75] TerriSewell1_0               sang      csim 0.940  psnr 21.521  ssim 0.725  lse_offset -1.000  lse_d 6.553  lse_c 8.506
+[12/75] BillCassidy0_0               real      csim 0.914  lse_offset -2.000  lse_d 7.428  lse_c 6.247
+[12/75] BillCassidy0_0               gt_motion csim 0.955  psnr 19.383  ssim 0.694  lse_offset -2.000  lse_d 7.892  lse_c 5.364
+[12/75] BillCassidy0_0               sang      csim 0.951  psnr 17.907  ssim 0.645  lse_offset -2.000  lse_d 8.494  lse_c 4.723
+[13/75] TomCarper_0                  real      csim 0.910  lse_offset -1.000  lse_d 7.440  lse_c 6.740
+[13/75] TomCarper_0                  gt_motion csim 0.934  psnr 23.344  ssim 0.777  lse_offset -1.000  lse_d 8.250  lse_c 5.545
+[13/75] TomCarper_0                  sang      csim 0.950  psnr 19.899  ssim 0.666  lse_offset -1.000  lse_d 7.018  lse_c 7.485
+[14/75] Radio31_0                    real      csim 0.848  lse_offset 1.000  lse_d 8.011  lse_c 7.142
+[14/75] Radio31_0                    gt_motion csim 0.943  psnr 17.566  ssim 0.723  lse_offset 1.000  lse_d 8.094  lse_c 7.725
+[14/75] Radio31_0                    sang      csim 0.950  psnr 17.438  ssim 0.710  lse_offset -1.000  lse_d 7.394  lse_c 7.795
+[15/75] TomCotton_0                  real      csim 0.908  lse_offset -2.000  lse_d 7.949  lse_c 6.797
+[15/75] TomCotton_0                  gt_motion csim 0.936  psnr 20.287  ssim 0.764  lse_offset -2.000  lse_d 7.833  lse_c 6.962
+[15/75] TomCotton_0                  sang      csim 0.962  psnr 18.385  ssim 0.719  lse_offset -1.000  lse_d 9.011  lse_c 5.557
+[16/75] DebFischer0_0                real      csim 0.928  lse_offset 0.000  lse_d 6.955  lse_c 8.527
+[16/75] DebFischer0_0                gt_motion csim 0.956  psnr 22.763  ssim 0.761  lse_offset 0.000  lse_d 7.602  lse_c 7.536
+[16/75] DebFischer0_0                sang      csim 0.914  psnr 19.426  ssim 0.684  lse_offset -2.000  lse_d 8.167  lse_c 6.750
+[17/75] TammyBaldwin1_0              real      csim 0.881  lse_offset -1.000  lse_d 6.931  lse_c 8.339
+[17/75] TammyBaldwin1_0              gt_motion csim 0.927  psnr 20.633  ssim 0.673  lse_offset -1.000  lse_d 7.625  lse_c 7.204
+[17/75] TammyBaldwin1_0              sang      csim 0.920  psnr 20.017  ssim 0.676  lse_offset -2.000  lse_d 7.258  lse_c 7.833
+[18/75] RichardBlumenthal_0          real      csim 0.847  lse_offset -1.000  lse_d 7.350  lse_c 7.213
+[18/75] RichardBlumenthal_0          gt_motion csim 0.907  psnr 22.679  ssim 0.781  lse_offset -1.000  lse_d 7.504  lse_c 6.780
+[18/75] RichardBlumenthal_0          sang      csim 0.945  psnr 20.343  ssim 0.716  lse_offset -1.000  lse_d 6.739  lse_c 7.412
+[19/75] CarolynMaloney1_0            real      csim 0.944  lse_offset -3.000  lse_d 7.726  lse_c 6.988
+[19/75] CarolynMaloney1_0            gt_motion csim 0.961  psnr 21.216  ssim 0.670  lse_offset -3.000  lse_d 7.856  lse_c 6.654
+[19/75] CarolynMaloney1_0            sang      csim 0.948  psnr 18.585  ssim 0.591  lse_offset -1.000  lse_d 6.621  lse_c 7.733
+[20/75] JohnSarbanes0_0              real      csim 0.919  lse_offset -2.000  lse_d 5.885  lse_c 9.647
+[20/75] JohnSarbanes0_0              gt_motion csim 0.957  psnr 18.793  ssim 0.671  lse_offset -2.000  lse_d 6.386  lse_c 8.957
+[20/75] JohnSarbanes0_0              sang      csim 0.961  psnr 18.715  ssim 0.669  lse_offset -1.000  lse_d 5.956  lse_c 9.731
+[21/75] KevinBrady2_0                real      csim 0.874  lse_offset -2.000  lse_d 7.846  lse_c 7.716
+[21/75] KevinBrady2_0                gt_motion csim 0.908  psnr 20.139  ssim 0.752  lse_offset -2.000  lse_d 8.216  lse_c 7.160
+[21/75] KevinBrady2_0                sang      csim 0.949  psnr 19.896  ssim 0.734  lse_offset -1.000  lse_d 8.179  lse_c 6.991
+[22/75] AustinScott2_0               real      csim 0.949  lse_offset -2.000  lse_d 8.831  lse_c 6.130
+[22/75] AustinScott2_0               gt_motion csim 0.981  psnr 19.989  ssim 0.708  lse_offset -2.000  lse_d 8.801  lse_c 5.688
+[22/75] AustinScott2_0               sang      csim 0.953  psnr 20.014  ssim 0.714  lse_offset -1.000  lse_d 9.319  lse_c 5.572
+[23/75] SteveDaines_0                real      csim 0.908  lse_offset -1.000  lse_d 6.723  lse_c 9.013
+[23/75] SteveDaines_0                gt_motion csim 0.958  psnr 21.749  ssim 0.780  lse_offset -1.000  lse_d 6.975  lse_c 8.774
+[23/75] SteveDaines_0                sang      csim 0.957  psnr 20.407  ssim 0.748  lse_offset -1.000  lse_d 6.486  lse_c 8.672
+[24/75] Radio30_0                    real      csim 0.912  lse_offset 2.000  lse_d 6.495  lse_c 8.314
+[24/75] Radio30_0                    gt_motion csim 0.971  psnr 19.365  ssim 0.700  lse_offset 2.000  lse_d 7.537  lse_c 6.985
+[24/75] Radio30_0                    sang      csim 0.979  psnr 18.733  ssim 0.678  lse_offset -1.000  lse_d 8.536  lse_c 5.130
+[25/75] PattyMurray1_0               real      csim 0.892  lse_offset 0.000  lse_d 7.016  lse_c 7.358
+[25/75] PattyMurray1_0               gt_motion csim 0.951  psnr 24.083  ssim 0.775  lse_offset 0.000  lse_d 7.592  lse_c 6.408
+[25/75] PattyMurray1_0               sang      csim 0.953  psnr 22.132  ssim 0.735  lse_offset -2.000  lse_d 7.373  lse_c 7.454
+[26/75] MarkWarner2_0                real      csim 0.934  lse_offset -1.000  lse_d 8.224  lse_c 6.476
+[26/75] MarkWarner2_0                gt_motion csim 0.966  psnr 20.930  ssim 0.704  lse_offset -1.000  lse_d 8.674  lse_c 5.907
+[26/75] MarkWarner2_0                sang      csim 0.962  psnr 19.491  ssim 0.685  lse_offset -1.000  lse_d 7.932  lse_c 6.785
+[27/75] Radio26_0                    real      csim 0.943  lse_offset 0.000  lse_d 8.810  lse_c 6.158
+[27/75] Radio26_0                    gt_motion csim 0.968  psnr 21.011  ssim 0.674  lse_offset 0.000  lse_d 8.891  lse_c 5.926
+[27/75] Radio26_0                    sang      csim 0.956  psnr 19.264  ssim 0.623  lse_offset -2.000  lse_d 8.205  lse_c 6.207
+[28/75] JamesClyburn_0               real      csim 0.938  lse_offset -1.000  lse_d 7.929  lse_c 4.775
+[28/75] JamesClyburn_0               gt_motion csim 0.983  psnr 28.096  ssim 0.872  lse_offset -1.000  lse_d 8.375  lse_c 4.419
+[28/75] JamesClyburn_0               sang      csim 0.965  psnr 27.483  ssim 0.855  lse_offset -1.000  lse_d 8.289  lse_c 4.670
+[29/75] Radio10_0                    real      csim 0.930  lse_offset 0.000  lse_d 8.051  lse_c 7.330
+[29/75] Radio10_0                    gt_motion csim 0.974  psnr 20.314  ssim 0.720  lse_offset 0.000  lse_d 7.729  lse_c 7.192
+[29/75] Radio10_0                    sang      csim 0.946  psnr 19.450  ssim 0.684  lse_offset -2.000  lse_d 7.561  lse_c 7.302
+[30/75] BillPascrell_0               real      csim 0.900  lse_offset -2.000  lse_d 7.859  lse_c 7.083
+[30/75] BillPascrell_0               gt_motion csim 0.948  psnr 23.681  ssim 0.813  lse_offset -2.000  lse_d 8.016  lse_c 6.630
+[30/75] BillPascrell_0               sang      csim 0.970  psnr 20.273  ssim 0.700  lse_offset -1.000  lse_d 8.536  lse_c 6.131
+[31/75] Radio7_0                     real      csim 0.864  lse_offset -3.000  lse_d 8.173  lse_c 7.209
+[31/75] Radio7_0                     gt_motion csim 0.941  psnr 23.580  ssim 0.754  lse_offset -3.000  lse_d 8.551  lse_c 6.782
+[31/75] Radio7_0                     sang      csim 0.909  psnr 22.268  ssim 0.700  lse_offset -2.000  lse_d 8.093  lse_c 7.022
+[32/75] DougJones_0                  real      csim 0.890  lse_offset 0.000  lse_d 6.711  lse_c 8.823
+[32/75] DougJones_0                  gt_motion csim 0.940  psnr 23.991  ssim 0.828  lse_offset 0.000  lse_d 6.918  lse_c 8.191
+[32/75] DougJones_0                  sang      csim 0.925  psnr 21.176  ssim 0.760  lse_offset -1.000  lse_d 6.312  lse_c 9.439
+[33/75] AndyLevin_0                  real      csim 0.907  lse_offset -3.000  lse_d 7.471  lse_c 6.292
+[33/75] AndyLevin_0                  gt_motion csim 0.921  psnr 20.880  ssim 0.724  lse_offset -3.000  lse_d 7.886  lse_c 5.830
+[33/75] AndyLevin_0                  sang      csim 0.946  psnr 17.411  ssim 0.632  lse_offset -1.000  lse_d 7.463  lse_c 6.335
+[34/75] HakeemJeffries_0             real      csim 0.936  lse_offset -2.000  lse_d 6.766  lse_c 7.410
+[34/75] HakeemJeffries_0             gt_motion csim 0.976  psnr 26.256  ssim 0.901  lse_offset -2.000  lse_d 6.940  lse_c 7.080
+[34/75] HakeemJeffries_0             sang      csim 0.961  psnr 23.701  ssim 0.837  lse_offset -2.000  lse_d 7.205  lse_c 7.316
+[35/75] BobbySchilling_0             real      csim 0.811  lse_offset -1.000  lse_d 7.368  lse_c 7.642
+[35/75] BobbySchilling_0             gt_motion csim 0.865  psnr 19.236  ssim 0.724  lse_offset -1.000  lse_d 7.234  lse_c 7.329
+[35/75] BobbySchilling_0             sang      csim 0.951  psnr 12.297  ssim 0.577  lse_offset -1.000  lse_d 7.679  lse_c 6.465
+[36/75] PeteHoekstra_0               real      csim 0.929  lse_offset -2.000  lse_d 7.344  lse_c 7.607
+[36/75] PeteHoekstra_0               gt_motion csim 0.961  psnr 22.198  ssim 0.791  lse_offset -2.000  lse_d 7.934  lse_c 6.736
+[36/75] PeteHoekstra_0               sang      csim 0.950  psnr 19.616  ssim 0.702  lse_offset -1.000  lse_d 7.152  lse_c 7.637
+[37/75] DianneFeinstein_0            real      csim 0.897  lse_offset -1.000  lse_d 7.900  lse_c 7.077
+[37/75] DianneFeinstein_0            gt_motion csim 0.945  psnr 14.427  ssim 0.500  lse_offset -1.000  lse_d 7.930  lse_c 6.879
+[37/75] DianneFeinstein_0            sang      csim 0.954  psnr 14.313  ssim 0.505  lse_offset -2.000  lse_d 7.907  lse_c 7.450
+[38/75] JoaquinCastro_0              real      csim 0.900  lse_offset -2.000  lse_d 7.668  lse_c 7.146
+[38/75] JoaquinCastro_0              gt_motion csim 0.928  psnr 17.561  ssim 0.691  lse_offset -2.000  lse_d 8.258  lse_c 6.282
+[38/75] JoaquinCastro_0              sang      csim 0.968  psnr 16.225  ssim 0.655  lse_offset -2.000  lse_d 9.182  lse_c 5.887
+[39/75] JonTester1_0                 real      csim 0.937  lse_offset 0.000  lse_d 7.953  lse_c 5.561
+[39/75] JonTester1_0                 gt_motion csim 0.968  psnr 22.786  ssim 0.820  lse_offset 0.000  lse_d 8.449  lse_c 5.068
+[39/75] JonTester1_0                 sang      csim 0.910  psnr 17.860  ssim 0.699  lse_offset -1.000  lse_d 7.346  lse_c 6.369
+[40/75] PaulRyan0_0                  real      csim 0.915  lse_offset -2.000  lse_d 7.430  lse_c 7.165
+[40/75] PaulRyan0_0                  gt_motion csim 0.948  psnr 23.238  ssim 0.753  lse_offset -2.000  lse_d 8.007  lse_c 6.515
+[40/75] PaulRyan0_0                  sang      csim 0.916  psnr 21.044  ssim 0.684  lse_offset -1.000  lse_d 7.705  lse_c 6.886
+[41/75] JackyRosen1_0                real      csim 0.908  lse_offset -1.000  lse_d 6.272  lse_c 9.152
+[41/75] JackyRosen1_0                gt_motion csim 0.945  psnr 22.713  ssim 0.717  lse_offset -1.000  lse_d 6.596  lse_c 8.560
+[41/75] JackyRosen1_0                sang      csim 0.948  psnr 19.622  ssim 0.634  lse_offset -2.000  lse_d 7.553  lse_c 7.713
+[42/75] PatrickLeahy1_0              real      csim 0.916  lse_offset -1.000  lse_d 7.268  lse_c 5.958
+[42/75] PatrickLeahy1_0              gt_motion csim 0.964  psnr 19.843  ssim 0.778  lse_offset -1.000  lse_d 8.224  lse_c 4.716
+[42/75] PatrickLeahy1_0              sang      csim 0.932  psnr 19.579  ssim 0.754  lse_offset -2.000  lse_d 7.092  lse_c 6.263
+[43/75] BobbyScott_0                 real      csim 0.916  lse_offset -2.000  lse_d 7.340  lse_c 7.506
+[43/75] BobbyScott_0                 gt_motion csim 0.941  psnr 21.898  ssim 0.728  lse_offset -2.000  lse_d 7.347  lse_c 7.222
+[43/75] BobbyScott_0                 sang      csim 0.897  psnr 19.725  ssim 0.671  lse_offset -1.000  lse_d 7.590  lse_c 6.495
+[44/75] RogerWicker1_0               real      csim 0.935  lse_offset 1.000  lse_d 7.724  lse_c 6.061
+[44/75] RogerWicker1_0               gt_motion csim 0.981  psnr 23.688  ssim 0.807  lse_offset 1.000  lse_d 7.761  lse_c 5.614
+[44/75] RogerWicker1_0               sang      csim 0.968  psnr 22.326  ssim 0.779  lse_offset -1.000  lse_d 7.363  lse_c 5.590
+[45/75] KevinBrady3_0                real      csim 0.864  lse_offset -2.000  lse_d 7.567  lse_c 7.367
+[45/75] KevinBrady3_0                gt_motion csim 0.910  psnr 21.752  ssim 0.779  lse_offset -2.000  lse_d 8.074  lse_c 6.772
+[45/75] KevinBrady3_0                sang      csim 0.946  psnr 22.013  ssim 0.780  lse_offset -1.000  lse_d 7.934  lse_c 6.921
+[46/75] BennieThompson1_0            real      csim 0.872  lse_offset -2.000  lse_d 7.560  lse_c 6.152
+[46/75] BennieThompson1_0            gt_motion csim 0.925  psnr 21.030  ssim 0.683  lse_offset -2.000  lse_d 8.601  lse_c 5.361
+[46/75] BennieThompson1_0            sang      csim 0.958  psnr 20.258  ssim 0.665  lse_offset -2.000  lse_d 7.499  lse_c 5.818
+[47/75] KellyAyotte_0                real      csim 0.887  lse_offset -1.000  lse_d 7.439  lse_c 8.103
+[47/75] KellyAyotte_0                gt_motion csim 0.942  psnr 26.578  ssim 0.852  lse_offset -1.000  lse_d 7.787  lse_c 7.626
+[47/75] KellyAyotte_0                sang      csim 0.939  psnr 20.715  ssim 0.709  lse_offset -2.000  lse_d 7.204  lse_c 8.208
+[48/75] SherrodBrown1_0              real      csim 0.876  lse_offset -3.000  lse_d 7.979  lse_c 7.200
+[48/75] SherrodBrown1_0              gt_motion csim 0.913  psnr 21.339  ssim 0.782  lse_offset -3.000  lse_d 7.607  lse_c 7.232
+[48/75] SherrodBrown1_0              sang      csim 0.961  psnr 20.702  ssim 0.750  lse_offset 0.000  lse_d 8.736  lse_c 5.788
+[49/75] JohnLewis0_0                 real      csim 0.947  lse_offset -2.000  lse_d 7.287  lse_c 5.134
+[49/75] JohnLewis0_0                 gt_motion csim 0.978  psnr 19.457  ssim 0.748  lse_offset -2.000  lse_d 7.655  lse_c 4.735
+[49/75] JohnLewis0_0                 sang      csim 0.974  psnr 18.613  ssim 0.712  lse_offset -2.000  lse_d 7.471  lse_c 5.344
+[50/75] ElijahCummings_0             real      csim 0.907  lse_offset -2.000  lse_d 7.379  lse_c 6.271
+[50/75] ElijahCummings_0             gt_motion csim 0.949  psnr 18.611  ssim 0.683  lse_offset -2.000  lse_d 7.928  lse_c 5.629
+[50/75] ElijahCummings_0             sang      csim 0.969  psnr 17.962  ssim 0.660  lse_offset -1.000  lse_d 7.484  lse_c 6.354
+[51/75] OlympiaSnowe_0               real      csim 0.946  lse_offset -2.000  lse_d 8.329  lse_c 6.117
+[51/75] OlympiaSnowe_0               gt_motion csim 0.975  psnr 23.676  ssim 0.836  lse_offset -2.000  lse_d 8.756  lse_c 5.269
+[51/75] OlympiaSnowe_0               sang      csim 0.927  psnr 17.282  ssim 0.631  lse_offset -2.000  lse_d 7.527  lse_c 6.717
+[52/75] NanHayworth_0                real      csim 0.850  lse_offset -2.000  lse_d 7.559  lse_c 7.750
+[52/75] NanHayworth_0                gt_motion csim 0.909  psnr 18.876  ssim 0.645  lse_offset -2.000  lse_d 7.922  lse_c 7.207
+[52/75] NanHayworth_0                sang      csim 0.903  psnr 17.215  ssim 0.593  lse_offset 0.000  lse_d 7.627  lse_c 7.218
+[53/75] AdamKinzinger0_0             real      csim 0.817  lse_offset 1.000  lse_d 7.868  lse_c 6.488
+[53/75] AdamKinzinger0_0             gt_motion csim 0.835  psnr 18.275  ssim 0.801  lse_offset 1.000  lse_d 8.767  lse_c 5.287
+[53/75] AdamKinzinger0_0             sang      csim 0.923  psnr 17.363  ssim 0.771  lse_offset -1.000  lse_d 8.213  lse_c 6.005
+[54/75] RobinKelly_0                 real      csim 0.895  lse_offset -3.000  lse_d 7.795  lse_c 7.184
+[54/75] RobinKelly_0                 gt_motion csim 0.937  psnr 22.994  ssim 0.717  lse_offset -3.000  lse_d 7.995  lse_c 6.992
+[54/75] RobinKelly_0                 sang      csim 0.933  psnr 18.504  ssim 0.593  lse_offset -2.000  lse_d 8.150  lse_c 6.670
+[55/75] JamesClyburn1_0              real      csim 0.912  lse_offset -2.000  lse_d 8.181  lse_c 5.603
+[55/75] JamesClyburn1_0              gt_motion csim 0.967  psnr 22.846  ssim 0.808  lse_offset -1.000  lse_d 8.288  lse_c 5.116
+[55/75] JamesClyburn1_0              sang      csim 0.949  psnr 18.875  ssim 0.687  lse_offset -1.000  lse_d 8.121  lse_c 5.395
+[56/75] TammyDuckworth_0             real      csim 0.931  lse_offset 0.000  lse_d 7.261  lse_c 7.366
+[56/75] TammyDuckworth_0             gt_motion csim 0.958  psnr 21.567  ssim 0.729  lse_offset 0.000  lse_d 8.103  lse_c 6.492
+[56/75] TammyDuckworth_0             sang      csim 0.914  psnr 20.480  ssim 0.696  lse_offset -1.000  lse_d 7.444  lse_c 7.403
+[57/75] CoryGardner_0                real      csim 0.893  lse_offset -4.000  lse_d 6.785  lse_c 8.119
+[57/75] CoryGardner_0                gt_motion csim 0.926  psnr 20.803  ssim 0.794  lse_offset -4.000  lse_d 7.232  lse_c 7.225
+[57/75] CoryGardner_0                sang      csim 0.937  psnr 18.711  ssim 0.716  lse_offset -1.000  lse_d 7.112  lse_c 7.581
+[58/75] Radio43_0                    real      csim 0.952  lse_offset 1.000  lse_d 7.052  lse_c 7.984
+[58/75] Radio43_0                    gt_motion csim 0.987  psnr 26.313  ssim 0.852  lse_offset 2.000  lse_d 7.835  lse_c 6.593
+[58/75] Radio43_0                    sang      csim 0.975  psnr 24.741  ssim 0.807  lse_offset -1.000  lse_d 7.498  lse_c 7.807
+[59/75] LisaMurkowski0_0             real      csim 0.866  lse_offset -1.000  lse_d 7.217  lse_c 7.442
+[59/75] LisaMurkowski0_0             gt_motion csim 0.919  psnr 26.669  ssim 0.785  lse_offset -1.000  lse_d 7.580  lse_c 7.116
+[59/75] LisaMurkowski0_0             sang      csim 0.933  psnr 24.011  ssim 0.724  lse_offset -1.000  lse_d 7.539  lse_c 6.766
+[60/75] ChrisCoons1_0                real      csim 0.945  lse_offset -1.000  lse_d 7.202  lse_c 7.620
+[60/75] ChrisCoons1_0                gt_motion csim 0.959  psnr 24.069  ssim 0.848  lse_offset -1.000  lse_d 7.484  lse_c 7.020
+[60/75] ChrisCoons1_0                sang      csim 0.961  psnr 20.057  ssim 0.744  lse_offset -1.000  lse_d 6.812  lse_c 7.563
+[61/75] XavierBecerra_0              real      csim 0.916  lse_offset 0.000  lse_d 6.296  lse_c 9.540
+[61/75] XavierBecerra_0              gt_motion csim 0.957  psnr 23.413  ssim 0.838  lse_offset 0.000  lse_d 7.140  lse_c 8.406
+[61/75] XavierBecerra_0              sang      csim 0.948  psnr 19.270  ssim 0.739  lse_offset -1.000  lse_d 6.771  lse_c 9.244
+[62/75] NancyPelosi0_0               real      csim 0.899  lse_offset -2.000  lse_d 8.533  lse_c 6.541
+[62/75] NancyPelosi0_0               gt_motion csim 0.937  psnr 25.220  ssim 0.821  lse_offset -2.000  lse_d 8.601  lse_c 6.251
+[62/75] NancyPelosi0_0               sang      csim 0.918  psnr 21.573  ssim 0.715  lse_offset -1.000  lse_d 6.861  lse_c 8.083
+[63/75] Radio45_0                    real      csim 0.853  lse_offset 2.000  lse_d 7.020  lse_c 7.924
+[63/75] Radio45_0                    gt_motion csim 0.934  psnr 17.494  ssim 0.517  lse_offset 2.000  lse_d 7.541  lse_c 7.188
+[63/75] Radio45_0                    sang      csim 0.944  psnr 17.338  ssim 0.518  lse_offset -1.000  lse_d 7.836  lse_c 6.739
+[64/75] MitchDaniels0_0              real      csim 0.899  lse_offset -2.000  lse_d 7.631  lse_c 6.136
+[64/75] MitchDaniels0_0              gt_motion csim 0.931  psnr 20.860  ssim 0.743  lse_offset -2.000  lse_d 7.702  lse_c 5.566
+[64/75] MitchDaniels0_0              sang      csim 0.944  psnr 19.861  ssim 0.697  lse_offset -1.000  lse_d 6.806  lse_c 6.516
+[65/75] Radio50_0                    real      csim 0.930  lse_offset -1.000  lse_d 7.559  lse_c 7.085
+[65/75] Radio50_0                    gt_motion csim 0.975  psnr 22.208  ssim 0.787  lse_offset -1.000  lse_d 7.687  lse_c 6.360
+[65/75] Radio50_0                    sang      csim 0.974  psnr 21.413  ssim 0.754  lse_offset -1.000  lse_d 7.283  lse_c 7.322
+[66/75] CatherineCortezMasto_0       real      csim 0.857  lse_offset -1.000  lse_d 7.995  lse_c 6.646
+[66/75] CatherineCortezMasto_0       gt_motion csim 0.926  psnr 19.954  ssim 0.659  lse_offset -1.000  lse_d 8.336  lse_c 6.459
+[66/75] CatherineCortezMasto_0       sang      csim 0.963  psnr 19.104  ssim 0.631  lse_offset -1.000  lse_d 6.837  lse_c 8.007
+[67/75] Radio5_0                     real      csim 0.920  lse_offset -1.000  lse_d 6.861  lse_c 7.972
+[67/75] Radio5_0                     gt_motion csim 0.963  psnr 24.362  ssim 0.831  lse_offset -1.000  lse_d 6.971  lse_c 7.578
+[67/75] Radio5_0                     sang      csim 0.960  psnr 21.103  ssim 0.749  lse_offset -1.000  lse_d 7.317  lse_c 6.973
+[68/75] LloydDoggett0_0              real      csim 0.906  lse_offset -2.000  lse_d 6.925  lse_c 7.526
+[68/75] LloydDoggett0_0              gt_motion csim 0.953  psnr 21.032  ssim 0.716  lse_offset -2.000  lse_d 6.978  lse_c 7.241
+[68/75] LloydDoggett0_0              sang      csim 0.965  psnr 20.534  ssim 0.694  lse_offset -1.000  lse_d 7.047  lse_c 7.475
+[69/75] ToddYoung_0                  real      csim 0.913  lse_offset -1.000  lse_d 6.823  lse_c 7.360
+[69/75] ToddYoung_0                  gt_motion csim 0.954  psnr 21.027  ssim 0.758  lse_offset -1.000  lse_d 7.102  lse_c 7.247
+[69/75] ToddYoung_0                  sang      csim 0.951  psnr 20.024  ssim 0.727  lse_offset -1.000  lse_d 7.475  lse_c 6.579
+[70/75] Radio14_0                    real      csim 0.938  lse_offset 0.000  lse_d 7.232  lse_c 7.931
+[70/75] Radio14_0                    gt_motion csim 0.979  psnr 22.749  ssim 0.743  lse_offset 0.000  lse_d 7.488  lse_c 7.282
+[70/75] Radio14_0                    sang      csim 0.957  psnr 18.613  ssim 0.605  lse_offset -2.000  lse_d 7.119  lse_c 7.669
+[71/75] JohnBoehner1_0               real      csim 0.855  lse_offset -3.000  lse_d 7.846  lse_c 5.666
+[71/75] JohnBoehner1_0               gt_motion csim 0.888  psnr 23.600  ssim 0.789  lse_offset -3.000  lse_d 8.775  lse_c 4.277
+[71/75] JohnBoehner1_0               sang      csim 0.963  psnr 20.720  ssim 0.740  lse_offset 0.000  lse_d 7.050  lse_c 6.854
+[72/75] DianaDeGette1_0              real      csim 0.907  lse_offset -1.000  lse_d 7.784  lse_c 6.270
+[72/75] DianaDeGette1_0              gt_motion csim 0.959  psnr 30.006  ssim 0.880  lse_offset -1.000  lse_d 8.024  lse_c 6.233
+[72/75] DianaDeGette1_0              sang      csim 0.970  psnr 26.424  ssim 0.808  lse_offset -1.000  lse_d 7.619  lse_c 5.690
+[73/75] KatherineClark_0             real      csim 0.872  lse_offset -2.000  lse_d 7.341  lse_c 8.270
+[73/75] KatherineClark_0             gt_motion csim 0.917  psnr 22.630  ssim 0.698  lse_offset -2.000  lse_d 7.361  lse_c 8.210
+[73/75] KatherineClark_0             sang      csim 0.855  psnr 22.116  ssim 0.667  lse_offset -2.000  lse_d 7.091  lse_c 8.155
+[74/75] JimHimes_0                   real      csim 0.915  lse_offset 0.000  lse_d 7.815  lse_c 7.051
+[74/75] JimHimes_0                   gt_motion csim 0.959  psnr 24.287  ssim 0.813  lse_offset 0.000  lse_d 7.717  lse_c 7.139
+[74/75] JimHimes_0                   sang      csim 0.958  psnr 22.473  ssim 0.764  lse_offset -1.000  lse_d 7.522  lse_c 7.397
+[75/75] CandiceMiller0_0             real      csim 0.856  lse_offset -1.000  lse_d 7.574  lse_c 7.076
+[75/75] CandiceMiller0_0             gt_motion csim 0.919  psnr 21.970  ssim 0.786  lse_offset -1.000  lse_d 7.838  lse_c 6.705
+[75/75] CandiceMiller0_0             sang      csim 0.906  psnr 21.222  ssim 0.763  lse_offset -1.000  lse_d 7.741  lse_c 6.851
+clips done in 34265 s
+
+| Source | Method | Family | Params | FID ↓ | FVD ↓ | CSIM ↑ | LSE-C ↑ | LSE-D ↓ | PSNR ↑ | SSIM ↑ | E-FID ↓ |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Ours (n=75, 10 s) | Real video | - | n/r | – | – | 0.90 | 7.161 | 7.506 | – | – | – |
+| Ours (n=75, 10 s) | Real motion → LivePortrait (ceiling) | renderer ceiling | n/r | 16.358 | 31.049 | 0.943 | 6.622 | 7.846 | 22.079 | 0.755 | – |
+| Ours (n=75, 10 s) | SANG-M (sang_lognorm03: g=2,mouth=1.25,tau=0.5,avg=4,steps=6) | flow-matching DiT, 42-d | 53.4 M +LP | 18.75 | 48.032 | 0.945 | 6.981 | 7.534 | 20.024 | 0.697 | – |
+| FLOAT Tab. 1 | SadTalker | 3DMM + warping | n/r | 71.95 | 339.06 | 0.644 | 7.305 | 7.947 | – | – | 1.914 |
+| FLOAT Tab. 1 | EDTalk | motion bases | n/r | 50.08 | 211.28 | 0.626 | 7.623 | 8.123 | – | – | 1.579 |
+| FLOAT Tab. 1 | AniTalker | motion | n/r | 39.51 | 184.45 | 0.643 | 7.288 | 7.907 | – | – | 1.83 |
+| FLOAT Tab. 1 | Hallo | pixel (SD-1.5) | ~1.7 B est. | 25.36 | 197.20 | 0.869 | 7.582 | 7.792 | – | – | 1.039 |
+| FLOAT Tab. 1 | EchoMimic | pixel (SD-1.5) | ~1.7 B est. | 33.55 | 296.76 | 0.823 | 6.242 | 8.903 | – | – | 1.234 |
+| FLOAT Tab. 1 | FLOAT | motion latent | n/r | 21.10 | 162.05 | 0.843 | 8.222 | 7.29 | – | – | 1.229 |
+| KDTalker Tab. 1 | Real video | - | n/r | – | – | – | 8.243 | 6.929 | – | – | – |
+| KDTalker Tab. 1 | KDTalker | LivePortrait keypoints | 42.9 M +LP | 9.756 | – | 0.949 | 7.326 | 7.548 | – | – | – |
+| Teller Tab. 1 | Real video | - | n/r | – | – | – | 8.094 | 6.976 | – | – | – |
+| Teller Tab. 1 | Teller | motion tokens (AR) | n/r | 21.352 | 173.463 | – | 7.696 | 7.536 | – | – | – |
+| IMTalker Tab. 2 | FLOAT | motion latent | n/r | 9.164 | 198.964 | 0.843 | – | – | – | – | – |
+| IMTalker Tab. 2 | Ditto | LivePortrait motion | n/r +LP | 11.746 | – | 0.886 | – | – | – | – | – |
+| IMTalker Tab. 2 | IMTalker | implicit motion | 39 M + 124 M | 9.084 | 143.623 | 0.869 | 7.711 | – | – | – | – |
+| SoulX Tab. 3 | EchoMimic | pixel (SD-1.5) | ~1.7 B est. | 9.00 | 155.71 | – | 3.56 | 10.22 | – | – | – |
+| SoulX Tab. 3 | SoulX-FlashHead Pro | pixel (Wan2.1) | 1.3 B | 9.97 | 111.38 | – | 5.73 | 8.77 | – | – | – |
+| SoulX Tab. 3 | SoulX-FlashHead Lite | pixel (Wan2.1) | 1.3 B | 11.37 | 126.52 | – | 4.21 | 9.49 | – | – | – |
+| SoulX Tab. 3 | Ditto | LivePortrait motion | n/r +LP | 12.35 | 199.13 | – | 3.57 | 10.49 | – | – | – |
+| SoulX Tab. 3 | Sonic | pixel | n/r | 13.53 | 113.31 | – | 5.17 | 8.69 | – | – | – |
+| SoulX Tab. 3 | Hallo3 | pixel | n/r | 15.95 | 160.94 | – | 3.18 | 10.72 | – | – | – |
+| SoulX Tab. 3 | AniPortrait | pixel | n/r | 19.83 | 242.29 | – | 1.89 | 11.91 | – | – | – |
+| SoulX Tab. 3 | SadTalker | 3DMM + warping | n/r | 21.58 | 207.67 | – | 4.60 | 9.21 | – | – | – |
+| Playmate2 | Playmate2 (after DPO) | pixel | n/r | – | – | – | 8.15 | 7.32 | – | – | – |

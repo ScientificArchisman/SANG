@@ -1,0 +1,132 @@
+[job] 177164 on gpu09 | gpu: NVIDIA H100 NVL | cpus: 8 | env: avcodec | commit: 7655924 | 2026-10-08 22:20:16
+[job] python -u scripts/eval_hdtf.py --data /beegfs/work/achakraborti/HDTF --list configs/hdtf_test.csv --name ditto --rows ditto
+HDTF eval 'ditto': 75 clips x 10 s, rows ['ditto'] -> /beegfs/work/achakraborti/SANG/results/hdtf/ditto
+[22:20:26] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+[22:20:27] Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+           Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[22:20:28] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+           Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+           FaceAnalysisDIY warmup time: 0.198s           face_analysis_diy.py:79
+[22:20:29] LandmarkRunner warmup time: 0.370s        human_landmark_runner.py:95
+[33mWARNING: onnxruntime is not built with CUDA 12.x support. Please install a version that supports CUDA 12.x, or call preload_dlls with cuda=False and cudnn=False.[0m
+[1/75] SKIP MikeCrapo_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/MikeCrapo_0.mp4: run scripts/ditto_hdtf.py first
+[2/75] SKIP KimSchrier_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KimSchrier_0.mp4: run scripts/ditto_hdtf.py first
+[3/75] SKIP DebbieDingell1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DebbieDingell1_0.mp4: run scripts/ditto_hdtf.py first
+[4/75] SKIP SuzanDelBene_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/SuzanDelBene_0.mp4: run scripts/ditto_hdtf.py first
+[5/75] SKIP RichardNeal1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RichardNeal1_0.mp4: run scripts/ditto_hdtf.py first
+[6/75] SKIP JohnYarmuth1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnYarmuth1_0.mp4: run scripts/ditto_hdtf.py first
+[7/75] SKIP KarenBass_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KarenBass_0.mp4: run scripts/ditto_hdtf.py first
+[8/75] SKIP JanSchakowsky1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JanSchakowsky1_0.mp4: run scripts/ditto_hdtf.py first
+[9/75] SKIP KristiNoem2_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KristiNoem2_0.mp4: run scripts/ditto_hdtf.py first
+[10/75] SKIP RogerWicker2_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RogerWicker2_0.mp4: run scripts/ditto_hdtf.py first
+[11/75] SKIP TerriSewell1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TerriSewell1_0.mp4: run scripts/ditto_hdtf.py first
+[12/75] SKIP BillCassidy0_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BillCassidy0_0.mp4: run scripts/ditto_hdtf.py first
+[13/75] SKIP TomCarper_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TomCarper_0.mp4: run scripts/ditto_hdtf.py first
+[14/75] SKIP Radio31_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio31_0.mp4: run scripts/ditto_hdtf.py first
+[15/75] SKIP TomCotton_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TomCotton_0.mp4: run scripts/ditto_hdtf.py first
+[16/75] SKIP DebFischer0_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DebFischer0_0.mp4: run scripts/ditto_hdtf.py first
+[17/75] SKIP TammyBaldwin1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TammyBaldwin1_0.mp4: run scripts/ditto_hdtf.py first
+[18/75] SKIP RichardBlumenthal_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RichardBlumenthal_0.mp4: run scripts/ditto_hdtf.py first
+[19/75] SKIP CarolynMaloney1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CarolynMaloney1_0.mp4: run scripts/ditto_hdtf.py first
+[20/75] SKIP JohnSarbanes0_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnSarbanes0_0.mp4: run scripts/ditto_hdtf.py first
+[21/75] SKIP KevinBrady2_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KevinBrady2_0.mp4: run scripts/ditto_hdtf.py first
+[22/75] SKIP AustinScott2_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/AustinScott2_0.mp4: run scripts/ditto_hdtf.py first
+[23/75] SKIP SteveDaines_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/SteveDaines_0.mp4: run scripts/ditto_hdtf.py first
+[24/75] SKIP Radio30_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio30_0.mp4: run scripts/ditto_hdtf.py first
+[25/75] SKIP PattyMurray1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PattyMurray1_0.mp4: run scripts/ditto_hdtf.py first
+[26/75] SKIP MarkWarner2_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/MarkWarner2_0.mp4: run scripts/ditto_hdtf.py first
+[27/75] SKIP Radio26_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio26_0.mp4: run scripts/ditto_hdtf.py first
+[28/75] SKIP JamesClyburn_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JamesClyburn_0.mp4: run scripts/ditto_hdtf.py first
+[29/75] SKIP Radio10_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio10_0.mp4: run scripts/ditto_hdtf.py first
+[30/75] SKIP BillPascrell_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BillPascrell_0.mp4: run scripts/ditto_hdtf.py first
+[31/75] SKIP Radio7_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio7_0.mp4: run scripts/ditto_hdtf.py first
+[32/75] SKIP DougJones_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DougJones_0.mp4: run scripts/ditto_hdtf.py first
+[33/75] SKIP AndyLevin_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/AndyLevin_0.mp4: run scripts/ditto_hdtf.py first
+[34/75] SKIP HakeemJeffries_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/HakeemJeffries_0.mp4: run scripts/ditto_hdtf.py first
+[35/75] SKIP BobbySchilling_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BobbySchilling_0.mp4: run scripts/ditto_hdtf.py first
+[36/75] SKIP PeteHoekstra_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PeteHoekstra_0.mp4: run scripts/ditto_hdtf.py first
+[37/75] SKIP DianneFeinstein_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DianneFeinstein_0.mp4: run scripts/ditto_hdtf.py first
+[38/75] SKIP JoaquinCastro_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JoaquinCastro_0.mp4: run scripts/ditto_hdtf.py first
+[39/75] SKIP JonTester1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JonTester1_0.mp4: run scripts/ditto_hdtf.py first
+[40/75] SKIP PaulRyan0_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PaulRyan0_0.mp4: run scripts/ditto_hdtf.py first
+[41/75] SKIP JackyRosen1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JackyRosen1_0.mp4: run scripts/ditto_hdtf.py first
+[42/75] SKIP PatrickLeahy1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/PatrickLeahy1_0.mp4: run scripts/ditto_hdtf.py first
+[43/75] SKIP BobbyScott_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BobbyScott_0.mp4: run scripts/ditto_hdtf.py first
+[44/75] SKIP RogerWicker1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RogerWicker1_0.mp4: run scripts/ditto_hdtf.py first
+[45/75] SKIP KevinBrady3_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KevinBrady3_0.mp4: run scripts/ditto_hdtf.py first
+[46/75] SKIP BennieThompson1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/BennieThompson1_0.mp4: run scripts/ditto_hdtf.py first
+[47/75] SKIP KellyAyotte_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KellyAyotte_0.mp4: run scripts/ditto_hdtf.py first
+[48/75] SKIP SherrodBrown1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/SherrodBrown1_0.mp4: run scripts/ditto_hdtf.py first
+[49/75] SKIP JohnLewis0_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnLewis0_0.mp4: run scripts/ditto_hdtf.py first
+[50/75] SKIP ElijahCummings_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/ElijahCummings_0.mp4: run scripts/ditto_hdtf.py first
+[51/75] SKIP OlympiaSnowe_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/OlympiaSnowe_0.mp4: run scripts/ditto_hdtf.py first
+[52/75] SKIP NanHayworth_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/NanHayworth_0.mp4: run scripts/ditto_hdtf.py first
+[53/75] SKIP AdamKinzinger0_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/AdamKinzinger0_0.mp4: run scripts/ditto_hdtf.py first
+[54/75] SKIP RobinKelly_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/RobinKelly_0.mp4: run scripts/ditto_hdtf.py first
+[55/75] SKIP JamesClyburn1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JamesClyburn1_0.mp4: run scripts/ditto_hdtf.py first
+[56/75] SKIP TammyDuckworth_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/TammyDuckworth_0.mp4: run scripts/ditto_hdtf.py first
+[57/75] SKIP CoryGardner_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CoryGardner_0.mp4: run scripts/ditto_hdtf.py first
+[58/75] SKIP Radio43_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio43_0.mp4: run scripts/ditto_hdtf.py first
+[59/75] SKIP LisaMurkowski0_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/LisaMurkowski0_0.mp4: run scripts/ditto_hdtf.py first
+[60/75] SKIP ChrisCoons1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/ChrisCoons1_0.mp4: run scripts/ditto_hdtf.py first
+[61/75] SKIP XavierBecerra_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/XavierBecerra_0.mp4: run scripts/ditto_hdtf.py first
+[62/75] SKIP NancyPelosi0_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/NancyPelosi0_0.mp4: run scripts/ditto_hdtf.py first
+[63/75] SKIP Radio45_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio45_0.mp4: run scripts/ditto_hdtf.py first
+[64/75] SKIP MitchDaniels0_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/MitchDaniels0_0.mp4: run scripts/ditto_hdtf.py first
+[65/75] SKIP Radio50_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio50_0.mp4: run scripts/ditto_hdtf.py first
+[66/75] SKIP CatherineCortezMasto_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CatherineCortezMasto_0.mp4: run scripts/ditto_hdtf.py first
+[67/75] SKIP Radio5_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio5_0.mp4: run scripts/ditto_hdtf.py first
+[68/75] SKIP LloydDoggett0_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/LloydDoggett0_0.mp4: run scripts/ditto_hdtf.py first
+[69/75] SKIP ToddYoung_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/ToddYoung_0.mp4: run scripts/ditto_hdtf.py first
+[70/75] SKIP Radio14_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/Radio14_0.mp4: run scripts/ditto_hdtf.py first
+[71/75] SKIP JohnBoehner1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JohnBoehner1_0.mp4: run scripts/ditto_hdtf.py first
+[72/75] SKIP DianaDeGette1_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/DianaDeGette1_0.mp4: run scripts/ditto_hdtf.py first
+[73/75] SKIP KatherineClark_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/KatherineClark_0.mp4: run scripts/ditto_hdtf.py first
+[74/75] SKIP JimHimes_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/JimHimes_0.mp4: run scripts/ditto_hdtf.py first
+[75/75] SKIP CandiceMiller0_0: FileNotFoundError: /beegfs/work/achakraborti/SANG/results/hdtf/ditto_videos/CandiceMiller0_0.mp4: run scripts/ditto_hdtf.py first
+clips done in 66 s
+
+| Source | Method | Family | Params | FID ↓ | FVD ↓ | CSIM ↑ | LSE-C ↑ | LSE-D ↓ | PSNR ↑ | SSIM ↑ | E-FID ↓ |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| FLOAT Tab. 1 | SadTalker | 3DMM + warping | n/r | 71.95 | 339.06 | 0.644 | 7.305 | 7.947 | – | – | 1.914 |
+| FLOAT Tab. 1 | EDTalk | motion bases | n/r | 50.08 | 211.28 | 0.626 | 7.623 | 8.123 | – | – | 1.579 |
+| FLOAT Tab. 1 | AniTalker | motion | n/r | 39.51 | 184.45 | 0.643 | 7.288 | 7.907 | – | – | 1.83 |
+| FLOAT Tab. 1 | Hallo | pixel (SD-1.5) | ~1.7 B est. | 25.36 | 197.20 | 0.869 | 7.582 | 7.792 | – | – | 1.039 |
+| FLOAT Tab. 1 | EchoMimic | pixel (SD-1.5) | ~1.7 B est. | 33.55 | 296.76 | 0.823 | 6.242 | 8.903 | – | – | 1.234 |
+| FLOAT Tab. 1 | FLOAT | motion latent | n/r | 21.10 | 162.05 | 0.843 | 8.222 | 7.29 | – | – | 1.229 |
+| KDTalker Tab. 1 | Real video | - | n/r | – | – | – | 8.243 | 6.929 | – | – | – |
+| KDTalker Tab. 1 | KDTalker | LivePortrait keypoints | 42.9 M +LP | 9.756 | – | 0.949 | 7.326 | 7.548 | – | – | – |
+| Teller Tab. 1 | Real video | - | n/r | – | – | – | 8.094 | 6.976 | – | – | – |
+| Teller Tab. 1 | Teller | motion tokens (AR) | n/r | 21.352 | 173.463 | – | 7.696 | 7.536 | – | – | – |
+| IMTalker Tab. 2 | FLOAT | motion latent | n/r | 9.164 | 198.964 | 0.843 | – | – | – | – | – |
+| IMTalker Tab. 2 | Ditto | LivePortrait motion | n/r +LP | 11.746 | – | 0.886 | – | – | – | – | – |
+| IMTalker Tab. 2 | IMTalker | implicit motion | 39 M + 124 M | 9.084 | 143.623 | 0.869 | 7.711 | – | – | – | – |
+| SoulX Tab. 3 | EchoMimic | pixel (SD-1.5) | ~1.7 B est. | 9.00 | 155.71 | – | 3.56 | 10.22 | – | – | – |
+| SoulX Tab. 3 | SoulX-FlashHead Pro | pixel (Wan2.1) | 1.3 B | 9.97 | 111.38 | – | 5.73 | 8.77 | – | – | – |
+| SoulX Tab. 3 | SoulX-FlashHead Lite | pixel (Wan2.1) | 1.3 B | 11.37 | 126.52 | – | 4.21 | 9.49 | – | – | – |
+| SoulX Tab. 3 | Ditto | LivePortrait motion | n/r +LP | 12.35 | 199.13 | – | 3.57 | 10.49 | – | – | – |
+| SoulX Tab. 3 | Sonic | pixel | n/r | 13.53 | 113.31 | – | 5.17 | 8.69 | – | – | – |
+| SoulX Tab. 3 | Hallo3 | pixel | n/r | 15.95 | 160.94 | – | 3.18 | 10.72 | – | – | – |
+| SoulX Tab. 3 | AniPortrait | pixel | n/r | 19.83 | 242.29 | – | 1.89 | 11.91 | – | – | – |
+| SoulX Tab. 3 | SadTalker | 3DMM + warping | n/r | 21.58 | 207.67 | – | 4.60 | 9.21 | – | – | – |
+| Playmate2 | Playmate2 (after DPO) | pixel | n/r | – | – | – | 8.15 | 7.32 | – | – | – |
