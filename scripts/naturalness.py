@@ -42,6 +42,8 @@ from sang.naturalness import (FPS, Guide, PhonemeRecognizer, audio_onsets, beat_
                               closure_minima, closure_offset, energy_db, guided_generate, head_beats,
                               load_readouts, load_wav, pauses)
 from sang.paths import motion_cache
+from sang.sync import clip_key
+from sang.talkvid import clip_languages, filter_langs, parse_langs
 from sang.sync import SyncOffsets, shift_ticks, shift_wav
 
 
@@ -94,6 +96,27 @@ def summarise(ms: list[dict], st: dict) -> dict:
     return s
 
 
+GROUPS = ("all", "English", "non-English", "no person overlap")
+
+
+def clip_groups(row: dict, lang_of: dict, person_of: dict, train_persons: set) -> set:
+    """Breakdown groups of one val clip: language (TalkVid, else Whisper) and whether its TalkVid person
+    also appears in the training split (the split is by source video, so 18 persons are on both sides)."""
+    k = clip_key(row)
+    g = {"all"}
+    lang = lang_of.get(k)
+    if lang:
+        g.add("English" if lang == "English" else "non-English")
+    if person_of.get(k) and person_of[k] not in train_persons:
+        g.add("no person overlap")
+    return g
+
+
+def lip_summary(ms: list[dict]) -> dict:
+    return {"clips": len(ms), "lip_corr": float(np.nanmean([m["lip_corr"] for m in ms])) if ms else float("nan"),
+            "lip_ccc": float(np.nanmean([m["lip_ccc"] for m in ms])) if ms else float("nan")}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True)
@@ -116,6 +139,9 @@ def main() -> None:
     ap.add_argument("--sync-offsets", default=None,
                     help="<cache>/sync_offsets.json: drop no-sync val clips and move each clip's audio (features and "
                          "waveform) by its SyncNet offset, so lip metrics compare against aligned ground truth")
+    ap.add_argument("--lang", nargs="+", default=None,
+                    help="val languages; default = the checkpoint's training languages (cfg 'lang'), 'all' = every "
+                         "language. The breakdown by English / non-English is reported either way")
     ap.add_argument("--name", default="", help="suffix for the results file, so parallel sweeps do not overwrite")
     ap.add_argument("--out", default=str(REPO / "results/naturalness"))
     args = ap.parse_args()
@@ -139,7 +165,17 @@ def main() -> None:
     spec = importlib.util.spec_from_file_location("tm", REPO / "scripts" / "train_motion.py")
     tm = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(tm)
-    _, val = tm.split_by_speaker(tm.load_index(cache), cfg["val_frac"], cfg["seed"])
+    train_rows, val = tm.split_by_speaker(tm.load_index(cache), cfg["val_frac"], cfg["seed"])
+    langs = parse_langs(args.lang if args.lang is not None else cfg.get("lang"))
+    lang_of = clip_languages(cache)
+    meta_path = cache / "talkvid_meta.json"
+    person_of = ({k: v.get("person") for k, v in json.loads(meta_path.read_text()).items()}
+                 if meta_path.exists() else {})
+    train_rows, _ = filter_langs(train_rows, parse_langs(cfg.get("lang")), lang_of)   # what the model trained on
+    train_persons = {person_of.get(clip_key(r)) for r in train_rows} - {None}
+    if langs is not None:
+        val, dropped = filter_langs(val, langs, lang_of)
+        print(f"val languages {langs}: dropped {dropped}", flush=True)
     so = SyncOffsets.load(args.sync_offsets) if args.sync_offsets else None
     if so is not None:
         val, why = so.filter(val)
@@ -157,7 +193,7 @@ def main() -> None:
             s = so.shift(r) if so is not None else 0                 # WavLM ticks; 0 = uncorrected
             wav = shift_wav(load_wav(r["clip"], r.get("start", 0), n), s)
             db = energy_db(wav, n)
-            clips.append({"row": r, "n": n, "y": to_target(d["m"][:n].float()), "kp0": d["kp"][0].float(),
+            clips.append({"row": r, "groups": clip_groups(r, lang_of, person_of, train_persons), "n": n, "y": to_target(d["m"][:n].float()), "kp0": d["kp"][0].float(),
                           "audio": shift_ticks(d["audio"][: 2 * n].float(), s), "wav": wav, "db": db,
                           "pause": pauses(db), "events": phon.bilabials(wav, n)})
         except Exception as e:
@@ -186,7 +222,7 @@ def main() -> None:
     # ---------------- pass 2: generate per mode
     guide = Guide(read, st, phon)
     table = {"real": summarise(real, st)}
-    extra = {}
+    extra, by_group = {}, {}
     if args.variants:
         variants = [(v, parse_spec(v)) for v in args.variants]
     elif args.cfg:
@@ -212,6 +248,7 @@ def main() -> None:
                     ms[-1]["lip_self_corr"] = float(np.corrcoef(l1, l2)[0, 1]) if min(l1.std(), l2.std()) > 1e-8 else float("nan")
             table[col] = summarise(ms, st)
             table[col]["gen_s"] = time.time() - t0
+            by_group[col] = {g: lip_summary([m for m, c in zip(ms, clips) if g in c["groups"]]) for g in GROUPS}
             extra[col] = dict(infos)
             print(f"{col}: {time.time() - t0:.0f} s  {dict(infos)}", flush=True)
 
@@ -229,13 +266,19 @@ def main() -> None:
     print("\n" + f"{'setting':<{w}}" + "".join(f"{k:>15}" for k in cols))
     for c, s in table.items():
         print(f"{c:<{w}}" + "".join(f"{s.get(k, float('nan')):>15.3f}" for k in cols))
+    print(f"\nlip sync by group (clips  lip_corr  lip_ccc); val languages {langs or 'all'}")
+    print(f"{'setting':<{w}}" + "".join(f"{g:>26}" for g in GROUPS))
+    for c, gs in by_group.items():
+        print(f"{c:<{w}}" + "".join(f"{gs[g]['clips']:>8d} {gs[g]['lip_corr']:>8.3f} {gs[g]['lip_ccc']:>8.3f}" for g in GROUPS))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     tag = "_variants" if args.variants else ("" if not args.cfg else "_cfg" + "-".join(f"{g:g}" for g in args.cfg))
+    tag += (f"_lang-{'-'.join(langs)}" if langs and args.lang is not None else "")
     tag += ("_sync" if so is not None else "") + (f"_ema{args.ema}" if args.ema else "") + (f"_{args.name}" if args.name else "")
     name = f"{Path(args.ckpt).parent.name}_step{ck['step']}{tag}.json"
     (out / name).write_text(json.dumps({"ckpt": args.ckpt, "step": ck["step"], "stats": {k: v for k, v in st.items() if k != "ibi_s"},
-                                        "table": table, "constraints": extra}, indent=1))
+                                        "val_languages": langs or "all", "table": table, "by_group": by_group,
+                                        "constraints": extra}, indent=1))
     print(f"\nwrote {out / name}", flush=True)
 
 

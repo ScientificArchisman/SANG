@@ -31,6 +31,7 @@ sys.path.insert(0, str(REPO))
 from sang.motion import REGIONS, to_target
 from sang.motion_model import Norm, build, flow_loss, sample
 from sang.paths import load_index
+from sang.talkvid import clip_languages, filter_langs, parse_langs
 from sang.sync import SyncOffsets, clip_key, shift_ticks
 
 TPF = 2
@@ -176,8 +177,17 @@ def lr_at(step, cfg):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=str(REPO / "configs/train_motion.yaml"))
+    ap.add_argument("--lang", nargs="+", default=None,
+                    help="train AND validate on these languages only: TalkVid names or Whisper codes, e.g. "
+                         "--lang English, --lang en zh, --lang English,Chinese; 'all' (default) = every language")
+    ap.add_argument("--train-clips", type=int, default=None,
+                    help="random subset of N training clips after the language filter (seeded), e.g. a "
+                         "multilingual run the size of the English-only one; default all")
     ap.add_argument("overrides", nargs="*", help="key=value, parsed as YAML")
     args = ap.parse_args()
+    if args.lang:                                   # `--lang English max_steps=15000`: key=value is an override
+        args.overrides = [v for v in args.lang if "=" in v] + args.overrides
+        args.lang = [v for v in args.lang if "=" not in v] or None
     cfg = yaml.safe_load(Path(args.config).read_text())
     for o in args.overrides:
         k, v = o.split("=", 1)
@@ -188,6 +198,12 @@ def main() -> None:
             except ValueError:
                 pass
         cfg[k] = val
+    if args.lang is not None:
+        cfg["lang"] = args.lang
+    if args.train_clips is not None:
+        cfg["train_clips"] = args.train_clips
+    langs = parse_langs(cfg.get("lang"))
+    cfg["lang"] = langs or "all"                          # saved in every checkpoint; evaluation follows it
 
     torch.manual_seed(cfg["seed"])
     random.seed(cfg["seed"])
@@ -200,6 +216,18 @@ def main() -> None:
 
     rows = load_index(cache)
     train_rows, val_rows = split_by_speaker(rows, cfg["val_frac"], cfg["seed"])
+    if langs is not None:                                # validation follows the training languages
+        lang_of = clip_languages(cache)
+        n_t, n_v = len(train_rows), len(val_rows)
+        train_rows, drop_t = filter_langs(train_rows, langs, lang_of)
+        val_rows, drop_v = filter_langs(val_rows, langs, lang_of)
+        have = {lang_of.get(clip_key(r)) for r in rows}
+        missing = [l for l in langs if l not in have]
+        if missing or not train_rows or not val_rows:
+            raise SystemExit(f"--lang {langs}: no clips for {missing or langs} "
+                             f"(languages in the cache: {sorted(l for l in have if l)})")
+        print(f"languages {langs}: train {n_t} -> {len(train_rows)} clips, val {n_v} -> {len(val_rows)} clips; "
+              f"dropped train {drop_t}, val {drop_v}", flush=True)
     norm_path = cache / "norm42.pt"
     if norm_path.exists():
         norm = Norm(**torch.load(norm_path, weights_only=True))
@@ -215,6 +243,11 @@ def main() -> None:
         moved = sum(s != 0 for s in shifts.values())
         print(f"sync offsets {cfg['sync_offsets']}: audio moved in {moved}/{len(shifts)} clips; "
               f"dropped train {why_t}, val {why_v} (val loss is not comparable with runs without it)", flush=True)
+    if cfg.get("train_clips"):
+        n_t = len(train_rows)
+        train_rows = sorted(random.Random(cfg["seed"]).sample(train_rows, min(int(cfg["train_clips"]), n_t)),
+                            key=lambda r: r["path"])
+        print(f"train_clips={cfg['train_clips']}: random subset {n_t} -> {len(train_rows)} train clips", flush=True)
     L, P = cfg["frames"], cfg["prefix"]
     pre = cfg.get("preload", True)
     neg = cfg.get("lam_cfm", 0) > 0 and cfg.get("cfm_neg", "clip") == "clip"

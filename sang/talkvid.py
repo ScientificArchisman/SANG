@@ -51,6 +51,56 @@ def load_lookup(path) -> dict[str, list[tuple[float, float, dict]]]:
     return build_lookup(json.loads(Path(path).read_text()))
 
 
+def clip_languages(cache: Path, min_prob: float = 0.5) -> dict[str, str]:
+    """clip_key -> language name. TalkVid's label (<cache>/talkvid_meta.json, from scripts/data_stats.py);
+    where TalkVid has none ('Unknown' or no match, ~2.7 % of clips), Whisper's (<cache>/lang_lid.json) if
+    its probability is >= min_prob. Clips with neither are absent."""
+    cache = Path(cache)
+    meta = json.loads((cache / "talkvid_meta.json").read_text()) if (cache / "talkvid_meta.json").exists() else {}
+    lid = json.loads((cache / "lang_lid.json").read_text()) if (cache / "lang_lid.json").exists() else {}
+    if not meta and not lid:
+        raise SystemExit(f"no talkvid_meta.json or lang_lid.json in {cache}: run scripts/data_stats.py first")
+    out = {}
+    for k in set(meta) | set(lid):
+        tv = (meta.get(k) or {}).get("language")
+        w = lid.get(k) or {}
+        if tv and tv != "Unknown":
+            out[k] = tv
+        elif w.get("lang") not in (None, "unk") and w.get("p", 0) >= min_prob:
+            out[k] = WHISPER_NAMES.get(w["lang"], w["lang"])
+    return out
+
+
+def parse_langs(values) -> list[str] | None:
+    """--lang values -> sorted TalkVid language names, or None for all languages. Takes names in any case
+    ('English', 'chinese'), Whisper codes ('en', 'zh'), comma-separated or as separate values, or 'all'."""
+    if values is None:
+        return None
+    if isinstance(values, str):
+        values = [values]
+    vals = [v.strip() for x in values for v in str(x).split(",") if v.strip()]
+    if not vals or any(v.lower() == "all" for v in vals):
+        return None
+    names = {n.lower(): n for n in WHISPER_NAMES.values()}
+    return sorted({WHISPER_NAMES.get(v.lower()) or names.get(v.lower()) or v.title() for v in vals})
+
+
+def filter_langs(rows: list[dict], langs: list[str] | None, lang_of: dict) -> tuple[list[dict], dict]:
+    """Rows whose clip language is in langs (None = keep all) -> (kept, {language: dropped clips})."""
+    from collections import Counter
+    from sang.sync import clip_key
+    if langs is None:
+        return rows, {}
+    keep, dropped = [], Counter()
+    for r in rows:
+        lang = lang_of.get(clip_key(r), "no label")
+        if lang in langs:
+            keep.append(r)
+        else:
+            dropped[lang] += 1
+    return keep, dict(dropped.most_common())
+
+
 def match(lookup: dict, vid: str, stem: str, tol: float = 0.05) -> dict | None:
     """TalkVid labels of one of our clips (folder = video id, stem = clip name), or None."""
     t = clip_times(stem)
