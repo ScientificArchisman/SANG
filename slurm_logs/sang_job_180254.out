@@ -1,0 +1,50 @@
+[job] 180254 on gpu08 | gpu: NVIDIA A100 80GB PCIe | cpus: 2 | env: avcodec | commit: a00dae9 | 2026-10-13 12:52:34
+[job] python -u scripts/error_split.py --ckpt runs/c_lang_en/last.pt --sync-offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json
+sync offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json: dropped {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}
+300 val clips from 41 videos; runs/c_lang_en/last.pt (step 15000), sampler g=2,mouth=1.25,tau=0.5,avg=4,steps=6
+  50/300 clips, 19 s
+  100/300 clips, 36 s
+  150/300 clips, 56 s
+  200/300 clips, 73 s
+  250/300 clips, 88 s
+  300/300 clips, 109 s
+
+1. ERROR SPLIT (300 clips)
+   lip corr 0.772 -> 0.800 at each clip's best shift (|lag| <= 4); CCC 0.700; amplitude 1.133 (median 0.970); slope 0.787; bias +0.247 real std (median |bias| 0.282)
+   correlation gap 0.228 = timing 0.028 (12 %) + shape 0.200 (88 %)
+   amplitude < 0.8 in 12 % of clips, > 1.25 in 14 %; |bias| > 1 real std in 8 %
+   part         pooled  per clip   (pooled = share of all squared error in lip-opening units; per clip = mean of per-clip shares, inflated by clips whose real lips barely move)
+   bias          35.8%     63.0%
+   amplitude      7.3%     21.1%
+   timing         6.4%      1.6%
+   shape         50.6%     14.3%
+   best lag per clip (> 0 = generated later): {-4: 3, -2: 1, -1: 35, 0: 188, 1: 67, 2: 2, 4: 4}; |lag| >= 2 in 3 % of clips
+
+2. BY SOUND (frames labelled by the nearest phoneme; signed error in pooled real std, > 0 = lips too open)
+   sound               % frames   % error   ratio   signed
+   closure p/b/m            5.8       6.2    1.06   -0.177
+   labiodental f/v          3.4       2.7    0.80   -0.075
+   open vowel              15.6      18.4    1.18   +0.095
+   rounded vowel/w          8.0       5.8    0.72   -0.047
+   other vowel             18.2      14.8    0.81   +0.035
+   other consonant         39.2      36.1    0.92   +0.003
+   pause                    3.3       5.0    1.49   +0.107
+   unlabelled               6.3      11.0    1.74   -0.178
+
+3. LIP SPEED, generated / real (median over clips): at each trace's median speed 0.968, at its 90th percentile 0.882; mean speed 1.277. On the real lips' fastest 20 % of frames 0.733 (biased low for any imperfect model: compare models, not against 1)
+
+4. BY GROUP (parts: pooled shares)
+   group                           clips   corr   best    CCC    amp  amp50    v90      bias amplitude    timing     shape
+   all                               300  0.772  0.800  0.700  1.133  0.970  0.882     35.8%      7.3%      6.4%     50.6%
+   English                           265  0.788  0.813  0.718  1.113  0.969  0.879     36.0%      7.2%      6.2%     50.7%
+   non-English                        35  0.651  0.698  0.563  1.291  1.065  0.914     34.2%      7.9%      8.4%     49.5%
+   no person overlap                 226  0.750  0.780  0.676  1.163  0.972  0.876     38.1%      7.7%      6.9%     47.4%
+   slow third (3.6-10.4 ph/s)        100  0.768  0.797  0.703  0.952  0.951  0.838     38.2%      4.7%      6.6%     50.5%
+   middle third (10.4-12.0 ph/s)      99  0.782  0.804  0.704  1.312  1.007  0.905     38.5%      8.6%      4.8%     48.1%
+   fast third (12.0-18.2 ph/s)       101  0.766  0.799  0.692  1.139  1.008  0.950     29.4%      9.4%      7.8%     53.4%
+   least lip movement third          100  0.677  0.721  0.574  1.501  1.099  0.984     43.3%      9.4%      6.8%     40.5%
+   middle lip movement third         100  0.779  0.805  0.712  0.982  0.969  0.853     38.6%      6.0%      6.2%     49.2%
+   most lip movement third           100  0.860  0.874  0.813  0.917  0.934  0.872     25.8%      6.7%      6.3%     61.2%
+   amp = mean amplitude ratio, amp50 = its median, v90 = 90th-percentile lip speed ratio (median over clips)
+
+wrote /beegfs/work/achakraborti/SANG/results/error_split/c_lang_en_step15000.json (109 s)
