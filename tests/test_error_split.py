@@ -30,6 +30,7 @@ def test_pure_delay_is_timing_and_pure_scaling_is_amplitude():
     assert abs(flat["r"] - 1) < 1e-9 and abs(flat["std_r"] - 0.5) < 1e-9
     assert flat["parts"]["timing"] < 1e-9 and flat["parts"]["shape"] < 1e-9 and flat["parts"]["amplitude"] > 0.2
     assert flat["speed_r_fast"] < 0.51                                     # half the movement, half the speed
+    assert abs(flat["speed_q90_r"] - 0.5) < 1e-9 and abs(flat["speed_q50_r"] - 0.5) < 1e-9
 
 
 def test_frames_take_the_nearest_phoneme_and_pauses_win():
@@ -59,8 +60,28 @@ def test_pooling_shows_where_the_error_is():
     g = y.copy()
     sounds = np.array(["open vowel"] * 125 + ["closure p/b/m"] * 125, dtype=object)
     g[125:] += 0.5 * y.std()                                               # lips stay open at closures
-    snd = es.pool_sounds([es.frame_errors(g, y, sounds)])
+    snd = es.pool_sounds([es.frame_errors(g, y, sounds)], scale=y.std())
     assert snd["closure p/b/m"]["error_pct"] == 100 and snd["closure p/b/m"]["signed"] > 0.49
     assert snd["open vowel"]["ratio"] == 0
     s = es.summarise([dict(es.split_clip(g, y), rate=10.0), {}])
     assert s["clips"] == 1 and abs(sum(s["parts_pct"].values()) - 100) < 1e-9
+
+
+def test_pooled_split_is_not_dominated_by_a_clip_whose_lips_barely_move():
+    y = wave()
+    good = es.split_clip(0.6 * y + 0.6 * wave(seed=2), y)                  # normal clip, mostly shape error
+    still = 0.01 * wave(seed=3)                                            # real lips barely move
+    bad = es.split_clip(still + 0.05, still)                               # generated sits 5 real stds too open
+    s = es.summarise([dict(good, rate=10.0), dict(bad, rate=10.0)])
+    assert s["parts_pct"]["bias"] > 90                                     # per-clip mean: the still clip wins
+    assert s["pooled_pct"]["bias"] < 50 and s["pooled_pct"]["shape"] > 40  # pooled: in lip-opening units
+    assert abs(s["gap"]["total"] - s["gap"]["timing"] - s["gap"]["shape"]) < 1e-12
+
+
+def test_speed_quantiles_are_not_fooled_by_frame_selection():
+    y = wave()
+    rng = np.random.default_rng(5)
+    g = y + 0.3 * y.std() * rng.standard_normal(len(y))                    # unbiased, just noisy
+    rec = es.split_clip(g, y)
+    assert rec["speed_r_fast"] < 1                                          # selected on the real trace: looks sluggish
+    assert rec["speed_q90_r"] > 1                                           # quantile by quantile: it is not

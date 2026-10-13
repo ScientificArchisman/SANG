@@ -120,23 +120,32 @@ def main() -> None:
             print(f"  {i}/{len(val)} clips, {time.time() - t0:.0f} s", flush=True)
 
     allc = summarise(recs)
-    print(f"\n1. ERROR SPLIT ({allc['clips']} clips; per-clip squared error / real variance = {allc['mse_rel']:.3f})")
+    gap = allc["gap"]
+    print(f"\n1. ERROR SPLIT ({allc['clips']} clips)")
     print(f"   lip corr {allc['r']:.3f} -> {allc['r_best']:.3f} at each clip's best shift (|lag| <= {args.max_lag}); "
-          f"CCC {allc['ccc']:.3f}; amplitude {allc['std_r']:.3f}; slope {allc['slope']:.3f}; bias {allc['bias']:+.3f} real std")
+          f"CCC {allc['ccc']:.3f}; amplitude {allc['std_r']:.3f} (median {allc['std_r_median']:.3f}); "
+          f"slope {allc['slope']:.3f}; bias {allc['bias']:+.3f} real std (median |bias| {allc['abs_bias_median']:.3f})")
+    print(f"   correlation gap {gap['total']:.3f} = timing {gap['timing']:.3f} ({100 * gap['timing'] / gap['total']:.0f} %) "
+          f"+ shape {gap['shape']:.3f} ({100 * gap['shape'] / gap['total']:.0f} %)")
+    print(f"   amplitude < 0.8 in {allc['std_r_low_pct']:.0f} % of clips, > 1.25 in {allc['std_r_high_pct']:.0f} %; "
+          f"|bias| > 1 real std in {allc['abs_bias_gt1_pct']:.0f} %")
+    print(f"   {'part':<10}{'pooled':>9}{'per clip':>10}   (pooled = share of all squared error in lip-opening units; "
+          f"per clip = mean of per-clip shares, inflated by clips whose real lips barely move)")
     for p in PARTS:
-        print(f"   {p:<10} {allc['parts'][p]:.3f}  ({allc['parts_pct'][p]:4.1f} %)")
+        print(f"   {p:<10}{allc['pooled_pct'][p]:>8.1f}%{allc['parts_pct'][p]:>9.1f}%")
     print(f"   best lag per clip (> 0 = generated later): {allc['lag_hist']}; |lag| >= 2 in {allc['abs_lag_ge2_pct']:.0f} % of clips")
 
-    snd = pool_sounds(fes)
-    print("\n2. BY SOUND (frames labelled by the nearest phoneme; signed error > 0 = lips too open)")
+    snd = pool_sounds(fes, allc["sy_mean"])
+    print("\n2. BY SOUND (frames labelled by the nearest phoneme; signed error in pooled real std, > 0 = lips too open)")
     print(f"   {'sound':<18}{'% frames':>10}{'% error':>10}{'ratio':>8}{'signed':>9}")
     for c in SOUNDS:
         if c in snd:
             v = snd[c]
             print(f"   {c:<18}{v['frames_pct']:>10.1f}{v['error_pct']:>10.1f}{v['ratio']:>8.2f}{v['signed']:>+9.3f}")
 
-    print(f"\n3. FAST TRANSITIONS: generated / real lip speed {allc['speed_r_fast']:.3f} on the fastest 20 % of frames "
-          f"vs {allc['speed_r']:.3f} on all frames (< 1 = too sluggish)")
+    print(f"\n3. LIP SPEED, generated / real (median over clips): at each trace's median speed {allc['speed_q50_r']:.3f}, "
+          f"at its 90th percentile {allc['speed_q90_r']:.3f}; mean speed {allc['speed_r']:.3f}. On the real lips' fastest "
+          f"20 % of frames {allc['speed_r_fast']:.3f} (biased low for any imperfect model: compare models, not against 1)")
 
     groups = {g: summarise([r for r in recs if g in r["groups"]]) for g in nat.GROUPS}
     rates = np.array([r["rate"] for r in recs])
@@ -145,13 +154,19 @@ def main() -> None:
         sel = [r for r in recs if lo <= r["rate"] < hi]
         if sel:
             groups[f"{name} ({min(r['rate'] for r in sel):.1f}-{max(r['rate'] for r in sel):.1f} ph/s)"] = summarise(sel)
-    print("\n4. BY GROUP")
+    stds = np.array([r["sy"] for r in recs])
+    edges = np.quantile(stds, [1 / 3, 2 / 3])
+    for name, lo, hi in (("least lip movement", -np.inf, edges[0]), ("middle lip movement", edges[0], edges[1]),
+                         ("most lip movement", edges[1], np.inf)):
+        groups[f"{name} third"] = summarise([r for r in recs if lo <= r["sy"] < hi])
+    print("\n4. BY GROUP (parts: pooled shares)")
     w = max(len(k) for k in groups) + 2
-    print(f"   {'group':<{w}}{'clips':>6}{'corr':>7}{'best':>7}{'CCC':>7}{'amp':>7}{'fast':>7}" + "".join(f"{p:>10}" for p in PARTS))
+    print(f"   {'group':<{w}}{'clips':>6}{'corr':>7}{'best':>7}{'CCC':>7}{'amp':>7}{'amp50':>7}{'v90':>7}" + "".join(f"{p:>10}" for p in PARTS))
     for k, v in groups.items():
         if v["clips"]:
             print(f"   {k:<{w}}{v['clips']:>6}{v['r']:>7.3f}{v['r_best']:>7.3f}{v['ccc']:>7.3f}{v['std_r']:>7.3f}"
-                  f"{v['speed_r_fast']:>7.3f}" + "".join(f"{v['parts_pct'][p]:>9.1f}%" for p in PARTS))
+                  f"{v['std_r_median']:>7.3f}{v['speed_q90_r']:>7.3f}" + "".join(f"{v['pooled_pct'][p]:>9.1f}%" for p in PARTS))
+    print("   amp = mean amplitude ratio, amp50 = its median, v90 = 90th-percentile lip speed ratio (median over clips)")
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
