@@ -1,0 +1,39 @@
+[job] 180341 on gpu03 | gpu: NVIDIA A100 80GB PCIe | cpus: 8 | env: avcodec | commit: 915772c | 2026-10-13 14:29:21
+[job] python -u scripts/lip_expert.py --ckpt runs/b1_lognorm03/last.pt --sync-offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json
+sync offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json: dropped val {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}
+12671 training clips, 300 val clips; expert reads 18 mouth columns, predicts 64 WavLM components; SANG runs/b1_lognorm03/last.pt (step 15000), sampler g=2,mouth=1.25,tau=0.5,avg=4,steps=6
+  read 2000/12671 training clips, 143 s
+  read 4000/12671 training clips, 274 s
+  read 6000/12671 training clips, 446 s
+  read 8000/12671 training clips, 612 s
+  read 10000/12671 training clips, 705 s
+  read 12000/12671 training clips, 773 s
+12039 clips train the expert, 632 monitor it; 64 components hold 49.0 % of the WavLM variance; 833 s
+expert: 1.62 M parameters
+  step   500  loss 0.7971  held-out training videos R^2 0.171  866 s
+  step  1000  loss 0.7509  held-out training videos R^2 0.186  878 s
+  step  1500  loss 0.7458  held-out training videos R^2 0.189  890 s
+  step  2000  loss 0.7291  held-out training videos R^2 0.194  902 s
+  step  2500  loss 0.7204  held-out training videos R^2 0.191  913 s
+  step  3000  loss 0.7001  held-out training videos R^2 0.190  923 s
+  step  3500  loss 0.7096  held-out training videos R^2 0.189  933 s
+  step  4000  loss 0.7000  held-out training videos R^2 0.189  944 s
+  val 100/300 clips, 980 s
+  val 200/300 clips, 1016 s
+  val 300/300 clips, 1053 s
+
+VAL (300 clips, 41 videos): R^2 of the WavLM components read back from the mouth
+   real motion   0.204   per clip 0.200 ± 0.021   rescaled 0.208
+   SANG motion   0.315   per clip 0.312 ± 0.015   rescaled 0.315
+   chance        -0.244   (real mouth, another clip's audio)
+   real - SANG per clip -0.112 ± 0.017; headroom -54.8%
+   top 5 components, real: 0.292 0.370 0.334 0.347 0.220   SANG: 0.437 0.535 0.466 0.491 0.361
+   VERDICT: NO-GO  (R^2 real >= 0.1; headroom >= 15%)
+
+BY GROUP
+   all                   300 clips   real 0.204   SANG 0.315   chance -0.244   headroom -54.8%
+   English               265 clips   real 0.215   SANG 0.319   chance -0.252   headroom -47.9%
+   non-English            35 clips   real 0.131   SANG 0.295   chance -0.192   headroom -125.5%
+   no person overlap     223 clips   real 0.205   SANG 0.317   chance -0.240   headroom -54.8%
+
+wrote /beegfs/work/achakraborti/SANG/runs/lip_expert/expert.pt and /beegfs/work/achakraborti/SANG/runs/lip_expert/probe.json (1054 s)
