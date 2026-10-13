@@ -1,0 +1,55 @@
+[job] 180266 on gpu08 | gpu: NVIDIA A100 80GB PCIe | cpus: 2 | env: avcodec | commit: 14ba7a5 | 2026-10-13 13:08:18
+[job] python -u scripts/error_split.py --ckpt runs/b1_lognorm03/last.pt --sync-offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json
+sync offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json: dropped {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}
+300 val clips from 41 videos; runs/b1_lognorm03/last.pt (step 15000), sampler g=2,mouth=1.25,tau=0.5,avg=4,steps=6
+  50/300 clips, 22 s
+  100/300 clips, 40 s
+  150/300 clips, 59 s
+  200/300 clips, 77 s
+  250/300 clips, 92 s
+  300/300 clips, 113 s
+
+1. ERROR SPLIT (300 clips)
+   lip corr 0.780 -> 0.804 at each clip's best shift (|lag| <= 4); CCC 0.711; amplitude 1.117 (median 0.972); slope 0.780; bias +0.221 real std (median |bias| 0.255)
+   correlation gap 0.220 = timing 0.024 (11 %) + shape 0.196 (89 %)
+   amplitude < 0.8 in 13 % of clips, > 1.25 in 11 %; |bias| > 1 real std in 7 %
+   part         pooled  per clip   (pooled = share of all squared error in lip-opening units; per clip = mean of per-clip shares, inflated by clips whose real lips barely move)
+   bias          41.7%     63.5%
+   amplitude      6.5%     21.3%
+   timing         5.0%      1.4%
+   shape         46.8%     13.9%
+   best lag per clip (> 0 = generated later): {-4: 4, -1: 39, 0: 196, 1: 56, 2: 2, 4: 3}; |lag| >= 2 in 3 % of clips
+
+2. BY SOUND (frames labelled by the nearest phoneme; signed error in pooled real std, > 0 = lips too open)
+   sound               % frames   % error   ratio   signed
+   closure p/b/m            5.8       7.3    1.25   -0.181
+   labiodental f/v          3.4       2.3    0.66   -0.103
+   open vowel              15.6      16.9    1.08   +0.047
+   rounded vowel/w          8.0       5.8    0.72   -0.087
+   other vowel             18.2      14.3    0.79   +0.005
+   other consonant         39.2      34.7    0.88   -0.032
+   pause                    3.3       4.9    1.48   +0.088
+   unlabelled               6.3      13.8    2.18   -0.228
+
+3. LIP SPEED, generated / real (median over clips): at each trace's median speed 0.983, at its 90th percentile 0.889; mean speed 1.289. On the real lips' fastest 20 % of frames 0.751 (biased low for any imperfect model: compare models, not against 1)
+
+4. BY GROUP (parts: pooled shares)
+   group                           clips   corr   best    CCC    amp  amp50    v90      bias amplitude    timing     shape
+   all                               300  0.780  0.804  0.711  1.117  0.972  0.889     41.7%      6.5%      5.0%     46.8%
+   English                           265  0.794  0.815  0.724  1.103  0.972  0.889     42.4%      6.5%      4.6%     46.4%
+   non-English                        35  0.671  0.718  0.606  1.226  0.972  0.914     33.0%      6.5%      9.2%     51.2%
+   no person overlap                 223  0.761  0.786  0.695  1.153  0.978  0.871     44.3%      6.9%      5.3%     43.5%
+   slow third (3.6-10.4 ph/s)        100  0.780  0.802  0.714  0.924  0.924  0.838     50.2%      3.9%      4.6%     41.3%
+   middle third (10.4-12.0 ph/s)      99  0.789  0.807  0.721  1.311  1.002  0.892     36.0%      8.8%      3.7%     51.5%
+   fast third (12.0-18.2 ph/s)       101  0.770  0.803  0.697  1.118  0.973  0.947     33.0%      8.7%      7.0%     51.4%
+   least lip movement third          100  0.686  0.726  0.590  1.474  1.054  0.986     44.8%      9.5%      5.1%     40.6%
+   middle lip movement third         100  0.791  0.810  0.725  0.965  0.941  0.863     52.7%      4.3%      3.2%     39.8%
+   most lip movement third           100  0.862  0.876  0.817  0.912  0.923  0.870     24.2%      6.7%      7.3%     61.7%
+   amp = mean amplitude ratio, amp50 = its median, v90 = 90th-percentile lip speed ratio (median over clips)
+
+5. OPENING BIAS (generated - real mean opening per clip, 42 % of the squared error); reference frame: first
+   corr with the reference frame's opening minus the clip mean: +0.448 (median |reference - mean| 0.74 real std); with the speaker's usual opening: -0.652
+   share of the bias error explained: constant offset 0 %, + reference frame 20 %, + speaker level 43 %, all three 54 %
+   fit: bias = -0.0015 +0.120 x (reference - clip mean) -0.391 x (speaker level - average)   [lip-opening units; level < 0 = pulled toward the average]
+
+wrote /beegfs/work/achakraborti/SANG/results/error_split/b1_lognorm03_step15000.json (113 s)
