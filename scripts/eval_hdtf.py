@@ -110,41 +110,30 @@ class Evaluator:
         self.codec = MotionCodec(device=self.dev)
         self.arc = ArcFace(device=self.dev)
         self.incep, self.i3d = InceptionFeats(self.dev), I3DFeats(self.dev)
+        self.last_t = {}
         if "sang" in args.rows:
-            ck = torch.load(args.ckpt, map_location=self.dev, weights_only=False)
-            self.cfg = ck["cfg"]
-            self.model = build(self.cfg).to(self.dev).eval()
-            self.model.load_state_dict(ema_weights(ck, args.ema))
-            self.norm = Norm(**ck["norm"]).to(self.dev)
-            self.gamma = guidance_vector(self.cfg["cfg_audio"] if args.cfg is None else args.cfg, mouth=args.cfg_mouth)
-            self.sampler = sampler_kwargs(parse_spec(args.sampler), self.cfg,
-                                          load_ema(args.guide_ckpt, self.dev, self.norm) if args.guide_ckpt else None,
-                                          steps=args.steps) if args.sampler else None
-            self.wavlm = load_wavlm(self.cfg.get("audio_encoder", "wavlm-large"), device=self.dev)
-            self.step = ck["step"]
+            from sang.pipeline import Opts, Talker
+            cfg = torch.load(args.ckpt, map_location="cpu", weights_only=False)["cfg"]
+            gamma = guidance_vector(cfg["cfg_audio"] if args.cfg is None else args.cfg, mouth=args.cfg_mouth)
+            self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec, ema=args.ema, cfg_audio=gamma,
+                                 steps=args.steps, guide_ckpt=args.guide_ckpt)
+            self.opts = Opts.fast() if args.fast else Opts(cfg_batch=args.cfg_batch, render_batch=args.render_batch,
+                                                           half=args.half, gpu_paste=args.gpu_paste,
+                                                           reuse_crop=args.reuse_crop)
+            print(f"SANG {args.ckpt} (step {self.talker.step}); pipeline {self.opts}", flush=True)
 
     # -- generators: each returns (output frames, matching ground-truth frames)
     def gen_sang(self, frames, wav):
-        from sang.motion import from_target, paste_back, to_target
-        from sang.naturalness import guided_generate
+        """sang.pipeline.Talker: with every option off this is the original path, stage for stage; the stage
+        times (source, audio, motion, render, paste; CUDA-synchronised) go into the clip's json."""
         a, src = self.args, frames[0]
-        sm = self.codec.source_motion(src)
-        m_src = sm["m"].to(self.dev)
-        ref = self.norm.ref(sm["kp"].to(self.dev), to_target(m_src))
-        start, lead = None, 0
-        if a.start == "source":
-            lead = self.cfg["prefix"]
-            start = self.norm.target(to_target(m_src)).unsqueeze(1).expand(1, lead, -1)
-        with torch.no_grad():
-            audio = self.wavlm.encode(torch.nn.functional.pad(wav, (lead * HOP, 0))[None, None].to(self.dev)).float()
-        y, _ = guided_generate(self.model, audio, ref, len(frames), self.cfg, self.norm, wav, None, "none", a.seed,
-                               cfg_audio=self.gamma, start=start, steps=a.steps, sampler=self.sampler)
-        m = from_target(self.norm.untarget(y[0]), m_src, held=a.held)
-        crops = self.codec.render(src, m.cpu(), relative=False, stitch=a.stitch)
+        gen, _, timer = self.talker.run(src, wav, len(frames), self.opts, seed=a.seed, held=a.held, stitch=a.stitch,
+                                        paste=a.paste_back, start=a.start)
+        self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
         if not a.paste_back:
             box = self.codec._box(self.codec.landmarks(src))
-            return crops, self.codec.crop_with_box(frames, box, size=crops.shape[1])[0]
-        return paste_back(crops, self.codec.crop_image(src)["M_c2o"], src), frames
+            return gen, self.codec.crop_with_box(frames, box, size=gen.shape[1])[0]
+        return gen, frames
 
     def gen_gt_motion(self, frames, wav):
         from sang.motion import from_target, paste_back, to_target
@@ -232,6 +221,8 @@ def run(args) -> None:
                 else:
                     gen, gt = ev.gen_sang(frames, wav)
                 res, feats = ev.score(row, clip, out, gen, gt, frames[0])
+                if row == "sang":
+                    res.update(ev.last_t)
                 d = out / "clips" / row
                 d.mkdir(parents=True, exist_ok=True)
                 if feats:
@@ -261,11 +252,25 @@ def summarise(out: Path, args) -> dict:
             m["FID"] = frechet(cat("incep_gt"), cat("incep_gen"))
             m["FVD"] = frechet(cat("i3d_gt"), cat("i3d_gen"))
         rows[row] = {"n_clips": len(js), "m": {k: v for k, v in m.items() if v is not None}}
+        tj = [j for j in js if "t_motion" in j]
+        if tj:                                       # generation speed: median over clips (the first warms up)
+            stages = sorted({k for j in tj for k in j if k.startswith("t_")})
+            tot = [sum(j[k] for k in stages if k in j) for j in tj]
+            rows[row]["timing"] = {"clips": len(tj), **{k: float(np.median([j[k] for j in tj if k in j])) for k in stages},
+                                   "total_s": float(np.median(tot)),
+                                   "fps": float(np.median([j["frames"] / t for j, t in zip(tj, tot)]))}
     summary = {"name": args.name, "rows": rows, "protocol": json.loads((out / "protocol.json").read_text())}
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
     md = markdown_table(ours_rows([summary]))
     (out / "summary.md").write_text(md + "\n")
     print("\n" + md, flush=True)
+    for row, r in rows.items():
+        if "timing" in r:
+            t = r["timing"]
+            print(f"\n{row} generation, median per {args.seconds:g} s clip over {t['clips']} clips: "
+                  + "  ".join(f"{k[2:]} {v:.2f} s" for k, v in t.items() if k.startswith("t_"))
+                  + f"  | total {t['total_s']:.2f} s = {t['fps']:.1f} frames/s (rendering and paste-back included; "
+                    f"scoring and the mp4 not)", flush=True)
     return summary
 
 
@@ -330,6 +335,12 @@ def main() -> None:
     ap.add_argument("--ema", default=None, help="extra EMA decay saved by training with ema_extra (e.g. 0.999); default = the main EMA")
     ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide checkpoint (for ag / ag_mouth in --sampler)")
     ap.add_argument("--held", default="camera", choices=["camera", "head"])
+    ap.add_argument("--fast", action="store_true", help="every speed option below (sang.pipeline.Opts.fast)")
+    ap.add_argument("--cfg-batch", action="store_true", help="CFG pair of each Euler step as one batch")
+    ap.add_argument("--render-batch", type=int, default=1, help="frames per renderer call (1 = per-frame loop)")
+    ap.add_argument("--half", action="store_true", help="FP16 warping module and decoder")
+    ap.add_argument("--gpu-paste", action="store_true", help="paste-back on the GPU inside the face's box")
+    ap.add_argument("--reuse-crop", action="store_true", help="detect the source face once, not three times")
     ap.add_argument("--gt-target", type=int, default=42, choices=[42, 70], help="ceiling row: SANG's 42-d target or full 70-d")
     ap.add_argument("--stitch", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--paste-back", action=argparse.BooleanOptionalAction, default=True)

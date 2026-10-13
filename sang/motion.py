@@ -385,14 +385,14 @@ class MotionCodec:
         return {"m": m.half(), "kp": kp.half(), "M_c2o": torch.from_numpy(M), "crops": crops, "span": span}
 
     @torch.no_grad()
-    def source_motion(self, source: np.ndarray, normalize_lip: bool = True) -> dict:
+    def source_motion(self, source: np.ndarray, normalize_lip: bool = True, crop: dict | None = None) -> dict:
         """One source image -> {'m': [1,70], 'kp': [1,63]}, optionally with the lips closed.
 
         LivePortrait's own flag_normalize_lip (upstream live_portrait_pipeline.py): a reference
         photo caught mid-vowel otherwise biases every frame of the animation. The retarget module
         returns a keypoint offset d; since x = s(x_c R + delta) + t, the same offset in expression
         space is d / s, applied in the camera frame where delta lives."""
-        c = self.crop_image(np.ascontiguousarray(source))
+        c = crop or self.crop_image(np.ascontiguousarray(source))     # crop: reuse one crop_image() result
         m, kp = self.motion_from_crops(c["img_crop_256x256"][None])
         if normalize_lip:
             src = self.lp.prepare_source(c["img_crop_256x256"])
@@ -425,16 +425,28 @@ class MotionCodec:
 
     @torch.no_grad()
     def render(self, source: np.ndarray | None, m: torch.Tensor, relative: bool = True,
-               stitch: bool = True, state: dict | None = None) -> np.ndarray:
+               stitch: bool = True, state: dict | None = None, batch: int = 1, half: bool = False,
+               out: str = "numpy"):
         """source [H,W,3] uint8 + motion [T,70] -> [T,512,512,3] uint8 crops.
 
         `relative=True` is KDTalker's / LivePortrait's retargeting: the driving trajectory is
         applied as a delta from its own first frame onto the source pose, so the source keeps its
         identity and rest pose. With `relative=False` the source is forced into the driving pose,
-        which is the right setting only for measuring the representation ceiling on the same clip."""
+        which is the right setting only for measuring the representation ceiling on the same clip.
+
+        Fast path (Phase C speed track; report 'SANG latency reduction' 2.1), used when batch > 1,
+        half or out='torch': the keypoint maths for all frames at once, then stitching, warping and
+        decoding `batch` frames at a time, frames kept on the GPU (no per-frame copy). half = FP16
+        autocast around the warping module and decoder, as LivePortrait's flag_use_half_precision
+        (grid_sample stays FP32 under autocast). out='torch' returns a [T,512,512,3] uint8 GPU tensor
+        (for paste_back_gpu), else one bulk copy to numpy. batch=1, half=False, out='numpy' is the
+        original per-frame loop, unchanged."""
         from src.utils.camera import get_rotation_matrix  # noqa: E402
 
         s = state or self.source_state(source)
+        if batch > 1 or half or out == "torch":
+            frames = torch.cat(list(self.render_iter(s, m, relative, stitch, batch, half)))
+            return frames if out == "torch" else frames.cpu().numpy()
         d0 = vec_to_kp_info(m[:1].float().to(self.device))
         R_d0 = get_rotation_matrix(d0["pitch"], d0["yaw"], d0["roll"])
         out = []
@@ -457,10 +469,47 @@ class MotionCodec:
             out.append(self.lp.parse_output(frame)[0])
         return np.stack(out)
 
+    def driving_keypoints(self, s: dict, m: torch.Tensor, relative: bool = True) -> torch.Tensor:
+        """The per-frame loop of `render` for all T frames at once -> x_d [T, 21, 3] (before stitching)."""
+        from src.utils.camera import get_rotation_matrix  # noqa: E402
+        mm = m.float().to(self.device)
+        d = vec_to_kp_info(mm)
+        R_d = get_rotation_matrix(d["pitch"], d["yaw"], d["roll"])
+        if relative:
+            d0 = vec_to_kp_info(mm[:1])
+            R_d0 = get_rotation_matrix(d0["pitch"], d0["yaw"], d0["roll"])
+            R_new = (R_d @ R_d0.permute(0, 2, 1)) @ s["R_s"]
+            delta = s["info"]["exp"] + (d["exp"] - d0["exp"])
+            scale = s["info"]["scale"] * (d["scale"] / d0["scale"])
+            t = s["info"]["t"] + (d["t"] - d0["t"])
+        else:
+            R_new, delta, scale, t = R_d, d["exp"], d["scale"], d["t"]
+        t = t.clone()
+        t[:, 2] = 0.0                                         # LivePortrait zeroes t_z
+        return scale.reshape(-1, 1, 1) * (s["x_c"] @ R_new + delta) + t.reshape(-1, 1, 3)
+
+    @torch.no_grad()
+    def render_iter(self, s: dict, m: torch.Tensor, relative: bool = True, stitch: bool = True,
+                    batch: int = 16, half: bool = False):
+        """Yields [b, 512, 512, 3] uint8 GPU frames, `batch` at a time (see `render`)."""
+        x_d_all = self.driving_keypoints(s, m, relative)
+        for i in range(0, len(x_d_all), batch):
+            x_d = x_d_all[i:i + batch]
+            b = len(x_d)
+            x_s = s["x_s"].expand(b, -1, -1)
+            if stitch:
+                x_d = self.lp.stitching(x_s, x_d)
+            with torch.autocast("cuda", dtype=torch.float16, enabled=half and self.device != "cpu"):
+                w = self.lp.warping_module(s["f_s"].expand(b, *s["f_s"].shape[1:]), kp_source=x_s, kp_driving=x_d)
+                img = self.lp.spade_generator(feature=w["out"])
+            # parse_output's conversion on the GPU: clip to [0, 1], scale, truncate (numpy astype)
+            yield (img.float().clamp(0, 1) * 255).clamp(0, 255).to(torch.uint8).permute(0, 2, 3, 1)
+
 
 NEEDED = {"lp": ("get_kp_info", "extract_feature_3d", "transform_keypoint", "stitching",
                  "warp_decode", "parse_output", "prepare_source",
-                 "calc_combined_lip_ratio", "retarget_lip"),
+                 "calc_combined_lip_ratio", "retarget_lip",
+                 "warping_module", "spade_generator"),          # render_iter calls the two nets directly
           "cropper": ("face_analysis_wrapper", "human_landmark_runner")}
 
 

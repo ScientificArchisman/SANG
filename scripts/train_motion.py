@@ -131,7 +131,7 @@ def neg_start(n: int, L: int, start: int, rng, min_gap: int = 16) -> slice:
 def evaluate(model, loader, cfg, dev, max_batches: int) -> dict:
     model.eval()
     g = torch.Generator(device=dev).manual_seed(0)
-    fm = n = 0.0
+    fm = n = pr = 0.0
     stats = {k: [] for k in ("mse_mouth", "mse_rot", "std_r_mouth", "vc_r_mouth",
                              "std_r_rot", "vc_r_rot", "audio_gain")}
     mouth, rot = REGIONS["mouth"], REGIONS["rot"]
@@ -144,9 +144,10 @@ def evaluate(model, loader, cfg, dev, max_batches: int) -> dict:
             break
         batch = {k: v.to(dev) for k, v in batch.items()}
         torch.manual_seed(bi)                              # same t / noise every eval
-        loss, _ = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0,
-                            t_dist="uniform")
-        fm += float(loss)
+        loss, parts = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0,
+                                t_dist="uniform", lam_prior=1.0)
+        fm += float(loss) - float(parts.get("prior", 0.0))  # the flow's own loss, as in runs without a prior
+        pr += float(parts.get("prior", 0.0))
         n += 1
         gt, L = batch["target"], batch["target"].shape[1]
         kw = dict(prefix=batch["prefix"], steps=cfg["sample_steps"], cfg_audio=cfg["cfg_audio"])
@@ -163,7 +164,8 @@ def evaluate(model, loader, cfg, dev, max_batches: int) -> dict:
                                                gt[:, 1:, idx] - gt[:, :-1, idx]))
         stats["audio_gain"].append(float((other - gt)[..., mouth].pow(2).mean() / e[..., mouth].mean()))
     model.train()
-    return {"val_loss": fm / max(1, n), **{k: sum(v) / max(1, len(v)) for k, v in stats.items()}}
+    extra = {"val_prior": pr / max(1, n)} if getattr(model, "prior", None) is not None else {}
+    return {"val_loss": fm / max(1, n), **extra, **{k: sum(v) / max(1, len(v)) for k, v in stats.items()}}
 
 
 # ---------------------------------------------------------------------- train
@@ -269,7 +271,9 @@ def main() -> None:
     opt = torch.optim.AdamW([{"params": decay, "weight_decay": cfg["weight_decay"]},
                              {"params": no_decay, "weight_decay": 0.0}],
                             lr=cfg["lr"], betas=tuple(cfg["betas"]))
-    print(f"MotionFlowTransformer: {sum(p.numel() for p in model.parameters()) / 1e6:.1f} M params", flush=True)
+    n_prior = sum(p.numel() for p in model.prior.parameters()) / 1e6 if model.prior is not None else 0.0
+    print(f"MotionFlowTransformer: {sum(p.numel() for p in model.parameters()) / 1e6:.1f} M params"
+          + (f" (audio prior {n_prior:.1f} M, flow starts from mu(audio) + noise)" if n_prior else ""), flush=True)
 
     step, best, bad = 0, float("inf"), 0
     if cfg.get("resume"):
@@ -285,7 +289,8 @@ def main() -> None:
 
     kw = {k: cfg[k] for k in ("lam_vel", "p_audio", "p_ref", "p_prefix", "t_dist")}
     for k, d in (("t_mean", 0.0), ("t_scale", 1.0), ("lam_cfm", 0.0), ("cfm_regions", ["mouth"]), ("lam_ccc", 0.0),
-                 ("lam_spec", 0.0), ("spec_hz", 10.0), ("spec_regions", ["mouth"]), ("aux_tmax", 0.3)):
+                 ("lam_spec", 0.0), ("spec_hz", 10.0), ("spec_regions", ["mouth"]), ("aux_tmax", 0.3),
+                 ("lam_prior", 1.0)):
         kw[k] = cfg.get(k, d)
     if kw["lam_ccc"] > 0:                                  # lip-opening readout, in normalised target space
         from sang.naturalness import load_readouts

@@ -26,6 +26,10 @@ layers: 8
 heads: 8
 dropout: 0.1               # run 172260 (dropout 0) memorised 3.7k clips after <5k steps
 max_frames: 512
+prior: false              # audio prior (Phase C speed track): the flow starts from mu(audio, ref) + noise and
+                          # learns the residual; mu is a ~4 M conv net trained by MSE (sang/motion_model.py)
+prior_width: 256
+lam_prior: 1.0            # weight of the prior's MSE
 
 # ---- objective ----
 lam_vel: 1.0              # FLOAT lambda_vel = 1

@@ -79,6 +79,9 @@ def main() -> None:
     ap.add_argument("--voice", default=None,
                     help="speak in this person's voice: a voice bank dir (voices/<name>) or their audio files")
     ap.add_argument("--voice-k", type=int, default=None, help="kNN-VC k; default grows with the bank size")
+    ap.add_argument("--fast", action="store_true",
+                    help="render 16 frames per call in FP16 (sang.motion.MotionCodec.render_iter; gate B in "
+                         "scripts/latency.py); the CFG pair is always one batch")
     args = ap.parse_args()
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -115,7 +118,8 @@ def main() -> None:
     if info:
         print(f"constraints: {info}")
     m = from_target(norm.untarget(y[0]), m_src, held=args.held)     # [n, 70], source scale/t/shape
-    frames = codec.render(src, m.cpu(), relative=False, stitch=args.stitch)
+    frames = codec.render(src, m.cpu(), relative=False, stitch=args.stitch,
+                          **({"batch": 16, "half": True} if args.fast else {}))
     track = Path(args.audio)
     if args.voice:
         from sang.voice import SpeakerEncoder, convert, save_wav, voice_bank

@@ -63,8 +63,10 @@ def test_interval_autoguidance_and_temperature_degenerate_cases():
     base = sample(m, a, r, 16, prefix=p, steps=4, cfg_audio=2.0, generator=_gen())
     no_guidance = sample(m, a, r, 16, prefix=p, steps=4, cfg_audio=1.0, generator=_gen())
     assert torch.allclose(sample(m, a, r, 16, prefix=p, steps=4, cfg_audio=2.0, generator=_gen(), g_tmax=-1.0), no_guidance)
-    # guiding with the model itself adds (ag - 1)(v - v) = 0
-    assert torch.allclose(sample(m, a, r, 16, prefix=p, steps=4, cfg_audio=2.0, generator=_gen(), ag_model=m, ag=3.0), base)
+    # guiding with the model itself adds (ag - 1)(v - v) = 0 (up to float rounding: v comes from the batched
+    # CFG pair, the guide's v from a single call)
+    assert torch.allclose(sample(m, a, r, 16, prefix=p, steps=4, cfg_audio=2.0, generator=_gen(), ag_model=m, ag=3.0),
+                          base, atol=1e-5)
     weak = _model(seed=7)
     ag = sample(m, a, r, 16, prefix=p, steps=4, cfg_audio=2.0, generator=_gen(), ag_model=weak, ag=2.0)
     assert not torch.allclose(ag, base)
