@@ -136,6 +136,7 @@ class PhonemeRecognizer:
         self.m = Wav2Vec2ForCTC.from_pretrained(PHONEME_MODEL, local_files_only=True).to(device).eval()
         vocab = json.loads(Path(hf_hub_download(PHONEME_MODEL, "vocab.json", local_files_only=True)).read_text())
         self.bilabial = torch.tensor(sorted(i for t, i in vocab.items() if is_bilabial(t)))
+        self.tokens = {i: t for t, i in vocab.items()}           # id -> IPA token (scripts/error_split.py)
         self.device = device
 
     @torch.no_grad()
