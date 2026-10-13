@@ -1,0 +1,133 @@
+[job] 180014 on gpu08 | gpu: NVIDIA A100 80GB PCIe | cpus: 8 | env: avcodec | commit: f954819 | 2026-10-13 07:00:17
+[job] python -u scripts/eval_hdtf.py --ckpt runs/c_lang_en/last.pt --name lang_en_last --data /beegfs/work/achakraborti/HDTF --list configs/hdtf_test.csv --rows sang --sampler g=2,mouth=1.25,tau=0.5,avg=4,steps=6
+HDTF eval 'lang_en_last': 75 clips x 10 s, rows ['sang'] -> /beegfs/work/achakraborti/SANG/results/hdtf/lang_en_last
+[07:00:35] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+           Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+[07:00:36] Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[07:00:38] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+           Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+[07:00:40] FaceAnalysisDIY warmup time: 1.037s           face_analysis_diy.py:79
+[07:00:42] LandmarkRunner warmup time: 0.990s        human_landmark_runner.py:95
+[33mWARNING: onnxruntime is not built with CUDA 12.x support. Please install a version that supports CUDA 12.x, or call preload_dlls with cuda=False and cudnn=False.[0m
+[1/75] MikeCrapo_0                  sang      csim 0.942  psnr 21.961  ssim 0.746  lse_offset -1.000  lse_d 6.993  lse_c 7.292
+[2/75] KimSchrier_0                 sang      csim 0.936  psnr 17.626  ssim 0.540  lse_offset -2.000  lse_d 8.057  lse_c 6.628
+[3/75] DebbieDingell1_0             sang      csim 0.936  psnr 18.617  ssim 0.596  lse_offset -1.000  lse_d 8.040  lse_c 5.636
+[4/75] SuzanDelBene_0               sang      csim 0.911  psnr 17.127  ssim 0.656  lse_offset -2.000  lse_d 6.987  lse_c 8.268
+[5/75] RichardNeal1_0               sang      csim 0.963  psnr 23.015  ssim 0.788  lse_offset 0.000  lse_d 6.598  lse_c 8.939
+[6/75] JohnYarmuth1_0               sang      csim 0.954  psnr 19.869  ssim 0.691  lse_offset -1.000  lse_d 6.790  lse_c 7.485
+[7/75] KarenBass_0                  sang      csim 0.903  psnr 19.871  ssim 0.710  lse_offset -1.000  lse_d 7.301  lse_c 7.678
+[8/75] JanSchakowsky1_0             sang      csim 0.851  psnr 15.850  ssim 0.493  lse_offset -1.000  lse_d 7.824  lse_c 5.813
+[9/75] KristiNoem2_0                sang      csim 0.934  psnr 23.155  ssim 0.761  lse_offset -2.000  lse_d 7.913  lse_c 6.299
+[10/75] RogerWicker2_0               sang      csim 0.919  psnr 23.723  ssim 0.806  lse_offset 0.000  lse_d 6.918  lse_c 8.283
+[11/75] TerriSewell1_0               sang      csim 0.918  psnr 21.338  ssim 0.722  lse_offset -1.000  lse_d 6.497  lse_c 8.254
+[12/75] BillCassidy0_0               sang      csim 0.933  psnr 17.161  ssim 0.627  lse_offset -2.000  lse_d 8.331  lse_c 5.067
+[13/75] TomCarper_0                  sang      csim 0.948  psnr 19.826  ssim 0.664  lse_offset -1.000  lse_d 7.388  lse_c 7.021
+[14/75] Radio31_0                    sang      csim 0.935  psnr 17.409  ssim 0.709  lse_offset -1.000  lse_d 7.226  lse_c 8.124
+[15/75] TomCotton_0                  sang      csim 0.962  psnr 18.573  ssim 0.727  lse_offset -1.000  lse_d 8.491  lse_c 6.166
+[16/75] DebFischer0_0                sang      csim 0.893  psnr 19.008  ssim 0.670  lse_offset -1.000  lse_d 7.029  lse_c 8.032
+[17/75] TammyBaldwin1_0              sang      csim 0.903  psnr 19.551  ssim 0.665  lse_offset -1.000  lse_d 7.137  lse_c 7.864
+[18/75] RichardBlumenthal_0          sang      csim 0.939  psnr 20.347  ssim 0.718  lse_offset -1.000  lse_d 7.135  lse_c 7.268
+[19/75] CarolynMaloney1_0            sang      csim 0.948  psnr 19.146  ssim 0.617  lse_offset -1.000  lse_d 6.439  lse_c 7.684
+[20/75] JohnSarbanes0_0              sang      csim 0.958  psnr 18.346  ssim 0.653  lse_offset -1.000  lse_d 6.028  lse_c 9.843
+[21/75] KevinBrady2_0                sang      csim 0.946  psnr 19.952  ssim 0.737  lse_offset -1.000  lse_d 7.748  lse_c 7.476
+[22/75] AustinScott2_0               sang      csim 0.953  psnr 19.750  ssim 0.714  lse_offset -1.000  lse_d 9.423  lse_c 5.388
+[23/75] SteveDaines_0                sang      csim 0.952  psnr 20.390  ssim 0.743  lse_offset -1.000  lse_d 5.981  lse_c 9.158
+[24/75] Radio30_0                    sang      csim 0.964  psnr 18.952  ssim 0.679  lse_offset -1.000  lse_d 7.707  lse_c 5.997
+[25/75] PattyMurray1_0               sang      csim 0.945  psnr 21.978  ssim 0.729  lse_offset -2.000  lse_d 7.926  lse_c 6.792
+[26/75] MarkWarner2_0                sang      csim 0.949  psnr 19.171  ssim 0.669  lse_offset -1.000  lse_d 7.971  lse_c 6.797
+[27/75] Radio26_0                    sang      csim 0.947  psnr 18.827  ssim 0.607  lse_offset -2.000  lse_d 8.312  lse_c 6.377
+[28/75] JamesClyburn_0               sang      csim 0.952  psnr 25.395  ssim 0.799  lse_offset -1.000  lse_d 8.244  lse_c 4.555
+[29/75] Radio10_0                    sang      csim 0.934  psnr 19.547  ssim 0.688  lse_offset -2.000  lse_d 8.019  lse_c 6.898
+[30/75] BillPascrell_0               sang      csim 0.954  psnr 19.716  ssim 0.684  lse_offset -1.000  lse_d 8.734  lse_c 6.051
+[31/75] Radio7_0                     sang      csim 0.899  psnr 21.666  ssim 0.686  lse_offset -2.000  lse_d 8.582  lse_c 6.555
+[32/75] DougJones_0                  sang      csim 0.912  psnr 21.002  ssim 0.755  lse_offset -1.000  lse_d 6.121  lse_c 9.769
+[33/75] AndyLevin_0                  sang      csim 0.932  psnr 17.251  ssim 0.630  lse_offset -1.000  lse_d 7.153  lse_c 6.536
+[34/75] HakeemJeffries_0             sang      csim 0.947  psnr 22.459  ssim 0.805  lse_offset -1.000  lse_d 6.836  lse_c 7.564
+[35/75] BobbySchilling_0             sang      csim 0.947  psnr 12.228  ssim 0.581  lse_offset -1.000  lse_d 7.704  lse_c 6.510
+[36/75] PeteHoekstra_0               sang      csim 0.940  psnr 19.714  ssim 0.714  lse_offset -1.000  lse_d 7.742  lse_c 7.303
+[37/75] DianneFeinstein_0            sang      csim 0.957  psnr 14.523  ssim 0.510  lse_offset -2.000  lse_d 7.961  lse_c 7.421
+[38/75] JoaquinCastro_0              sang      csim 0.965  psnr 16.311  ssim 0.649  lse_offset -2.000  lse_d 9.037  lse_c 5.959
+[39/75] JonTester1_0                 sang      csim 0.923  psnr 18.306  ssim 0.712  lse_offset -1.000  lse_d 7.527  lse_c 6.283
+[40/75] PaulRyan0_0                  sang      csim 0.921  psnr 21.138  ssim 0.689  lse_offset -2.000  lse_d 7.361  lse_c 7.218
+[41/75] JackyRosen1_0                sang      csim 0.938  psnr 19.493  ssim 0.629  lse_offset -2.000  lse_d 7.091  lse_c 8.273
+[42/75] PatrickLeahy1_0              sang      csim 0.921  psnr 19.583  ssim 0.754  lse_offset -2.000  lse_d 6.973  lse_c 6.258
+[43/75] BobbyScott_0                 sang      csim 0.900  psnr 19.827  ssim 0.671  lse_offset -1.000  lse_d 7.696  lse_c 6.624
+[44/75] RogerWicker1_0               sang      csim 0.968  psnr 22.533  ssim 0.781  lse_offset -1.000  lse_d 6.978  lse_c 5.727
+[45/75] KevinBrady3_0                sang      csim 0.952  psnr 21.984  ssim 0.779  lse_offset -1.000  lse_d 7.716  lse_c 7.144
+[46/75] BennieThompson1_0            sang      csim 0.936  psnr 20.085  ssim 0.659  lse_offset -2.000  lse_d 7.445  lse_c 6.194
+[47/75] KellyAyotte_0                sang      csim 0.930  psnr 20.244  ssim 0.703  lse_offset -2.000  lse_d 7.006  lse_c 8.420
+[48/75] SherrodBrown1_0              sang      csim 0.948  psnr 20.455  ssim 0.745  lse_offset 0.000  lse_d 8.006  lse_c 6.529
+[49/75] JohnLewis0_0                 sang      csim 0.964  psnr 18.848  ssim 0.714  lse_offset -2.000  lse_d 7.832  lse_c 5.177
+[50/75] ElijahCummings_0             sang      csim 0.969  psnr 17.968  ssim 0.661  lse_offset -2.000  lse_d 7.105  lse_c 6.613
+[51/75] OlympiaSnowe_0               sang      csim 0.937  psnr 17.585  ssim 0.636  lse_offset -2.000  lse_d 7.650  lse_c 6.343
+[52/75] NanHayworth_0                sang      csim 0.900  psnr 17.309  ssim 0.598  lse_offset 0.000  lse_d 7.389  lse_c 7.524
+[53/75] AdamKinzinger0_0             sang      csim 0.907  psnr 17.462  ssim 0.776  lse_offset -1.000  lse_d 8.044  lse_c 6.453
+[54/75] RobinKelly_0                 sang      csim 0.922  psnr 18.194  ssim 0.590  lse_offset -2.000  lse_d 8.016  lse_c 6.891
+[55/75] JamesClyburn1_0              sang      csim 0.932  psnr 17.517  ssim 0.632  lse_offset -2.000  lse_d 8.330  lse_c 5.147
+[56/75] TammyDuckworth_0             sang      csim 0.935  psnr 20.601  ssim 0.700  lse_offset -1.000  lse_d 7.011  lse_c 7.843
+[57/75] CoryGardner_0                sang      csim 0.915  psnr 18.017  ssim 0.696  lse_offset -1.000  lse_d 6.867  lse_c 7.845
+[58/75] Radio43_0                    sang      csim 0.974  psnr 24.597  ssim 0.802  lse_offset -1.000  lse_d 7.334  lse_c 7.790
+[59/75] LisaMurkowski0_0             sang      csim 0.916  psnr 24.697  ssim 0.751  lse_offset -1.000  lse_d 7.216  lse_c 7.070
+[60/75] ChrisCoons1_0                sang      csim 0.952  psnr 19.721  ssim 0.741  lse_offset -1.000  lse_d 7.001  lse_c 7.587
+[61/75] XavierBecerra_0              sang      csim 0.957  psnr 19.597  ssim 0.738  lse_offset -1.000  lse_d 6.522  lse_c 9.269
+[62/75] NancyPelosi0_0               sang      csim 0.894  psnr 20.365  ssim 0.686  lse_offset -1.000  lse_d 7.364  lse_c 7.665
+[63/75] Radio45_0                    sang      csim 0.925  psnr 17.415  ssim 0.518  lse_offset -1.000  lse_d 7.410  lse_c 7.256
+[64/75] MitchDaniels0_0              sang      csim 0.950  psnr 19.434  ssim 0.688  lse_offset -1.000  lse_d 7.133  lse_c 6.219
+[65/75] Radio50_0                    sang      csim 0.971  psnr 21.987  ssim 0.774  lse_offset -1.000  lse_d 6.549  lse_c 7.980
+[66/75] CatherineCortezMasto_0       sang      csim 0.960  psnr 19.183  ssim 0.632  lse_offset -1.000  lse_d 6.865  lse_c 7.903
+[67/75] Radio5_0                     sang      csim 0.922  psnr 19.959  ssim 0.720  lse_offset -1.000  lse_d 7.233  lse_c 7.290
+[68/75] LloydDoggett0_0              sang      csim 0.966  psnr 20.688  ssim 0.704  lse_offset -1.000  lse_d 6.949  lse_c 7.393
+[69/75] ToddYoung_0                  sang      csim 0.961  psnr 19.891  ssim 0.719  lse_offset -1.000  lse_d 7.883  lse_c 6.414
+[70/75] Radio14_0                    sang      csim 0.938  psnr 18.085  ssim 0.592  lse_offset -2.000  lse_d 7.710  lse_c 6.999
+[71/75] JohnBoehner1_0               sang      csim 0.961  psnr 20.641  ssim 0.738  lse_offset 0.000  lse_d 7.411  lse_c 6.180
+[72/75] DianaDeGette1_0              sang      csim 0.958  psnr 23.640  ssim 0.760  lse_offset -1.000  lse_d 7.634  lse_c 5.919
+[73/75] KatherineClark_0             sang      csim 0.848  psnr 21.845  ssim 0.659  lse_offset -2.000  lse_d 7.158  lse_c 8.026
+[74/75] JimHimes_0                   sang      csim 0.953  psnr 22.626  ssim 0.763  lse_offset -1.000  lse_d 7.462  lse_c 7.411
+[75/75] CandiceMiller0_0             sang      csim 0.903  psnr 21.223  ssim 0.761  lse_offset -1.000  lse_d 7.861  lse_c 6.608
+clips done in 13224 s
+
+| Source | Method | Family | Params | FID ↓ | FVD ↓ | CSIM ↑ | LSE-C ↑ | LSE-D ↓ | PSNR ↑ | SSIM ↑ | E-FID ↓ |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Ours (n=75, 10 s) | SANG-M (lang_en_last: g=2,mouth=1.25,tau=0.5,avg=4,steps=6) | flow-matching DiT, 42-d | 53.4 M +LP | 18.853 | 47.384 | 0.936 | 7.07 | 7.454 | 19.775 | 0.691 | – |
+| FLOAT Tab. 1 | SadTalker | 3DMM + warping | n/r | 71.95 | 339.06 | 0.644 | 7.305 | 7.947 | – | – | 1.914 |
+| FLOAT Tab. 1 | EDTalk | motion bases | n/r | 50.08 | 211.28 | 0.626 | 7.623 | 8.123 | – | – | 1.579 |
+| FLOAT Tab. 1 | AniTalker | motion | n/r | 39.51 | 184.45 | 0.643 | 7.288 | 7.907 | – | – | 1.83 |
+| FLOAT Tab. 1 | Hallo | pixel (SD-1.5) | ~1.7 B est. | 25.36 | 197.20 | 0.869 | 7.582 | 7.792 | – | – | 1.039 |
+| FLOAT Tab. 1 | EchoMimic | pixel (SD-1.5) | ~1.7 B est. | 33.55 | 296.76 | 0.823 | 6.242 | 8.903 | – | – | 1.234 |
+| FLOAT Tab. 1 | FLOAT | motion latent | n/r | 21.10 | 162.05 | 0.843 | 8.222 | 7.29 | – | – | 1.229 |
+| KDTalker Tab. 1 | Real video | - | n/r | – | – | – | 8.243 | 6.929 | – | – | – |
+| KDTalker Tab. 1 | KDTalker | LivePortrait keypoints | 42.9 M +LP | 9.756 | – | 0.949 | 7.326 | 7.548 | – | – | – |
+| Teller Tab. 1 | Real video | - | n/r | – | – | – | 8.094 | 6.976 | – | – | – |
+| Teller Tab. 1 | Teller | motion tokens (AR) | n/r | 21.352 | 173.463 | – | 7.696 | 7.536 | – | – | – |
+| IMTalker Tab. 2 | FLOAT | motion latent | n/r | 9.164 | 198.964 | 0.843 | – | – | – | – | – |
+| IMTalker Tab. 2 | Ditto | LivePortrait motion | n/r +LP | 11.746 | – | 0.886 | – | – | – | – | – |
+| IMTalker Tab. 2 | IMTalker | implicit motion | 39 M + 124 M | 9.084 | 143.623 | 0.869 | 7.711 | – | – | – | – |
+| SoulX Tab. 3 | EchoMimic | pixel (SD-1.5) | ~1.7 B est. | 9.00 | 155.71 | – | 3.56 | 10.22 | – | – | – |
+| SoulX Tab. 3 | SoulX-FlashHead Pro | pixel (Wan2.1) | 1.3 B | 9.97 | 111.38 | – | 5.73 | 8.77 | – | – | – |
+| SoulX Tab. 3 | SoulX-FlashHead Lite | pixel (Wan2.1) | 1.3 B | 11.37 | 126.52 | – | 4.21 | 9.49 | – | – | – |
+| SoulX Tab. 3 | Ditto | LivePortrait motion | n/r +LP | 12.35 | 199.13 | – | 3.57 | 10.49 | – | – | – |
+| SoulX Tab. 3 | Sonic | pixel | n/r | 13.53 | 113.31 | – | 5.17 | 8.69 | – | – | – |
+| SoulX Tab. 3 | Hallo3 | pixel | n/r | 15.95 | 160.94 | – | 3.18 | 10.72 | – | – | – |
+| SoulX Tab. 3 | AniPortrait | pixel | n/r | 19.83 | 242.29 | – | 1.89 | 11.91 | – | – | – |
+| SoulX Tab. 3 | SadTalker | 3DMM + warping | n/r | 21.58 | 207.67 | – | 4.60 | 9.21 | – | – | – |
+| Playmate2 | Playmate2 (after DPO) | pixel | n/r | – | – | – | 8.15 | 7.32 | – | – | – |
