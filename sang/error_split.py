@@ -59,7 +59,8 @@ def sound_of(tok: str) -> str:
 
 
 def is_phone(tok: str) -> bool:
-    return bool(tok) and not tok.startswith(("<", "[", "|"))
+    """A phoneme token: not padding / special (<pad>, [UNK]), not a word boundary ('|' or whitespace)."""
+    return bool(tok.strip()) and not tok.startswith(("<", "[", "|"))
 
 
 def phone_spikes(post: np.ndarray, tokens: dict, n: int) -> list[tuple[int, str]]:

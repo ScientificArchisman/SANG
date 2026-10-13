@@ -49,6 +49,48 @@ def load_script(name: str):
     return mod
 
 
+def aligned_splits(cfg: dict, cache: Path, sync_offsets, langs, min_frames: int):
+    """The val clips naturalness.py scores (sorted, aligned, >= min_frames) plus the training rows (same
+    filters, the checkpoint's training languages) and what clip_groups needs.
+    -> (train, val, so, groups_of) with groups_of(row) -> set of groups."""
+    tm, nat = load_script("train_motion"), load_script("naturalness")
+    train_rows, val = tm.split_by_speaker(tm.load_index(cache), cfg["val_frac"], cfg["seed"])
+    lang_of = clip_languages(cache)
+    meta = cache / "talkvid_meta.json"
+    person_of = {k: v.get("person") for k, v in json.loads(meta.read_text()).items()} if meta.exists() else {}
+    train_rows, _ = filter_langs(train_rows, parse_langs(cfg.get("lang")), lang_of)
+    train_persons = {person_of.get(clip_key(r)) for r in train_rows} - {None}
+    if langs is not None:
+        val, _ = filter_langs(val, langs, lang_of)
+    so = SyncOffsets.load(sync_offsets) if sync_offsets else None
+    if so is not None:
+        val, why = so.filter(val)
+        train_rows, _ = so.filter(train_rows)
+        print(f"sync offsets {sync_offsets}: dropped val {why}", flush=True)
+    keep = lambda rows: [r for r in sorted(rows, key=lambda r: r["clip"]) if r["n"] >= min_frames]
+    return keep(train_rows), keep(val), so, lambda r: nat.clip_groups(r, lang_of, person_of, train_persons)
+
+
+def load_clip(r: dict, so, read, phon, max_frames: int) -> dict:
+    """One clip, audio moved by its SyncNet offset: real 42-d targets, lip opening, WavLM features,
+    waveform, pauses and phoneme spikes."""
+    d = torch.load(r["path"], map_location="cpu", weights_only=True)
+    n = min(max_frames, int(d["n"]))
+    s = so.shift(r) if so is not None else 0
+    wav = shift_wav(load_wav(r["clip"], r.get("start", 0), n), s)
+    y_real = to_target(d["m"][:n].float())
+    return {"n": n, "wav": wav, "kp": d["kp"][:n].float(), "y": y_real, "lip": read["lip"](y_real).numpy(),
+            "audio": shift_ticks(d["audio"][: 2 * n].float(), s), "pause": pauses(energy_db(wav, n)),
+            "spikes": phone_spikes(phon.posteriors(wav).numpy(), phon.tokens, n)}
+
+
+def generate_lips(model, norm, cfg: dict, read, c: dict, k: int, samp: dict, seed: int, dev: str) -> np.ndarray:
+    """SANG's lip opening for a load_clip() clip, frame k as the reference."""
+    ref = norm.ref(c["kp"][k:k + 1].to(dev), c["y"][k:k + 1].to(dev))
+    y, _ = guided_generate(model, c["audio"][None].to(dev), ref, c["n"], cfg, norm, c["wav"], None, "none", seed, sampler=samp)
+    return read["lip"](norm.untarget(y[0]).cpu()).numpy()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", default=str(REPO / "runs/b1_lognorm03/last.pt"))
@@ -78,21 +120,8 @@ def main() -> None:
     read = load_readouts(cache / "openness.json")
 
     # the same val clips as naturalness.py
-    tm, nat = load_script("train_motion"), load_script("naturalness")
-    train_rows, val = tm.split_by_speaker(tm.load_index(cache), cfg["val_frac"], cfg["seed"])
-    lang_of = clip_languages(cache)
-    meta = cache / "talkvid_meta.json"
-    person_of = {k: v.get("person") for k, v in json.loads(meta.read_text()).items()} if meta.exists() else {}
-    train_rows, _ = filter_langs(train_rows, parse_langs(cfg.get("lang")), lang_of)
-    train_persons = {person_of.get(clip_key(r)) for r in train_rows} - {None}
-    langs = parse_langs(args.lang)
-    if langs is not None:
-        val, _ = filter_langs(val, langs, lang_of)
-    so = SyncOffsets.load(args.sync_offsets) if args.sync_offsets else None
-    if so is not None:
-        val, why = so.filter(val)
-        print(f"sync offsets {args.sync_offsets}: dropped {why}", flush=True)
-    val = [r for r in sorted(val, key=lambda r: r["clip"]) if r["n"] >= args.min_frames][: args.n]
+    _, val, so, groups_of = aligned_splits(cfg, cache, args.sync_offsets, parse_langs(args.lang), args.min_frames)
+    val = val[: args.n]
     print(f"{len(val)} val clips from {len({Path(r['path']).parent.name for r in val})} videos; "
           f"{args.ckpt} (step {ck['step']}), sampler {args.sampler}", flush=True)
 
@@ -100,25 +129,16 @@ def main() -> None:
     recs, fes, t0 = [], [], time.time()
     for i, r in enumerate(val, 1):
         try:
-            d = torch.load(r["path"], map_location="cpu", weights_only=True)
-            n = min(args.max_frames, int(d["n"]))
-            s = so.shift(r) if so is not None else 0
-            wav = shift_wav(load_wav(r["clip"], r.get("start", 0), n), s)
-            audio = shift_ticks(d["audio"][: 2 * n].float(), s)
-            y_real = to_target(d["m"][:n].float())
-            real = read["lip"](y_real).numpy()
+            c = load_clip(r, so, read, phon, args.max_frames)
+            n, real, pause, spikes = c["n"], c["lip"], c["pause"], c["spikes"]
             k = 0 if args.ref_frame == "first" else int(np.abs(real - np.median(real)).argmin())
-            ref = norm.ref(d["kp"][k:k + 1].float().to(dev), y_real[k:k + 1].to(dev))
-            y, _ = guided_generate(model, audio[None].to(dev), ref, n, cfg, norm, wav, None, "none", args.seed, sampler=samp)
-            g = read["lip"](norm.untarget(y[0]).cpu()).numpy()
-            pause = pauses(energy_db(wav, n))
-            spikes = phone_spikes(phon.posteriors(wav).numpy(), phon.tokens, n)
+            g = generate_lips(model, norm, cfg, read, c, k, samp, args.seed, dev)
             rec = split_clip(g, real, args.max_lag)
             if not rec:
                 continue
             rec.update(clip=clip_key(r), rate=speech_rate(spikes, pause, n), ref_frame=k,
                        ref_open=float(real[k]), real_mean=float(real.mean()), gen_mean=float(g.mean()),
-                       groups=sorted(nat.clip_groups(r, lang_of, person_of, train_persons)))
+                       groups=sorted(groups_of(r)))
             recs.append(rec)
             fes.append(frame_errors(g, real, frame_sounds(spikes, pause, n, args.reach)))
         except Exception as e:                                   # one bad clip never kills the run
@@ -154,7 +174,7 @@ def main() -> None:
           f"at its 90th percentile {allc['speed_q90_r']:.3f}; mean speed {allc['speed_r']:.3f}. On the real lips' fastest "
           f"20 % of frames {allc['speed_r_fast']:.3f} (biased low for any imperfect model: compare models, not against 1)")
 
-    groups = {g: summarise([r for r in recs if g in r["groups"]]) for g in nat.GROUPS}
+    groups = {g: summarise([r for r in recs if g in r["groups"]]) for g in load_script("naturalness").GROUPS}
     rates = np.array([r["rate"] for r in recs])
     edges = np.nanquantile(rates, [1 / 3, 2 / 3])
     for name, lo, hi in (("slow third", -np.inf, edges[0]), ("middle third", edges[0], edges[1]), ("fast third", edges[1], np.inf)):
