@@ -1,0 +1,66 @@
+[job] 180279 on gpu08 | gpu: NVIDIA A100 80GB PCIe | cpus: 2 | env: avcodec | commit: 43da7f6 | 2026-10-13 13:34:44
+[job] python -u scripts/coartic_prior.py --ckpt runs/b1_lognorm03/last.pt --sync-offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json
+sync offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json: dropped val {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}
+600 training clips for the prior, 300 val clips x 8 SANG samples; runs/b1_lognorm03/last.pt (step 15000), sampler g=2,mouth=1.25,tau=0.5,avg=4,steps=6
+phoneme vocabulary: 388 phonemes; not phonemes: ['</s>', '<pad>', '<s>', '<unk>']
+  train 100/600 clips, 23 s
+  train 200/600 clips, 43 s
+  train 300/600 clips, 60 s
+  train 400/600 clips, 80 s
+  train 500/600 clips, 95 s
+  train 600/600 clips, 116 s
+
+1. FIT on 600 training clips
+  lag -3: train corr 0.379
+  lag -2: train corr 0.496
+  lag -1: train corr 0.527
+  lag +0: train corr 0.452
+  lag +1: train corr 0.322
+  lag +2: train corr 0.186
+  lag +3: train corr 0.107
+  pass 1: train corr 0.547 (least-squares targets 0.545)
+  pass 2: train corr 0.548 (least-squares targets 0.548)
+   lag -1 frames (> 0: the lips follow the phoneme spike); train corr(prior, real) 0.548
+   class              target (z)   alpha   theta  reach (frames)
+   closure p/b/m           -1.41    1.00    0.50             2.0
+   labiodental f/v         -0.85    1.00    0.50             2.0
+   open vowel              +0.36    1.00    0.50             2.0
+   rounded vowel/w         -0.73    1.00    0.50             2.0
+   other vowel             +0.79    1.00    0.50             2.0
+   other consonant         +0.70    1.00    0.50             2.0
+   pause                   -0.07    0.25    0.30             3.3
+   most closed: b -2.78, m -2.44, p -2.36, w -1.94, f -1.88, v -1.80
+   most open:   ai5 +1.59, eɪ +1.67, ɑː +1.69, aɪ +1.84, ɑ5 +2.14, æ +2.18
+  val 50/300 clips, 231 s
+  val 100/300 clips, 314 s
+  val 150/300 clips, 403 s
+  val 200/300 clips, 493 s
+  val 250/300 clips, 576 s
+  val 300/300 clips, 670 s
+
+2. VAL (300 clips, 41 videos, 8 SANG samples each)
+   lip corr with the real lips: one SANG sample 0.780, SANG mean 0.782, prior 0.575 (prior beats the SANG mean on 4 % of clips); prior vs SANG mean 0.667
+   partial correlation with the real lips (mean ± 95 % interval over videos; median; % of clips > 0):
+     half B | half A (noise check)   +0.059 ± 0.027   median +0.057   64 %
+     prior | half A                  +0.108 ± 0.031   median +0.101   71 %
+     prior | SANG mean (the gate)    +0.108 ± 0.031   median +0.106   71 %
+   held-out blends z(base) + w z(other), w fitted on the other half of the videos:
+     half B on half A     lip corr 0.781 -> 0.782 (+0.001; better on 56 % of clips; w [2.0, 0.95])
+     prior on half A      lip corr 0.781 -> 0.782 (+0.001; better on 62 % of clips; w [0.05, 0.15])
+     prior on SANG mean   lip corr 0.782 -> 0.783 (+0.001; better on 61 % of clips; w [0.05, 0.15])
+   VERDICT: INCONCLUSIVE  (noise check partial(B | A) +0.059 vs < 0.05; partial(prior | SANG mean) +0.108 vs >= 0.1)
+
+3. BY GROUP (partials: means; gain: held-out blend 'prior on SANG mean')
+   group                       clips   SANG  prior     B|A     p|A  p|mean    gain
+   all                           300  0.782  0.575  +0.059  +0.108  +0.108  +0.001
+   English                       265  0.796  0.596  +0.061  +0.117  +0.117  +0.002
+   non-English                    35  0.676  0.412  +0.045  +0.043  +0.046  -0.004
+   no person overlap             223  0.764  0.575  +0.048  +0.111  +0.111  +0.001
+   slow speech third             100  0.782  0.558  +0.093  +0.077  +0.076  -0.000
+   middle speech third            99  0.790  0.588  +0.023  +0.141  +0.141  +0.004
+   fast speech third             101  0.773  0.577  +0.062  +0.108  +0.108  +0.000
+   least lip movement third      100  0.688  0.489  +0.063  +0.103  +0.103  -0.002
+   middle lip movement third     100  0.791  0.604  +0.029  +0.129  +0.129  +0.003
+   most lip movement third       100  0.865  0.631  +0.087  +0.093  +0.093  +0.001
+
+wrote /beegfs/work/achakraborti/SANG/results/coartic/b1_lognorm03_step15000.json (683 s)
