@@ -1,0 +1,43 @@
+[job] 180252 on gpu08 | gpu: NVIDIA A100 80GB PCIe | cpus: 2 | env: avcodec | commit: b9df457 | 2026-10-13 12:40:22
+[job] python -u scripts/error_split.py --ckpt runs/c_lang_en/last.pt --sync-offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json
+sync offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json: dropped {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}
+300 val clips from 41 videos; runs/c_lang_en/last.pt (step 15000), sampler g=2,mouth=1.25,tau=0.5,avg=4,steps=6
+  50/300 clips, 20 s
+  100/300 clips, 39 s
+  150/300 clips, 59 s
+  200/300 clips, 77 s
+  250/300 clips, 93 s
+  300/300 clips, 115 s
+
+1. ERROR SPLIT (300 clips; per-clip squared error / real variance = 4.346)
+   lip corr 0.772 -> 0.800 at each clip's best shift (|lag| <= 4); CCC 0.700; amplitude 1.133; slope 0.787; bias +0.247 real std
+   bias       2.737  (63.0 %)
+   amplitude  0.917  (21.1 %)
+   timing     0.070  ( 1.6 %)
+   shape      0.623  (14.3 %)
+   best lag per clip (> 0 = generated later): {-4: 3, -2: 1, -1: 35, 0: 188, 1: 67, 2: 2, 4: 4}; |lag| >= 2 in 3 % of clips
+
+2. BY SOUND (frames labelled by the nearest phoneme; signed error > 0 = lips too open)
+   sound               % frames   % error   ratio   signed
+   closure p/b/m            5.8       2.9    0.49   -0.056
+   labiodental f/v          3.4       1.2    0.34   +0.046
+   open vowel              15.6      28.5    1.83   +0.412
+   rounded vowel/w          8.0       2.9    0.37   +0.061
+   other vowel             18.2      18.8    1.03   +0.289
+   other consonant         39.2      36.9    0.94   +0.228
+   pause                    3.3       5.5    1.65   +0.658
+   unlabelled               6.3       3.3    0.51   -0.079
+
+3. FAST TRANSITIONS: generated / real lip speed 0.733 on the fastest 20 % of frames vs 1.277 on all frames (< 1 = too sluggish)
+
+4. BY GROUP
+   group                           clips   corr   best    CCC    amp   fast      bias amplitude    timing     shape
+   all                               300  0.772  0.800  0.700  1.133  0.733     63.0%     21.1%      1.6%     14.3%
+   English                           265  0.788  0.813  0.718  1.113  0.745     62.9%     20.0%      1.7%     15.4%
+   non-English                        35  0.651  0.698  0.563  1.291  0.645     63.1%     24.3%      1.2%     11.3%
+   no person overlap                 226  0.750  0.780  0.676  1.163  0.736     63.9%     21.5%      1.4%     13.2%
+   slow third (3.6-10.4 ph/s)        100  0.768  0.797  0.703  0.952  0.604     37.3%      5.5%      6.5%     50.7%
+   middle third (10.4-12.0 ph/s)      99  0.782  0.804  0.704  1.312  0.834     65.6%     24.0%      0.9%      9.5%
+   fast third (12.0-18.2 ph/s)       101  0.766  0.799  0.692  1.139  0.761     60.3%     15.0%      3.0%     21.7%
+
+wrote /beegfs/work/achakraborti/SANG/results/error_split/c_lang_en_step15000.json (115 s)
