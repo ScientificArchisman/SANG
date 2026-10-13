@@ -24,6 +24,10 @@ openness readout) and the CTC phoneme posteriors of the clip's audio. Pure numpy
            speed_r_fast, the generated speed on the real lips' fastest 20 % of frames, is biased low for
            any imperfect model (frames are selected on the real trace): compare models, not against 1.
   rate     phonemes per second of speech, from the same spikes.
+  bias     where the per-clip opening bias d = mean g - mean y (lip-opening units) comes from: a
+           constant offset, the reference frame (its opening minus the clip's mean) and the speaker's
+           usual opening (clip mean minus the mean over clips). Least squares d ~ a + b ref + c level;
+           each step's share of sum d^2 explained (sum d^2 is the pooled bias part of the error).
 """
 import numpy as np
 
@@ -170,3 +174,30 @@ def summarise(recs: list[dict]) -> dict:
             "abs_lag_ge2_pct": float(100 * (np.abs(lags) >= 2).mean()),
             "lag_hist": {int(l): int((lags == l).sum()) for l in np.unique(lags)},
             "rate": m("rate") if "rate" in recs[0] else float("nan")}
+
+
+def bias_sources(recs: list[dict]) -> dict:
+    """Per-clip opening bias vs the reference frame and the speaker's usual opening (module docstring).
+    Records need bias, sy, ref_open (real lip opening at the reference frame) and real_mean."""
+    recs = [r for r in recs if r and "ref_open" in r]
+    if len(recs) < 4:
+        return {}
+    d = np.array([r["bias"] * r["sy"] for r in recs])
+    ref = np.array([r["ref_open"] - r["real_mean"] for r in recs])
+    level = np.array([r["real_mean"] for r in recs])
+    level = level - level.mean()
+    tot = float(np.sum(d ** 2))
+
+    def fit(cols):
+        X = np.column_stack([np.ones_like(d)] + cols)
+        coef = np.linalg.lstsq(X, d, rcond=None)[0]
+        return coef, 100 * (1 - float(np.sum((d - X @ coef) ** 2)) / tot)
+
+    (a0,), e0 = fit([])
+    (a1, b1), e1 = fit([ref])
+    (a2, c2), e2 = fit([level])
+    (a, b, c), e = fit([ref, level])
+    return {"clips": len(recs), "corr_ref": corr(d, ref), "corr_level": corr(d, level),
+            "ref_z_median": float(np.median(np.abs(ref / np.array([r["sy"] for r in recs])))),
+            "explained_pct": {"constant": e0, "constant + reference": e1, "constant + level": e2, "all three": e},
+            "coef": {"constant": float(a), "reference": float(b), "level": float(c)}}

@@ -11,6 +11,9 @@ Reports (definitions in sang/error_split.py):
   2. by sound: closures p/b/m, f/v, open vowels, rounded vowels, other vowels, other consonants, pauses
   3. fast transitions: generated vs real lip speed where the real lips move fastest
   4. by group: all, English, non-English, no person overlap; and by speaking-rate third
+  5. the per-clip opening bias vs the reference frame and the speaker's usual opening. --ref-frame
+     median uses the frame whose lip opening is the clip's median instead of frame 0 (an oracle
+     'typical' photo): if the bias drops, the reference photo's mouth causes it
 Reading: timing large -> data alignment (C3 audit); shape concentrated in fast transitions / sluggish
 lips -> coarticulation (C1) or a lip-reading loss (C2); one language far worse -> C1 / C3.
 """
@@ -27,7 +30,7 @@ import torch
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.error_split import (PARTS, SOUNDS, frame_errors, frame_sounds, phone_spikes, pool_sounds, speech_rate,
+from sang.error_split import (PARTS, SOUNDS, bias_sources, frame_errors, frame_sounds, phone_spikes, pool_sounds, speech_rate,
                               split_clip, summarise)
 from sang.motion import to_target
 from sang.motion_model import Norm, build, ema_weights, parse_spec, sampler_kwargs
@@ -57,6 +60,8 @@ def main() -> None:
     ap.add_argument("--min-frames", type=int, default=125)
     ap.add_argument("--max-lag", type=int, default=4, help="frames; the clip's best constant shift is searched in +/- this")
     ap.add_argument("--reach", type=int, default=3, help="frames from a phoneme spike that still carry its label")
+    ap.add_argument("--ref-frame", default="first", choices=["first", "median"],
+                    help="reference frame: frame 0 (as everywhere else) or the frame with the clip's median lip opening")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--name", default="")
     ap.add_argument("--out", default=str(REPO / "results/error_split"))
@@ -101,16 +106,18 @@ def main() -> None:
             wav = shift_wav(load_wav(r["clip"], r.get("start", 0), n), s)
             audio = shift_ticks(d["audio"][: 2 * n].float(), s)
             y_real = to_target(d["m"][:n].float())
-            ref = norm.ref(d["kp"][:1].float().to(dev), y_real[:1].to(dev))
+            real = read["lip"](y_real).numpy()
+            k = 0 if args.ref_frame == "first" else int(np.abs(real - np.median(real)).argmin())
+            ref = norm.ref(d["kp"][k:k + 1].float().to(dev), y_real[k:k + 1].to(dev))
             y, _ = guided_generate(model, audio[None].to(dev), ref, n, cfg, norm, wav, None, "none", args.seed, sampler=samp)
             g = read["lip"](norm.untarget(y[0]).cpu()).numpy()
-            real = read["lip"](y_real).numpy()
             pause = pauses(energy_db(wav, n))
             spikes = phone_spikes(phon.posteriors(wav).numpy(), phon.tokens, n)
             rec = split_clip(g, real, args.max_lag)
             if not rec:
                 continue
-            rec.update(clip=clip_key(r), rate=speech_rate(spikes, pause, n),
+            rec.update(clip=clip_key(r), rate=speech_rate(spikes, pause, n), ref_frame=k,
+                       ref_open=float(real[k]), real_mean=float(real.mean()), gen_mean=float(g.mean()),
                        groups=sorted(nat.clip_groups(r, lang_of, person_of, train_persons)))
             recs.append(rec)
             fes.append(frame_errors(g, real, frame_sounds(spikes, pause, n, args.reach)))
@@ -168,11 +175,24 @@ def main() -> None:
                   f"{v['std_r_median']:>7.3f}{v['speed_q90_r']:>7.3f}" + "".join(f"{v['pooled_pct'][p]:>9.1f}%" for p in PARTS))
     print("   amp = mean amplitude ratio, amp50 = its median, v90 = 90th-percentile lip speed ratio (median over clips)")
 
+    bs = bias_sources(recs)
+    if bs:
+        ex, co = bs["explained_pct"], bs["coef"]
+        print(f"\n5. OPENING BIAS (generated - real mean opening per clip, {allc['pooled_pct']['bias']:.0f} % of the squared "
+              f"error); reference frame: {args.ref_frame}")
+        print(f"   corr with the reference frame's opening minus the clip mean: {bs['corr_ref']:+.3f} "
+              f"(median |reference - mean| {bs['ref_z_median']:.2f} real std); with the speaker's usual opening: {bs['corr_level']:+.3f}")
+        print(f"   share of the bias error explained: constant offset {ex['constant']:.0f} %, + reference frame "
+              f"{ex['constant + reference']:.0f} %, + speaker level {ex['constant + level']:.0f} %, all three {ex['all three']:.0f} %")
+        print(f"   fit: bias = {co['constant']:+.4f} {co['reference']:+.3f} x (reference - clip mean) "
+              f"{co['level']:+.3f} x (speaker level - average)   [lip-opening units; level < 0 = pulled toward the average]")
+
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     name = f"{Path(args.ckpt).parent.name}_step{ck['step']}" + (f"_{args.name}" if args.name else "") + ".json"
     (out / name).write_text(json.dumps({"ckpt": args.ckpt, "step": ck["step"], "sampler": args.sampler,
-                                        "summary": allc, "sounds": snd, "groups": groups, "clips": recs},
+                                        "ref_frame": args.ref_frame, "summary": allc, "sounds": snd, "groups": groups,
+                                        "bias_sources": bs, "clips": recs},
                                        indent=1, default=float))
     print(f"\nwrote {out / name} ({time.time() - t0:.0f} s)", flush=True)
 

@@ -85,3 +85,17 @@ def test_speed_quantiles_are_not_fooled_by_frame_selection():
     rec = es.split_clip(g, y)
     assert rec["speed_r_fast"] < 1                                          # selected on the real trace: looks sluggish
     assert rec["speed_q90_r"] > 1                                           # quantile by quantile: it is not
+
+
+def test_bias_sources_separates_the_reference_frame_from_the_speaker_level():
+    rng = np.random.default_rng(7)
+    recs = []
+    for _ in range(200):
+        real_mean, sy = rng.normal(0.3, 0.05), 0.05
+        ref_open = real_mean + rng.normal(0, sy)
+        d = 0.01 + 0.5 * (ref_open - real_mean)                            # follows the reference, no level effect
+        recs.append({"bias": d / sy, "sy": sy, "ref_open": ref_open, "real_mean": real_mean})
+    bs = es.bias_sources(recs)
+    assert abs(bs["coef"]["reference"] - 0.5) < 1e-9 and abs(bs["coef"]["level"]) < 1e-9
+    assert bs["corr_ref"] > 0.99 and bs["explained_pct"]["all three"] > 99.9
+    assert bs["explained_pct"]["constant + reference"] > bs["explained_pct"]["constant + level"]
