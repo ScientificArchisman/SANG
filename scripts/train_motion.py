@@ -30,6 +30,7 @@ sys.path.insert(0, str(REPO))
 
 from sang.motion import REGIONS, to_target
 from sang.motion_model import Norm, build, flow_loss, sample
+from sang.naturalness import typical_frames
 from sang.paths import load_index
 from sang.talkvid import clip_languages, filter_langs, parse_langs
 from sang.sync import SyncOffsets, clip_key, shift_ticks
@@ -68,14 +69,23 @@ def fit_norm(rows: list[dict], n_clips: int = 500, seed: int = 0) -> Norm:
 
 class MotionWindows(Dataset):
     """Random windows of P prefix + L target frames. The reference is a random frame of the same
-    clip (Ditto's choice), which at inference becomes the source image.
+    clip (Ditto's choice), which at inference becomes the source image. ref_frame='median': a random
+    one of the clip's TYPICAL frames instead -- lip opening within the middle `ref_band` of the clip
+    by rank (sang.naturalness.typical_frames), so the reference shows the speaker's usual opening
+    (C0, docs/research_log.md 3.12: with random references the model pulls it 39 % toward the average).
 
     preload=True reads every clip once at start-up and keeps the normalised 42-d targets, reference
     features and fp16 audio in RAM (~2 MB per 20 s clip). Reading one .pt per SAMPLE from BeeGFS
     capped the first run at ~1.4 it/s: 256 network file opens per step."""
 
     def __init__(self, rows, L: int, P: int, norm: Norm, per_clip: int, fixed: bool = False,
-                 preload: bool = True, threads: int = 16, shifts: dict | None = None, neg: bool = False):
+                 preload: bool = True, threads: int = 16, shifts: dict | None = None, neg: bool = False,
+                 ref_frame: str = "random", lip=None, ref_band: float = 0.2):
+        if ref_frame not in ("random", "median"):
+            raise ValueError(f"ref_frame must be 'random' or 'median', got {ref_frame!r}")
+        if ref_frame == "median" and lip is None:
+            raise ValueError("ref_frame='median' needs the lip-opening readout (openness.json)")
+        self.ref_frame, self.lip, self.ref_band = ref_frame, lip, ref_band
         self.rows = [r for r in rows if r["n"] >= L + P]
         self.L, self.P, self.norm, self.per_clip = L, P, norm, per_clip
         self.neg = neg                    # also return another window of the same clip (contrastive FM)
@@ -89,26 +99,29 @@ class MotionWindows(Dataset):
             t0 = time.time()
             with ThreadPoolExecutor(threads) as ex:          # I/O-bound: threads hide network latency
                 self.mem = list(ex.map(self._load, self.rows))
-            gb = sum(a.numel() * a.element_size() for _, _, a in self.mem) / 1e9
+            gb = sum(m[2].numel() * m[2].element_size() for m in self.mem) / 1e9
             print(f"  preloaded {len(self.mem)} clips in {time.time() - t0:.0f} s, audio {gb:.1f} GB", flush=True)
 
     def _load(self, r):
         d = torch.load(r["path"], map_location="cpu", weights_only=True)
-        y = self.norm.target(to_target(d["m"].float()))                  # [n, 42]  normalised
-        ref = self.norm.ref(d["kp"].float(), to_target(d["m"].float()))  # [n, REF_DIM] one per frame
+        y_raw = to_target(d["m"].float())
+        y = self.norm.target(y_raw)                                      # [n, 42]  normalised
+        ref = self.norm.ref(d["kp"].float(), y_raw)                      # [n, REF_DIM] one per frame
         audio = shift_ticks(d["audio"], self.shifts.get(clip_key(r), 0))  # audio-video offset corrected
-        return y, ref, audio.half().contiguous()
+        cands = (torch.from_numpy(typical_frames(self.lip(y_raw).numpy(), self.ref_band))
+                 if self.ref_frame == "median" else None)                # the clip's typical frames
+        return y, ref, audio.half().contiguous(), cands
 
     def __len__(self):
         return len(self.rows) * self.per_clip
 
     def __getitem__(self, i):
         j = i % len(self.rows)
-        y_all, ref_all, audio = self.mem[j] if self.mem is not None else self._load(self.rows[j])
+        y_all, ref_all, audio, cands = self.mem[j] if self.mem is not None else self._load(self.rows[j])
         n, span = y_all.shape[0], self.L + self.P
         rng = random.Random(i) if self.fixed else random
         s = rng.randint(0, n - span)
-        k = rng.randint(0, n - 1)
+        k = int(cands[rng.randrange(len(cands))]) if cands is not None else rng.randint(0, n - 1)
         y = y_all[s:s + span]
         item = {"prefix": y[: self.P], "target": y[self.P:], "ref": ref_all[k],
                 "audio": audio[TPF * s: TPF * (s + span)]}          # fp16: half the bytes per batch; the model casts
@@ -131,7 +144,7 @@ def neg_start(n: int, L: int, start: int, rng, min_gap: int = 16) -> slice:
 def evaluate(model, loader, cfg, dev, max_batches: int) -> dict:
     model.eval()
     g = torch.Generator(device=dev).manual_seed(0)
-    fm = n = pr = 0.0
+    fm = n = 0.0
     stats = {k: [] for k in ("mse_mouth", "mse_rot", "std_r_mouth", "vc_r_mouth",
                              "std_r_rot", "vc_r_rot", "audio_gain")}
     mouth, rot = REGIONS["mouth"], REGIONS["rot"]
@@ -144,10 +157,9 @@ def evaluate(model, loader, cfg, dev, max_batches: int) -> dict:
             break
         batch = {k: v.to(dev) for k, v in batch.items()}
         torch.manual_seed(bi)                              # same t / noise every eval
-        loss, parts = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0,
-                                t_dist="uniform", lam_prior=1.0)
-        fm += float(loss) - float(parts.get("prior", 0.0))  # the flow's own loss, as in runs without a prior
-        pr += float(parts.get("prior", 0.0))
+        loss, _ = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0,
+                            t_dist="uniform")
+        fm += float(loss)
         n += 1
         gt, L = batch["target"], batch["target"].shape[1]
         kw = dict(prefix=batch["prefix"], steps=cfg["sample_steps"], cfg_audio=cfg["cfg_audio"])
@@ -164,8 +176,7 @@ def evaluate(model, loader, cfg, dev, max_batches: int) -> dict:
                                                gt[:, 1:, idx] - gt[:, :-1, idx]))
         stats["audio_gain"].append(float((other - gt)[..., mouth].pow(2).mean() / e[..., mouth].mean()))
     model.train()
-    extra = {"val_prior": pr / max(1, n)} if getattr(model, "prior", None) is not None else {}
-    return {"val_loss": fm / max(1, n), **extra, **{k: sum(v) / max(1, len(v)) for k, v in stats.items()}}
+    return {"val_loss": fm / max(1, n), **{k: sum(v) / max(1, len(v)) for k, v in stats.items()}}
 
 
 # ---------------------------------------------------------------------- train
@@ -253,9 +264,16 @@ def main() -> None:
     L, P = cfg["frames"], cfg["prefix"]
     pre = cfg.get("preload", True)
     neg = cfg.get("lam_cfm", 0) > 0 and cfg.get("cfm_neg", "clip") == "clip"
-    train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], preload=pre, shifts=shifts, neg=neg)
+    ref_kw = {"ref_frame": cfg.get("ref_frame", "random"), "ref_band": cfg.get("ref_band", 0.2)}
+    if ref_kw["ref_frame"] == "median":
+        from sang.naturalness import load_readouts
+        ref_kw["lip"] = load_readouts(cache / "openness.json")["lip"]
+        print(f"reference frame: a typical one per clip (lip opening in the middle {ref_kw['ref_band']:.0%} "
+              f"by rank), not a random one", flush=True)
+    train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], preload=pre, shifts=shifts, neg=neg,
+                             **ref_kw)
     val_ds = MotionWindows(val_rows, L, P, norm, cfg.get("val_windows_per_clip", 4), fixed=True, preload=pre,
-                           shifts=shifts)
+                           shifts=shifts, **ref_kw)
     print(f"{len(train_ds.rows)} train / {len(val_ds.rows)} val clips "
           f"({len({Path(r['path']).parent.name for r in val_rows})} unseen val speakers)", flush=True)
     dl = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True, num_workers=cfg["workers"],
@@ -271,9 +289,7 @@ def main() -> None:
     opt = torch.optim.AdamW([{"params": decay, "weight_decay": cfg["weight_decay"]},
                              {"params": no_decay, "weight_decay": 0.0}],
                             lr=cfg["lr"], betas=tuple(cfg["betas"]))
-    n_prior = sum(p.numel() for p in model.prior.parameters()) / 1e6 if model.prior is not None else 0.0
-    print(f"MotionFlowTransformer: {sum(p.numel() for p in model.parameters()) / 1e6:.1f} M params"
-          + (f" (audio prior {n_prior:.1f} M, flow starts from mu(audio) + noise)" if n_prior else ""), flush=True)
+    print(f"MotionFlowTransformer: {sum(p.numel() for p in model.parameters()) / 1e6:.1f} M params", flush=True)
 
     step, best, bad = 0, float("inf"), 0
     if cfg.get("resume"):
@@ -289,8 +305,7 @@ def main() -> None:
 
     kw = {k: cfg[k] for k in ("lam_vel", "p_audio", "p_ref", "p_prefix", "t_dist")}
     for k, d in (("t_mean", 0.0), ("t_scale", 1.0), ("lam_cfm", 0.0), ("cfm_regions", ["mouth"]), ("lam_ccc", 0.0),
-                 ("lam_spec", 0.0), ("spec_hz", 10.0), ("spec_regions", ["mouth"]), ("aux_tmax", 0.3),
-                 ("lam_prior", 1.0)):
+                 ("lam_spec", 0.0), ("spec_hz", 10.0), ("spec_regions", ["mouth"]), ("aux_tmax", 0.3)):
         kw[k] = cfg.get(k, d)
     if kw["lam_ccc"] > 0:                                  # lip-opening readout, in normalised target space
         from sang.naturalness import load_readouts

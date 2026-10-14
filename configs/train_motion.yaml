@@ -16,6 +16,10 @@ sync_offsets: ""          # <cache_dir>/sync_offsets.json (scripts/sync_offsets.
 lang: all                 # train AND val languages (TalkVid names / Whisper codes), e.g. [English]; --lang overrides
 train_clips: 0            # > 0: random subset of N train clips (size-matched controls); --train-clips overrides
 preload: true             # clips in RAM (~2 MB each): per-sample BeeGFS reads capped run 1 at 1.4 it/s
+ref_frame: random         # reference frame per window: random (Ditto) | median = one of the clip's typical frames
+                          # (lip opening in the middle ref_band by rank); C0 found random refs pull each speaker's
+                          # usual opening 39 % toward the average (docs/research_log.md 3.12)
+ref_band: 0.2             # middle 20 % = 40th-60th percentile of the clip's lip opening
 
 # ---- model: sang/motion_model.py ----
 audio_encoder: wavlm-large
@@ -26,10 +30,6 @@ layers: 8
 heads: 8
 dropout: 0.1               # run 172260 (dropout 0) memorised 3.7k clips after <5k steps
 max_frames: 512
-prior: false              # audio prior (Phase C speed track): the flow starts from mu(audio, ref) + noise and
-                          # learns the residual; mu is a ~4 M conv net trained by MSE (sang/motion_model.py)
-prior_width: 256
-lam_prior: 1.0            # weight of the prior's MSE
 
 # ---- objective ----
 lam_vel: 1.0              # FLOAT lambda_vel = 1

@@ -40,7 +40,7 @@ from sang.motion import to_target
 from sang.motion_model import Norm, build, ema_weights, load_ema, parse_spec, sampler_kwargs
 from sang.naturalness import (FPS, Guide, PhonemeRecognizer, audio_onsets, beat_alignment, blink_events,
                               closure_minima, closure_offset, energy_db, guided_generate, head_beats,
-                              load_readouts, load_wav, pauses)
+                              load_readouts, load_wav, median_frame, pauses)
 from sang.paths import motion_cache
 from sang.sync import clip_key
 from sang.talkvid import clip_languages, filter_langs, parse_langs
@@ -142,6 +142,9 @@ def main() -> None:
     ap.add_argument("--lang", nargs="+", default=None,
                     help="val languages; default = the checkpoint's training languages (cfg 'lang'), 'all' = every "
                          "language. The breakdown by English / non-English is reported either way")
+    ap.add_argument("--ref-frame", default="first", choices=["first", "median"],
+                    help="reference frame: frame 0 (default, as always) or the frame with the clip's median lip opening "
+                         "(the convention of ref_frame=median training; an oracle 'typical photo')")
     ap.add_argument("--name", default="", help="suffix for the results file, so parallel sweeps do not overwrite")
     ap.add_argument("--out", default=str(REPO / "results/naturalness"))
     args = ap.parse_args()
@@ -193,7 +196,10 @@ def main() -> None:
             s = so.shift(r) if so is not None else 0                 # WavLM ticks; 0 = uncorrected
             wav = shift_wav(load_wav(r["clip"], r.get("start", 0), n), s)
             db = energy_db(wav, n)
-            clips.append({"row": r, "groups": clip_groups(r, lang_of, person_of, train_persons), "n": n, "y": to_target(d["m"][:n].float()), "kp0": d["kp"][0].float(),
+            y_real = to_target(d["m"][:n].float())
+            k = 0 if args.ref_frame == "first" else median_frame(read["lip"](y_real).numpy())
+            clips.append({"row": r, "groups": clip_groups(r, lang_of, person_of, train_persons), "n": n, "y": y_real,
+                          "kp0": d["kp"][k].float(), "y_ref": y_real[k:k + 1],
                           "audio": shift_ticks(d["audio"][: 2 * n].float(), s), "wav": wav, "db": db,
                           "pause": pauses(db), "events": phon.bilabials(wav, n)})
         except Exception as e:
@@ -235,7 +241,7 @@ def main() -> None:
             col = mode if not vname else f"{mode}@{vname}"
             ms, infos, t0 = [], Counter(), time.time()
             for c, rm in zip(clips, real):
-                ref = norm.ref(c["kp0"][None].to(dev), c["y"][:1].to(dev))
+                ref = norm.ref(c["kp0"][None].to(dev), c["y_ref"].to(dev))
                 y, info = guided_generate(model, c["audio"][None].to(dev), ref, c["n"], cfg, norm, c["wav"],
                                           guide, mode, args.seed, events=c["events"], sampler=samp)
                 infos.update(info)
@@ -275,6 +281,7 @@ def main() -> None:
     tag = "_variants" if args.variants else ("" if not args.cfg else "_cfg" + "-".join(f"{g:g}" for g in args.cfg))
     tag += (f"_lang-{'-'.join(langs)}" if langs and args.lang is not None else "")
     tag += ("_sync" if so is not None else "") + (f"_ema{args.ema}" if args.ema else "") + (f"_{args.name}" if args.name else "")
+    tag += "_ref-median" if args.ref_frame == "median" else ""
     name = f"{Path(args.ckpt).parent.name}_step{ck['step']}{tag}.json"
     (out / name).write_text(json.dumps({"ckpt": args.ckpt, "step": ck["step"], "stats": {k: v for k, v in st.items() if k != "ibi_s"},
                                         "val_languages": langs or "all", "table": table, "by_group": by_group,
