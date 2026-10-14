@@ -1,0 +1,40 @@
+[job] 180422 on gpu03 | gpu: NVIDIA A100 80GB PCIe | cpus: 2 | env: avcodec | commit: 1fd4bc4 | 2026-10-13 16:18:06
+[job] python -u scripts/naturalness.py --ckpt runs/c6_prior/last.pt --modes none --sync-offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json --variants g=1,steps=2 g=1,steps=3 g=1,steps=6 g=1.5,steps=3 g=2,mouth=1.25,steps=3 g=2,mouth=1.25,steps=6 g=1,tau=0.5,steps=3 g=2,mouth=1.25,tau=0.5,avg=4,steps=6 --lang all --name prior_sweep
+readout lip: held-out R^2 0.763
+readout eye: held-out R^2 0.706
+sync offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json: dropped {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}
+300 val clips from 41 unseen speakers
+audio pass: 300 clips, 1860 bilabials, 62 s
+closure offset -2 frames (hist {-4: 85, -3: 309, -2: 633, -1: 450, 0: 140, 1: 37, 2: 41, 3: 42, 4: 68}), tau_close 0.040, eye_closed 0.142, 1075 real inter-blink intervals
+none@g=1,steps=2: 19 s  {}
+none@g=1,steps=3: 25 s  {}
+none@g=1,steps=6: 46 s  {}
+none@g=1.5,steps=3: 25 s  {}
+none@g=2,mouth=1.25,steps=3: 26 s  {}
+none@g=2,mouth=1.25,steps=6: 47 s  {}
+none@g=1,tau=0.5,steps=3: 25 s  {}
+none@g=2,mouth=1.25,tau=0.5,avg=4,steps=6: 49 s  {}
+
+setting                                           lip_corr        lip_ccc      lip_std_r   closure_viol  closure_depth      eye_std_r blinks_per_min     beat_align          gen_s
+real                                                   nan            nan            nan          0.100          0.040            nan         31.600          0.630            nan
+none@g=1,steps=2                                     0.747          0.656          0.950          0.123          0.049          0.591          7.524          0.623         19.281
+none@g=1,steps=3                                     0.735          0.647          0.973          0.120          0.047          0.810         17.687          0.625         25.082
+none@g=1,steps=6                                     0.713          0.632          1.017          0.117          0.045          1.100         26.159          0.632         46.223
+none@g=1.5,steps=3                                   0.692          0.609          1.028          0.068          0.035          0.856         22.085          0.619         25.475
+none@g=2,mouth=1.25,steps=3                          0.713          0.629          1.007          0.090          0.041          0.916         25.604          0.616         25.602
+none@g=2,mouth=1.25,steps=6                          0.691          0.613          1.054          0.085          0.038          1.191         32.317          0.621         46.861
+none@g=1,tau=0.5,steps=3                             0.760          0.653          0.892          0.122          0.049          0.779         16.575          0.624         25.228
+none@g=2,mouth=1.25,tau=0.5,avg=4,steps=6            0.743          0.642          0.928          0.098          0.042          1.149         31.368          0.620         49.465
+
+lip sync by group (clips  lip_corr  lip_ccc); val languages all
+setting                                                           all                   English               non-English         no person overlap
+none@g=1,steps=2                                300    0.747    0.656     265    0.762    0.671      35    0.634    0.542     223    0.729    0.642
+none@g=1,steps=3                                300    0.735    0.647     265    0.750    0.663      35    0.616    0.529     223    0.717    0.633
+none@g=1,steps=6                                300    0.713    0.632     265    0.730    0.649      35    0.586    0.510     223    0.697    0.619
+none@g=1.5,steps=3                              300    0.692    0.609     265    0.707    0.625      35    0.573    0.489     223    0.670    0.588
+none@g=2,mouth=1.25,steps=3                     300    0.713    0.629     265    0.729    0.645      35    0.595    0.509     223    0.693    0.612
+none@g=2,mouth=1.25,steps=6                     300    0.691    0.613     265    0.708    0.629      35    0.563    0.488     223    0.673    0.596
+none@g=1,tau=0.5,steps=3                        300    0.760    0.653     265    0.775    0.669      35    0.648    0.536     223    0.743    0.643
+none@g=2,mouth=1.25,tau=0.5,avg=4,steps=6       300    0.743    0.642     265    0.758    0.658      35    0.631    0.522     223    0.724    0.626
+
+wrote /beegfs/work/achakraborti/SANG/results/naturalness/c6_prior_step15000_variants_sync_prior_sweep.json
