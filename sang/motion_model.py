@@ -21,14 +21,6 @@ audio-visual alignment is built into the architecture instead of learned from po
 Long clips follow FLOAT: each window is conditioned on the last P generated frames as a clean
 prefix, and that prefix is dropped with p = 0.5 in training so the first window of a clip -- which
 has none -- is in distribution.
-
-Audio prior (cfg `prior: true`, Phase C speed track). A small conv net predicts the mean motion
-mu(audio, ref) for every frame of the window, trained by MSE. The flow then starts from
-mu + noise instead of noise (Grad-TTS's text-dependent prior mean, PriorGrad), implemented as a flow
-on the residual x0 - mu: x_t = (1 - t)(x0 - mu) + t eps, output mu + residual. mu is detached from
-the flow's loss, and is also a per-frame condition that is dropped together with the audio, so the
-no-audio branch of classifier-free guidance stays audio-free. Old checkpoints have no prior and
-sample exactly as before.
 """
 import math
 
@@ -63,36 +55,6 @@ class DiTBlock(nn.Module):
         return x + g2 * self.ff(_modulate(self.n2(x), s2, k2))
 
 
-def audio_frames(audio: torch.Tensor, n_frames: int, tpf: int) -> torch.Tensor:
-    """[B, >= tpf*F, D] WavLM ticks -> [B, tpf*D, F] channels-first, zero-padded past the end of the clip."""
-    B, _, D = audio.shape
-    a = audio[:, : n_frames * tpf].float()
-    if a.shape[1] < n_frames * tpf:                          # clip ended: pad with silence ticks
-        a = F.pad(a, (0, 0, 0, n_frames * tpf - a.shape[1]))
-    return a.reshape(B, n_frames, tpf * D).transpose(1, 2)
-
-
-class AudioPrior(nn.Module):
-    """mu(audio, ref) -> [B, F, 42]: the audio-conditioned mean the flow starts from (module docstring).
-    Residual dilated 1-D convs over frames, receptive field +-18 frames (0.72 s), ~4 M parameters."""
-
-    def __init__(self, audio_dim: int = 1024, ticks_per_frame: int = 2, width: int = 256,
-                 dilations=(1, 2, 4, 8, 1)):
-        super().__init__()
-        self.tpf = ticks_per_frame
-        self.inp = nn.Conv1d(audio_dim * ticks_per_frame, width, 5, padding=2)
-        self.ref = nn.Linear(REF_DIM, width)
-        self.blocks = nn.ModuleList(nn.Sequential(nn.SiLU(), nn.Conv1d(width, width, 3, padding=d, dilation=d),
-                                                  nn.SiLU(), nn.Conv1d(width, width, 1)) for d in dilations)
-        self.out = nn.Conv1d(width, T_DIM, 1)
-
-    def forward(self, audio: torch.Tensor, ref: torch.Tensor, n_frames: int) -> torch.Tensor:
-        h = self.inp(audio_frames(audio, n_frames, self.tpf)) + self.ref(ref.float()).unsqueeze(-1)
-        for b in self.blocks:
-            h = h + b(h)
-        return self.out(h).transpose(1, 2)
-
-
 class MotionFlowTransformer(nn.Module):
     """v_theta(x_t, t | audio, ref, prefix) over a whole window.
 
@@ -101,14 +63,12 @@ class MotionFlowTransformer(nn.Module):
     audio  [B, 2(P+L), 1024]   WavLM ticks at 50 Hz covering prefix + target frames
     ref    [B, REF_DIM]        normalised [x_c, reference target]
     prefix [B, P, 42] | None   clean previous frames (FLOAT's L'); None = no prefix at all
-    prior_mu [B, P+L, 42]      with an audio prior: its mean, a per-frame condition (x_t and prefix are
-                               then residuals; see the module docstring)
     -> v   [B, L, 42]
     """
 
     def __init__(self, dim: int = 512, depth: int = 8, heads: int = 8, audio_dim: int = 1024,
                  ticks_per_frame: int = 2, audio_kernel: int = 5, attn_window: int = 0,
-                 max_frames: int = 512, dropout: float = 0.0, prior: bool = False, prior_width: int = 256):
+                 max_frames: int = 512, dropout: float = 0.0):
         super().__init__()
         if audio_kernel % 2 == 0:
             raise ValueError("audio_kernel must be odd so the window is centred on its frame")
@@ -132,16 +92,16 @@ class MotionFlowTransformer(nn.Module):
         for lin in (self.out_ada[-1], self.out):
             nn.init.zeros_(lin.weight)
             nn.init.zeros_(lin.bias)                 # v starts at exactly 0
-        self.prior = AudioPrior(audio_dim, ticks_per_frame, prior_width) if prior else None
-        self.prior_cond = nn.Linear(T_DIM, dim) if prior else None
-        if prior:
-            nn.init.zeros_(self.prior_cond.weight)
-            nn.init.zeros_(self.prior_cond.bias)      # the condition starts with no effect
 
     # ------------------------------------------------------------------ pieces
     def _audio_frames(self, audio: torch.Tensor, n_frames: int) -> torch.Tensor:
         """[B, >=tpf*F, D] ticks -> [B, F, dim], one centred window per frame."""
-        return self.audio(audio_frames(audio, n_frames, self.tpf)).transpose(1, 2)
+        B, _, D = audio.shape
+        a = audio[:, : n_frames * self.tpf].float()
+        if a.shape[1] < n_frames * self.tpf:                  # clip ended: pad with silence ticks
+            a = F.pad(a, (0, 0, 0, n_frames * self.tpf - a.shape[1]))
+        a = a.reshape(B, n_frames, self.tpf * D).transpose(1, 2)
+        return self.audio(a).transpose(1, 2)
 
     def _mask(self, n: int, device) -> torch.Tensor | None:
         if self.attn_window <= 0:
@@ -151,7 +111,7 @@ class MotionFlowTransformer(nn.Module):
 
     # ------------------------------------------------------------------ forward
     def forward(self, x_t, t, audio, ref, prefix=None, prefix_keep=None,
-                drop_audio=None, drop_ref=None, prior_mu=None):
+                drop_audio=None, drop_ref=None):
         B, L, _ = x_t.shape
         P = 0 if prefix is None else prefix.shape[1]
         n = P + L
@@ -169,18 +129,11 @@ class MotionFlowTransformer(nn.Module):
         t_frames = torch.cat([torch.zeros(B, P, device=dev), t.float().view(B, 1).expand(B, L)], 1)
         c_time = self.time(t_frames.reshape(-1)).view(B, n, -1)
         c_audio = self._audio_frames(audio, n)
-        c_mu = self.prior_cond(prior_mu.float()) if self.prior_cond is not None and prior_mu is not None else None
         if drop_audio is not None:
             c_audio = torch.where(drop_audio.view(B, 1, 1), self.null_audio.expand_as(c_audio), c_audio)
-            if c_mu is not None:                             # mu is a function of the audio: dropped with it
-                c_mu = torch.where(drop_audio.view(B, 1, 1), torch.zeros_like(c_mu), c_mu)
         if P and prefix_keep is not None:                    # a dropped prefix drops its audio too
             keep = torch.cat([prefix_keep.view(B, 1).expand(B, P), torch.ones(B, L, dtype=torch.bool, device=dev)], 1)
             c_audio = torch.where(keep.unsqueeze(-1), c_audio, self.null_audio.expand_as(c_audio))
-            if c_mu is not None:
-                c_mu = torch.where(keep.unsqueeze(-1), c_mu, torch.zeros_like(c_mu))
-        if c_mu is not None:
-            c_audio = c_audio + c_mu
         c_ref = self.ref(ref.float())
         if drop_ref is not None:
             c_ref = torch.where(drop_ref.view(B, 1), self.null_ref.expand_as(c_ref), c_ref)
@@ -241,7 +194,7 @@ def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
               lam_cfm: float = 0.0, cfm_regions=("mouth",),
               lam_ccc: float = 0.0, lip_a: torch.Tensor | None = None,
               lam_spec: float = 0.0, spec_hz: float = 10.0, spec_regions=("mouth",),
-              aux_tmax: float = 0.3, fps: float = 25.0, lam_prior: float = 1.0) -> tuple[torch.Tensor, dict]:
+              aux_tmax: float = 0.3, fps: float = 25.0) -> tuple[torch.Tensor, dict]:
     """batch: target [B,L,42], audio [B,2(P+L),1024], ref [B,REF_DIM], prefix [B,P,42] (optional),
     neg_target [B,L,42] (optional, another window of the same clip, for lam_cfm).
 
@@ -254,37 +207,20 @@ def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
                        'neg_target' (same clip, other audio) or else another clip of the batch. A convex
                        objective for lam < 1; it pushes the prediction to be specific to its own audio.
       lam_ccc          lip-opening CCC on the one-step clean estimate, for samples with t <= aux_tmax.
-      lam_spec         band-limited (< spec_hz) spectral L1 on the clean estimate, same t mask.
-
-    With an audio prior (model.prior): lam_prior * MSE(mu, real) over prefix + target frames trains mu,
-    and the flow learns the residual x0 - mu (mu detached), see the module docstring."""
+      lam_spec         band-limited (< spec_hz) spectral L1 on the clean estimate, same t mask."""
     x0 = batch["target"]
-    B, L, dev = x0.shape[0], x0.shape[1], x0.device
-    prefix = batch.get("prefix")
-    P = 0 if prefix is None else prefix.shape[1]
-    mu = prior_loss = None
-    x0_full = x0
-    if getattr(model, "prior", None) is not None:
-        if lam_cfm > 0:
-            raise ValueError("contrastive flow matching (lam_cfm) is not implemented with the audio prior")
-        mu_all = model.prior(batch["audio"], batch["ref"], P + L)
-        prior_loss, _ = region_mse(mu_all, torch.cat([prefix, x0], 1) if P else x0)
-        mu = mu_all.detach().float()
-        x0 = x0 - mu[:, P:]                                  # the flow learns the residual
-        prefix = prefix - mu[:, :P] if P else prefix
+    B, dev = x0.shape[0], x0.device
     t = sample_t(B, dev, t_dist, t_mean, t_scale)
     eps = torch.randn_like(x0)
     tb = t.view(B, 1, 1)
     x_t = (1 - tb) * x0 + tb * eps
+    prefix = batch.get("prefix")
     v = model(x_t, t, batch["audio"], batch["ref"], prefix=prefix,
               prefix_keep=(torch.rand(B, device=dev) >= p_prefix) if prefix is not None else None,
               drop_audio=torch.rand(B, device=dev) < p_audio,
-              drop_ref=torch.rand(B, device=dev) < p_ref, prior_mu=mu)
+              drop_ref=torch.rand(B, device=dev) < p_ref)
     loss, parts = region_mse(v, eps - x0)
     out = {"fm": loss.detach(), **{f"fm_{k}": p.detach() for k, p in parts.items()}}
-    if prior_loss is not None:
-        loss = loss + lam_prior * prior_loss
-        out["prior"] = prior_loss.detach()
     if lam_cfm > 0:
         x0_neg = batch.get("neg_target")
         x0_neg = x0.roll(1, 0) if x0_neg is None else x0_neg
@@ -293,12 +229,10 @@ def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
         loss = loss - lam_cfm * cfm
         out["cfm"] = cfm.detach()
     x0_hat = x_t - tb * v                                    # one-step clean estimate
-    if lam_vel > 0:                                          # residual or full: mu cancels in the differences
+    if lam_vel > 0:
         vel, _ = region_mse(x0_hat[:, 1:] - x0_hat[:, :-1], x0[:, 1:] - x0[:, :-1])
         loss = loss + lam_vel * vel
         out["vel"] = vel.detach()
-    if mu is not None:                                       # the aux losses below compare full motion
-        x0_hat, x0 = x0_hat + mu[:, P:], x0_full
     w = (t <= aux_tmax).float()                              # aux losses only where x0_hat is sharp
     if lam_ccc > 0:
         if lip_a is None:
@@ -418,19 +352,8 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
       noise_scale     float or [42]: scales the starting noise per coordinate (a mouth temperature).
       cfg_batch       run the conditional and unconditional calls of a step as ONE batch (exact up to
                       float rounding; half the sequential calls -- the DiT is launch-bound, report
-                      'SANG latency reduction' 2.2). False = two calls, as before.
-
-    With an audio prior (model.prior) the flow runs on the residual: mu(audio, ref) is computed once
-    for the window, the prefix and the constraints are taken relative to it, and mu + residual is
-    returned, i.e. the trajectory starts from mu + noise."""
+                      'SANG latency reduction' 2.2, docs/speed_track.md). False = two calls, as before."""
     B, dev = ref.shape[0], ref.device
-    P = 0 if prefix is None else prefix.shape[1]
-    mu = mu_l = None
-    if getattr(model, "prior", None) is not None:
-        mu = model.prior(audio, ref, P + L).float()
-        mu_l = mu[:, P:]
-        if P:
-            prefix = prefix - mu[:, :P]
     x = torch.randn(B, L, T_DIM, device=dev, generator=generator)
     if noise_scale is not None:
         x = x * _per_dim(noise_scale, x)
@@ -440,8 +363,6 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
     null = torch.ones(B, dtype=torch.bool, device=dev)
     uniform_one = not isinstance(cfg_audio, torch.Tensor) and cfg_audio == 1.0
     ag_on = ag_model is not None and (isinstance(ag, torch.Tensor) or ag != 1.0)
-    if ag_on and (getattr(ag_model, "prior", None) is None) != (mu is None):
-        raise ValueError("autoguidance needs a guide of the same kind: both with an audio prior or both without")
     two = lambda z: None if z is None else torch.cat([z, z])
     drop2 = torch.cat([torch.zeros(B, dtype=torch.bool, device=dev), null])
     ts = flow_times(steps, sway)
@@ -451,24 +372,22 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
         guide = g_tmin <= t_now <= g_tmax
         need_u = guide and (not uniform_one or cfg_rescale > 0)
         if need_u and cfg_batch:
-            vv = model(two(x), two(t), two(audio), two(ref), prefix=two(prefix), prefix_keep=two(keep),
-                       drop_audio=drop2, prior_mu=two(mu))
+            vv = model(two(x), two(t), two(audio), two(ref), prefix=two(prefix), prefix_keep=two(keep), drop_audio=drop2)
             v_c, v_u = vv[:B], vv[B:]
         else:
-            v_c = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, prior_mu=mu)
-            v_u = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, drop_audio=null,
-                        prior_mu=mu) if need_u else None
+            v_c = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep)
+            v_u = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, drop_audio=null) if need_u else None
         v = cfg_combine(v_c, v_u, cfg_audio, cfg_rescale) if need_u else v_c
         if guide and ag_on:
-            v_g = ag_model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, prior_mu=mu)
+            v_g = ag_model(x, t, audio, ref, prefix=prefix, prefix_keep=keep)
             v = v + (_per_dim(ag, v) - 1.0) * (v_c - v_g)
-        if bounds:                                           # constraints act on the full motion
-            x0 = project(x - t_now * v + (0 if mu_l is None else mu_l), bounds) - (0 if mu_l is None else mu_l)
+        if bounds:
+            x0 = project(x - t_now * v, bounds)
             eps = x + (1.0 - t_now) * v
             x = (1.0 - t_next) * x0 + t_next * eps
         else:
             x = x - (t_now - t_next) * v
-    return x if mu_l is None else x + mu_l
+    return x
 
 
 @torch.no_grad()
@@ -565,8 +484,7 @@ def build(cfg: dict) -> MotionFlowTransformer:
         dim=cfg.get("dim", 512), depth=cfg.get("layers", 8), heads=cfg.get("heads", 8),
         audio_dim={"wavlm-base": 768, "wavlm-large": 1024}[cfg.get("audio_encoder", "wavlm-large")],
         audio_kernel=cfg.get("audio_kernel", 5), attn_window=cfg.get("attn_window", 0),
-        max_frames=cfg.get("max_frames", 512), dropout=cfg.get("dropout", 0.0),
-        prior=bool(cfg.get("prior", False)), prior_width=cfg.get("prior_width", 256))
+        max_frames=cfg.get("max_frames", 512), dropout=cfg.get("dropout", 0.0))
 
 
 # ---------------------------------------------------------------------- sampler specs

@@ -1,4 +1,4 @@
-"""sang.pipeline.Talker end to end on CPU: a tiny trained SANG (with the audio prior), the real MotionCodec
+"""sang.pipeline.Talker end to end on CPU: a tiny trained SANG, the real MotionCodec
 render code with a stand-in LivePortrait (tests/test_fastpath.py), a stand-in WavLM."""
 import json
 import subprocess
@@ -84,7 +84,7 @@ def tiny_ckpt(tmp_path_factory):
     (cache / "index_000.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
     over = [f"cache_dir={cache}", f"out_dir={tmp / 'run'}", "dim=32", "layers=1", "heads=2", "max_steps=3",
             "warmup_steps=1", "eval_every=3", "log_every=1", "batch_size=2", "workers=0", "eval_batches=1",
-            "sample_steps=2", "val_frac=0.3", "windows_per_clip=2", "prior=true", "prior_width=16"]
+            "sample_steps=2", "val_frac=0.3", "windows_per_clip=2"]
     log = subprocess.run([sys.executable, str(REPO / "scripts" / "train_motion.py"), *over],
                          capture_output=True, encoding="utf-8", cwd=REPO)
     assert log.returncode == 0, log.stderr[-2000:]

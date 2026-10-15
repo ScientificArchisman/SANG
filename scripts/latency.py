@@ -3,14 +3,14 @@
 for the exact speed-ups (gate B: same motion, fast vs original pipeline frames).
 
     sbatch --gres=gpu:h100:1 bash_scripts/job.sh scripts/latency.py --data /beegfs/work/$USER/HDTF \\
-        --list configs/hdtf_test.csv --prior-ckpt runs/c6_prior/last.pt --prior-sampler g=1,steps=3
+        --list configs/hdtf_test.csv [--ckpt2 runs/<other>/last.pt --sampler2 g=2,mouth=1.25,steps=3]
 
 Configurations, run in turn on each clip (first frame = source photo, the clip's audio, --seconds long):
   baseline  --ckpt with --sampler and the original pipeline (two CFG calls per step, per-frame FP32
             render, CPU paste-back, synchronous mp4 encode)
   fast      the same model and sampler with every pipeline speed-up (sang.pipeline.Opts.fast) and the
             encoder on a background thread fed batch by batch
-  prior     --prior-ckpt with --prior-sampler and the fast pipeline (if given)
+  model2    --ckpt2 with --sampler2 and the fast pipeline (optional: a second model or sampler)
 Stages: source (face detection + source motion), audio (WavLM), motion (the DiT), render, paste, encode
 (the time the mp4 still needs after the last frame). total = wall clock from the photo to a finished mp4
 with audio. RTF = total / clip length; fps = frames / total.
@@ -64,8 +64,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ckpt", default=str(REPO / "runs/b1_lognorm03/last.pt"))
     ap.add_argument("--sampler", default="g=2,mouth=1.25,tau=0.5,avg=4,steps=6")
-    ap.add_argument("--prior-ckpt", default=None)
-    ap.add_argument("--prior-sampler", default="g=1,steps=3")
+    ap.add_argument("--ckpt2", default=None, help="a second checkpoint, run with the fast pipeline")
+    ap.add_argument("--sampler2", default=None, help="its sampler spec (default: --sampler)")
     ap.add_argument("--data", required=True, help="HDTF root (contains crops512/)")
     ap.add_argument("--list", default=str(REPO / "configs/hdtf_test.csv"))
     ap.add_argument("--n", type=int, default=20, help="clips measured (after the warm-up clips)")
@@ -80,8 +80,9 @@ def main() -> None:
     clips = ev.read_list(args.list, Path(args.data), Path(args.data) / "crops512")[: args.warmup + args.n]
     base = Talker(args.ckpt, args.sampler)
     talkers = {"baseline": (base, Opts()), "fast": (base, Opts.fast())}
-    if args.prior_ckpt:
-        talkers["prior"] = (Talker(args.prior_ckpt, args.prior_sampler, codec=base.codec, wavlm=base.wavlm), Opts.fast())
+    if args.ckpt2:
+        talkers["model2"] = (Talker(args.ckpt2, args.sampler2 or args.sampler, codec=base.codec, wavlm=base.wavlm),
+                             Opts.fast())
     gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"
     print(f"{gpu}; {len(clips)} clips ({args.warmup} warm-up) x {args.seconds:g} s; configs "
           + "; ".join(f"{k}: {Path(t.cfg['out_dir']).name} step {t.step}, {o}" for k, (t, o) in talkers.items()), flush=True)
