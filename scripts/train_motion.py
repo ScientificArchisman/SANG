@@ -280,6 +280,14 @@ def main() -> None:
                     drop_last=True, pin_memory=dev == "cuda", persistent_workers=cfg["workers"] > 0)
     vdl = DataLoader(val_ds, batch_size=min(cfg["batch_size"], 64), shuffle=False,
                      num_workers=min(2, cfg["workers"]), drop_last=True)
+    tdl = None
+    if cfg.get("train_eval", False):               # the val score on as many fixed TRAINING clips: a like-for-like
+        sub = random.Random(cfg["seed"]).sample(train_ds.rows, min(len(val_ds.rows), len(train_ds.rows)))
+        tev_ds = MotionWindows(sorted(sub, key=lambda r: r["path"]), L, P, norm, cfg.get("val_windows_per_clip", 4),
+                               fixed=True, preload=pre, shifts=shifts, **ref_kw)
+        tdl = DataLoader(tev_ds, batch_size=min(cfg["batch_size"], 64), shuffle=False,
+                         num_workers=min(2, cfg["workers"]), drop_last=True)
+        print(f"train_eval: {len(tev_ds.rows)} fixed training clips scored like val at every eval", flush=True)
 
     model = build(cfg).to(dev)
     ema = copy.deepcopy(model).eval().requires_grad_(False)
@@ -351,6 +359,11 @@ def main() -> None:
             if step % cfg["eval_every"] == 0 or step == cfg["max_steps"]:
                 r = evaluate(ema, vdl, cfg, dev, cfg["eval_batches"])
                 print("EVAL step {} ".format(step) + " ".join(f"{k} {v:.4f}" for k, v in r.items()), flush=True)
+                if tdl is not None:                        # own RNG: training is bit-identical with or without it
+                    with torch.random.fork_rng(devices=[torch.cuda.current_device()] if dev == "cuda" else []):
+                        rt = evaluate(ema, tdl, cfg, dev, cfg["eval_batches"])
+                    print("EVAL_TRAIN step {} ".format(step) + " ".join(f"{k.removeprefix('val_')} {v:.4f}"
+                                                                      for k, v in rt.items()), flush=True)
                 ck = {"model": model.state_dict(), "ema": ema.state_dict(), "opt": opt.state_dict(),
                       "ema_extra": {f"{d:g}": m_.state_dict() for d, m_ in ema_extra.items()},
                       "step": step, "best": best, "cfg": cfg, "norm": norm.state_dict()}

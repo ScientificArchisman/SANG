@@ -67,6 +67,9 @@ eval_every: 1000          # 5000 missed the optimum: run 172260 was best at its 
 patience: 8               # stop after 8 evals without val improvement
 val_windows_per_clip: 4   # 1 gave 3 val batches from 209 clips: too noisy to early-stop on
 eval_batches: 8           # x64 windows of unseen speakers
+train_eval: true          # also score as many fixed TRAINING clips exactly like val (EMA, uniform t, no dropout) at
+                          # every eval: the like-for-like train curve (EVAL_TRAIN lines, scripts/plot_curves.py).
+                          # Own RNG, so the run is bit-identical with it off; ~10 s per eval
 sample_steps: 10          # FLOAT Tab. 5: NFE 10 best FID/FVD; KDTalker flat beyond 5 steps
 cfg_audio: 2.0            # FLOAT Tab. 6
 log_every: 100
