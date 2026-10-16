@@ -12,9 +12,11 @@ conda activate avcodec
 pip install insightface tyro pykalman scikit-image "imageio[ffmpeg]" pytorch-fid scipy
 # A CPU-only `onnxruntime` pulled in by another package shadows onnxruntime-gpu: the face detector then runs on
 # the CPU without a warning in our logs (2026-10-16: 3.7 s per source photo, ~100 s per cached clip). Keep
-# only the GPU build; 1.20 is built for CUDA 12 + cuDNN 9, the libraries torch 2.4 cu121 brings.
+# only the GPU build (CUDA 12 + cuDNN 9). Uninstalling both leaves files of the shared onnxruntime/ folder
+# behind ("module 'onnxruntime' has no attribute '__version__'"), so remove it before reinstalling.
 pip uninstall -y onnxruntime onnxruntime-gpu || true
-pip install onnxruntime-gpu==1.20.1
+rm -rf "$(python -c 'import site; print(site.getsitepackages()[0])')/onnxruntime"
+pip install onnxruntime-gpu==1.23.2
 python -c "import onnxruntime as o; p = o.get_available_providers(); print('onnxruntime', o.__version__, p); assert 'CUDAExecutionProvider' in p"
 huggingface-cli download KlingTeam/LivePortrait --local-dir third_party/LivePortrait/pretrained_weights \
     --exclude "*animal*" "*.git*"
