@@ -80,3 +80,46 @@ def test_inventory_and_download_list(tmp_path):
     assert sum(min(e["end-time"] - e["start-time"], 20) for e in picked) >= 0.05 * 1.3 * 3600
     n = Counter(person(e) for e in picked)
     assert max(n.values()) - min(n.values()) <= 1            # one clip per person per round
+
+
+def test_why_not_cached_and_cache_list(tmp_path):
+    meta, clips, cache, cfg, _ = make(tmp_path)
+    cfg.write_text("val_frac: 0.3\nseed: 9\n")                  # vid01 in val (so vid00's person too); 2-7 train
+    name = lambda v: f"vid{v:02d}_NA_31.000_41.000.mp4"         # the uncached (third) clip of video v
+    path = lambda v: str(clips / f"vid{v:02d}" / name(v))
+    every = [str(p) for p in sorted(clips.glob("*/*.mp4"))]
+    queued = [p for p in every if not p.startswith((str(clips / "vid06"), str(clips / "vid07")))]
+    kept = [p for p in queued if Path(p).name not in (name(2), name(3))]
+    (tmp_path / "all.txt").write_text("\n".join(queued))
+    (tmp_path / "kept.txt").write_text("\n".join(kept))
+    (tmp_path / "report.jsonl").write_text(json.dumps({"clip": path(2), "reject": "face too small"}) + "\n")
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "x.out").write_text(f"  skip {name(4)}: ValueError: only 50 frames before a shot cut\n")
+    out = tmp_path / "cache_list.txt"
+    res = subprocess.run([sys.executable, str(REPO / "scripts" / "talkvid_inventory.py"), "--meta", str(meta),
+                          "--clips", str(clips), "--cache", str(cache), "--config", str(cfg), "--probe", "0",
+                          "--queued", str(tmp_path / "all.txt"), "--filtered", str(tmp_path / "kept.txt"),
+                          "--filter-report", str(tmp_path / "report.jsonl"), "--cache-logs", str(tmp_path / "logs/*.out"),
+                          "--cache-list", str(out), "--out", str(tmp_path / "rep.json")],
+                         capture_output=True, encoding="utf-8", cwd=REPO)
+    assert res.returncode == 0, res.stderr[-3000:]
+
+    _, va = tm().split_by_speaker([{"path": f"/x/vid{v:02d}/c.pt"} for v in range(40)], 0.3, 9)
+    val_vids = {Path(x["path"]).parent.name for x in va}
+    assert {v for v in range(8) if f"vid{v:02d}" in val_vids} == {1}
+    val_persons = {int(v[3:]) // 2 for v in val_vids if int(v[3:]) < 8}
+    expect = {}
+    for v in range(8):
+        if f"vid{v:02d}" in val_vids:
+            expect[v] = "left out: val-split video"
+        elif v // 2 in val_persons:
+            expect[v] = "left out: person in our val set"
+        else:
+            expect[v] = {6: "never queued (not filtered yet)", 7: "never queued (not filtered yet)",
+                         2: "filter rejected: face too small", 3: "filter rejected: decode / no face",
+                         4: "cache failed: ValueError: only N frames before a shot cut"}.get(v, "passed the filter, never cached")
+    got = json.loads((tmp_path / "rep.json").read_text())["not_cached"]
+    assert {k: v["clips"] for k, v in got.items()} == dict(Counter(expect.values()))
+    assert len(set(expect.values())) == 7                      # every class is exercised
+    usable = sorted(path(v) for v, why in expect.items() if why.startswith(("never queued", "passed")))
+    assert sorted(l for l in out.read_text().splitlines() if l) == usable

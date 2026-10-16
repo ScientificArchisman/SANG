@@ -18,7 +18,13 @@ Report:
      actually downloaded (a sample), and the cache: hours cached, downloaded clips that are not cached,
      and the length of cached clips the cache cut off (shot cuts, --max-frames)
   3. coverage of TalkVid by language
-  4. with --target-hours: a download list in TalkVid's own entry format, so TalkVid's
+  4. the training split, and what TalkVid has that we could still add
+  5. why downloaded clips are not cached: never queued (not in --queued), rejected by
+     scripts/filter_clips.py (--filtered, reasons from --filter-report), failed in scripts/cache_motion.py
+     ('skip' lines in --cache-logs), or passed the filter and were never cached. With --cache-list: the
+     usable ones (never queued, or passed and never cached), train-split videos only and no val person,
+     one path per line: run scripts/filter_clips.py on it, then scripts/cache_motion.py
+  6. with --target-hours: a download list in TalkVid's own entry format, so TalkVid's
      data_pipeline/0_video_download/download_clips.py takes it as --input. It adds the missing hours
      (target - hours cached now), counted up to --max-seconds per clip, times --overshoot for removed
      videos and clips that fail filtering or caching:
@@ -29,6 +35,7 @@ Report:
          videos interleaved, until the hours are reached.
 """
 import argparse
+import glob
 import importlib.util
 import json
 import os
@@ -204,6 +211,24 @@ def probe(paths: list[str]) -> list[dict]:
     return out
 
 
+def read_names(path) -> set[str] | None:
+    """Clip file names in a list of paths (paths may predate a data move); None if the list is missing."""
+    p = Path(path)
+    return {Path(l.strip()).name for l in p.read_text().splitlines() if l.strip()} if p.exists() else None
+
+
+def cache_failures(pattern: str) -> dict[str, str]:
+    """'  skip <clip>.mp4: <Error>: <message>' lines of cache_motion.py logs -> {clip name: reason}."""
+    out = {}
+    for f in glob.glob(pattern):
+        with open(f, errors="replace") as fh:
+            for line in fh:
+                m = re.match(r"\s+skip (\S+\.mp4): (.*)", line)
+                if m:
+                    out[m[1]] = re.sub(r"\d+(\.\d+)?", "N", m[2].strip())[:60]
+    return out
+
+
 def select(recs: list[dict], eligible: list[int], need_hours: float, max_seconds: float, seed: int) -> list[int]:
     """Diversity first: rounds of one clip per person (seeded person order, a person's videos interleaved)
     until the clips add up to need_hours, each clip counted up to max_seconds."""
@@ -257,6 +282,11 @@ def main() -> None:
     ap.add_argument("--known-persons", action="store_true", help="also select training persons we already have")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--select", default=None, help="write the download list here (TalkVid entry format)")
+    ap.add_argument("--queued", default=str(REPO / "data/clips_all.txt"), help="clip list given to filter_clips.py")
+    ap.add_argument("--filtered", default=str(REPO / "data/clips_filtered_all.txt"), help="clips it kept")
+    ap.add_argument("--filter-report", default=str(REPO / "data/clips_filtered_all.report.jsonl"))
+    ap.add_argument("--cache-logs", default=str(REPO / "slurm_logs/*.out"), help="glob of cache_motion.py logs")
+    ap.add_argument("--cache-list", default=None, help="write the usable not-cached clips here, one path per line")
     ap.add_argument("--out", default=str(REPO / "results/talkvid_inventory/inventory.json"))
     args = ap.parse_args()
     if args.target_hours and not args.select:
@@ -372,7 +402,61 @@ def main() -> None:
               f"{p['videos']:,} videos, {p['persons']:,} persons")
         print_table("  pool by language", breakdown(pool, lambda r: r["language"], top=10))
 
-    # 5. Download list --------------------------------------------------------------------------------
+    # 5. Why downloaded clips are not cached ------------------------------------------------------------
+    queued, kept = read_names(args.queued), read_names(args.filtered)
+    rejected = {}
+    if Path(args.filter_report).exists():
+        for l in Path(args.filter_report).read_text().splitlines():
+            if l.strip():
+                r = json.loads(l)
+                if r.get("reject"):
+                    rejected[Path(r["clip"]).name] = r["reject"]
+    failed = cache_failures(args.cache_logs)
+    rec_of = {(c["vid"], c["stem"]): c["rec"] for c in clips}
+    classes, usable = defaultdict(list), []
+    for c in not_cached:
+        name = c["stem"] + ".mp4"
+        j = rec_of[(c["vid"], c["stem"])]
+        person = recs[j]["person"] if j is not None else f"video:{c['vid']}"
+        if c["vid"] in val_vids:
+            why = "left out: val-split video"
+        elif person in val_persons:
+            why = "left out: person in our val set"
+        elif queued is not None and name not in queued:
+            why = "never queued (not filtered yet)"
+        elif name in rejected:
+            why = f"filter rejected: {rejected[name]}"
+        elif kept is not None and name not in kept:
+            why = "filter rejected: decode / no face"
+        elif name in failed:
+            why = f"cache failed: {failed[name]}"
+        else:
+            why = "passed the filter, never cached" if kept is not None else "unknown (no filter lists)"
+        classes[why].append(c)
+        if why.startswith(("never queued", "passed the filter", "unknown")):
+            usable.append(c)
+    hrs = lambda cs: sum(c["dur"] or 0 for c in cs) / 3600
+    capped = lambda cs: sum(min(c["dur"] or 0, args.max_seconds) for c in cs) / 3600
+    rep["not_cached"] = {k: {"clips": len(v), "hours": hrs(v), "hours_counted": capped(v)}
+                         for k, v in sorted(classes.items(), key=lambda kv: -hrs(kv[1]))}
+    rep["not_cached_usable"] = {"clips": len(usable), "hours": hrs(usable), "hours_counted": capped(usable),
+                                "videos": len({c["vid"] for c in usable}), "file": args.cache_list}
+    print(f"\n5. NOT CACHED: {len(not_cached):,} downloaded clips, {hrs(not_cached):.2f} h "
+          f"(lists: queued {'yes' if queued is not None else 'MISSING'}, filtered {'yes' if kept is not None else 'MISSING'}, "
+          f"report {len(rejected):,} rejections, cache logs {len(failed):,} failures)")
+    print(f"  {'':<52}{'clips':>9}{'hours':>9}{'counted':>9}")
+    for k, v in rep["not_cached"].items():
+        print(f"  {k[:52]:<52}{v['clips']:>9,}{v['hours']:>9.2f}{v['hours_counted']:>9.2f}")
+    u = rep["not_cached_usable"]
+    print(f"  usable (never queued + passed and never cached, train side): {u['clips']:,} clips, {u['hours']:.2f} h, "
+          f"{u['hours_counted']:.2f} h counted (up to {args.max_seconds:g} s per clip), {u['videos']:,} videos")
+    if args.cache_list:
+        out = Path(args.cache_list)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("\n".join(sorted(c["path"] for c in usable)) + "\n")
+        print(f"  wrote {out} ({len(usable):,} clips)")
+
+    # 6. Download list --------------------------------------------------------------------------------
     if args.target_hours:
         missing = args.target_hours - cached_h
         need = max(0.0, missing) * args.overshoot
@@ -388,7 +472,7 @@ def main() -> None:
                             "est_gb": raw_h * (o["gb_per_hour"] or 0), "language": breakdown(sel, lambda r: r["language"], top=10),
                             "file": args.select}
         q = rep["selection"]
-        print(f"\n5. DOWNLOAD LIST for {args.target_hours:g} h: missing {missing:.1f} h x {args.overshoot:g} = {need:.1f} h counted "
+        print(f"\n6. DOWNLOAD LIST for {args.target_hours:g} h: missing {missing:.1f} h x {args.overshoot:g} = {need:.1f} h counted "
               f"(clips up to {args.max_seconds:g} s)")
         print(f"  {q['clips']:,} clips, {raw_h:.1f} h ({cap_h:.1f} h counted), {q['videos']:,} videos (one yt-dlp call each), "
               f"{q['persons']:,} persons, clips per person {fmt_q(q['clips_per_person'])}")
