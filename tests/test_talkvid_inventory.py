@@ -1,0 +1,82 @@
+"""scripts/talkvid_inventory.py on a synthetic TalkVid: matching clips on disk to metadata, and a download
+list that keeps the val set intact (no val-split video, no val person) and spreads over new persons. CPU only."""
+import importlib.util
+import json
+import subprocess
+import sys
+from collections import Counter
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+
+
+def tm():
+    spec = importlib.util.spec_from_file_location("tm", REPO / "scripts" / "train_motion.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def make(tmp: Path, n_vid: int = 40, per_vid: int = 6):
+    entries = []
+    for v in range(n_vid):
+        for k in range(per_vid):
+            s = 1.0 + 15 * k
+            entries.append({"start-time": s, "end-time": s + 10.0, "height": 1080, "width": 1920, "fps": 24.0,
+                            "dover_scores": 8.5, "cotracker_ratio": 0.9,
+                            "info": {"Video Link": f"https://www.youtube.com/watch?v=vid{v:02d}",
+                                     "Person ID": f"{v // 2}.0" if v % 5 else str(v // 2), "Language": "English" if v % 3 else "Chinese",
+                                     "Gender": "Female", "Ethnicity": "Asian", "Age Group": "31-45", "Video Category": "x"}})
+    meta = tmp / "meta.json"
+    meta.write_text(json.dumps(entries))
+    clips, cache = tmp / "clips", tmp / "cache"
+    rows = []
+    for v in range(8):                                        # we have the first 3 clips of 8 videos
+        d = clips / f"vid{v:02d}"
+        d.mkdir(parents=True)
+        for k in range(3):
+            s = 1.0 + 15 * k
+            stem = f"vid{v:02d}_NA_{s:.3f}_{s + 10:.3f}"
+            (d / f"{stem}.mp4").write_bytes(b"\0" * 1000)
+            (d / f"{stem}.m4a").write_bytes(b"\0" * 100)
+            if k < 2:                                         # 2 of them cached, 6 s each
+                rows.append({"clip": str(d / f"{stem}.mp4"), "path": str(cache / f"vid{v:02d}" / f"{stem}.pt"), "n": 150})
+    cache.mkdir()
+    (cache / "index_000.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    cfg = tmp / "cfg.yaml"
+    cfg.write_text("val_frac: 0.3\nseed: 0\n")
+    return meta, clips, cache, cfg, entries
+
+
+def test_inventory_and_download_list(tmp_path):
+    meta, clips, cache, cfg, entries = make(tmp_path)
+    sel, rep = tmp_path / "sel.json", tmp_path / "rep.json"
+    target = 16 * 6 / 3600 + 0.05                             # cached now + 0.05 h (18 s) -> 0.065 h with overshoot
+    res = subprocess.run([sys.executable, str(REPO / "scripts" / "talkvid_inventory.py"), "--meta", str(meta),
+                          "--clips", str(clips), "--cache", str(cache), "--config", str(cfg), "--probe", "0",
+                          "--target-hours", str(target), "--select", str(sel), "--out", str(rep)],
+                         capture_output=True, encoding="utf-8", cwd=REPO)
+    assert res.returncode == 0, res.stderr[-3000:]
+    r = json.loads(rep.read_text())
+    assert r["talkvid"]["clips"] == 240 and abs(r["talkvid"]["hours"] - 240 * 10 / 3600) < 1e-9
+    assert r["talkvid"]["persons"] == 20                      # '3.0' and '3' are one person
+    assert r["ours"]["clips_on_disk"] == r["ours"]["matched"] == 24
+    assert r["ours"]["cached_clips"] == 16 and r["ours"]["on_disk_not_cached"] == 8
+    assert abs(r["ours"]["cut_off_hours"] - 16 * 4 / 3600) < 1e-9
+
+    picked = json.loads(sel.read_text())
+    assert picked and all({"info", "start-time", "end-time"} <= set(e) for e in picked)
+    vid = lambda e: e["info"]["Video Link"].split("=")[1]
+    person = lambda e: e["info"]["Person ID"].removesuffix(".0")
+    have = {f"vid{v:02d}" for v in range(8)}
+    tr, va = tm().split_by_speaker([{"path": f"/x/vid{v:02d}/c.pt"} for v in range(40)], 0.3, 0)
+    val_vids = {Path(x["path"]).parent.name for x in va}
+    assert val_vids and len(val_vids) < 40
+    val_persons = {str(int(v[3:]) // 2) for v in val_vids & have}
+    known = {str(int(v[3:]) // 2) for v in have}
+    for e in picked:
+        assert vid(e) not in val_vids                        # the val set stays as it is
+        assert person(e) not in val_persons | known          # new persons only
+    assert sum(min(e["end-time"] - e["start-time"], 20) for e in picked) >= 0.05 * 1.3 * 3600
+    n = Counter(person(e) for e in picked)
+    assert max(n.values()) - min(n.values()) <= 1            # one clip per person per round
