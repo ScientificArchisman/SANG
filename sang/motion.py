@@ -8,6 +8,8 @@ carried by the source frame's `f_s` / `x_s` tensors, which stay inside the froze
 Upstream symbols follow KwaiVGI/LivePortrait as of 2026-09. Anything that could have moved is
 marked `# API:` and checked once by `api_check()` -- run that before a long job, not after.
 """
+import contextlib
+import os
 import sys
 from pathlib import Path
 
@@ -204,7 +206,7 @@ def decode_clip(path: str, max_frames: int, fps: float = 25.0, start: int = 0) -
     vr = open_video(path)
     stride = vr.get_avg_fps() / fps
     n = min(max_frames, int(len(vr) / stride) - start)
-    if n < 8:
+    if n < min(8, max_frames):                                # the clip is too short, not the request
         raise ValueError(f"{len(vr)} frames at {vr.get_avg_fps():.1f} fps is too short"
                          + (f" after frame {start}" if start else ""))
     return vr.get_batch([int(round((start + i) * stride)) for i in range(n)]).asnumpy()
@@ -234,6 +236,57 @@ def paste_back(frames: np.ndarray, M_c2o: np.ndarray, background: np.ndarray, ma
         warped = cv2.warpAffine(f, M, (W, H), flags=cv2.INTER_LINEAR).astype(np.float32)
         out[i] = np.clip(m * warped + (1.0 - m) * bg, 0, 255).astype(np.uint8)
     return out
+
+
+def job_cpus() -> int:
+    """CPUs this process may run on (its Slurm allocation), not the machine's count."""
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:
+        return os.cpu_count() or 1
+
+
+@contextlib.contextmanager
+def ort_threads(n: int):
+    """ONNX Runtime sessions created inside get an explicit thread count n. By default ONNX Runtime starts one
+    pinned thread per core of the whole MACHINE: inside a Slurm CPU allocation the pinning fails
+    ('pthread_setaffinity_np failed ... Specify the number of threads explicitly') and the threads
+    oversubscribe the job's CPUs (job 2026-10-16: source photo 3.7 s, ~100 s per cached clip)."""
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        yield
+        return
+    orig = ort.InferenceSession.__init__
+
+    def init(self, path_or_bytes, sess_options=None, providers=None, provider_options=None, **kw):
+        if sess_options is None:
+            sess_options = ort.SessionOptions()
+            sess_options.intra_op_num_threads = n
+            sess_options.inter_op_num_threads = 1
+        orig(self, path_or_bytes, sess_options, providers, provider_options, **kw)
+
+    ort.InferenceSession.__init__ = init
+    try:
+        yield
+    finally:
+        ort.InferenceSession.__init__ = orig
+
+
+def ort_report(cropper, threads: int) -> str:
+    """Which execution provider the face detector and the landmark model run on."""
+    try:
+        import onnxruntime as ort
+        ver = ort.__version__
+    except ImportError:
+        return "onnxruntime not installed"
+    fa, lm = getattr(cropper, "face_analysis_wrapper", None), getattr(cropper, "human_landmark_runner", None)
+    used = {f"insightface {k}": getattr(m, "session", None) for k, m in (getattr(fa, "models", None) or {}).items()}
+    used["landmark.onnx"] = getattr(lm, "session", None)
+    prov = {k: s.get_providers()[0].replace("ExecutionProvider", "") for k, s in used.items() if s is not None}
+    gpu = all(v != "CPU" for v in prov.values())
+    return (f"ONNX Runtime {ver}, {threads} CPU threads: " + ", ".join(f"{k} on {v}" for k, v in prov.items())
+            + ("" if gpu else "  <- face models on the CPU (slow): install onnxruntime-gpu, bash_scripts/install_motion.sh"))
 
 
 class MotionCodec:
@@ -273,7 +326,10 @@ class MotionCodec:
             setattr(crop_cfg, k, v)
         self.crop_cfg = crop_cfg
         crop_cfg.flag_force_cpu = device == "cpu"
-        self.cropper = Cropper(crop_cfg=crop_cfg, device_id=0, flag_force_cpu=device == "cpu")
+        threads = job_cpus()
+        with ort_threads(threads):
+            self.cropper = Cropper(crop_cfg=crop_cfg, device_id=0, flag_force_cpu=device == "cpu")
+        print(f"MotionCodec: {ort_report(self.cropper, threads)}", flush=True)
         self.device = device
         api_check(self)
 
