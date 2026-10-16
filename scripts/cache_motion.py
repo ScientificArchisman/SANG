@@ -15,7 +15,13 @@ Sharded, resumable, one bad clip never kills the job:
     sbatch --array=0-7 bash_scripts/job.sh scripts/cache_motion.py --nshards 8
     (each task reads SLURM_ARRAY_TASK_ID as its shard)
 
-Then `index.jsonl` per shard lists what landed; train_motion.py reads all of them.
+Then `index_<tag>_<shard>.jsonl` per shard lists what landed; train_motion.py reads all index_*.jsonl.
+
+Long clips (--chunks K): a clip gives up to K consecutive segments, each up to --max-frames frames under its
+own fixed box and truncated at its first shot cut; the next starts where the last stopped. Chunk 0 keeps the
+clip's name (every cache before --chunks), chunk k is <video>_<n>_c<k>_<start>_<end>.pt with "chunk": k in its
+index row, and every row's "start" is its first frame in the clip. Rows already in ANY index_*.jsonl are not
+redone, so rerunning on cached clips with a larger K only adds their later chunks.
 """
 import argparse
 import json
@@ -33,6 +39,7 @@ sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.motion import MotionCodec, decode_clip
 from sang.paths import MOTION_CACHE
+from sang.talkvid import clip_times
 
 SR, FPS, TPF = 16000, 25, 2
 
@@ -49,6 +56,52 @@ def load_audio(clip: str, start_frame: int, n_frames: int) -> torch.Tensor:
     return wav.unsqueeze(0)
 
 
+def chunk_stem(stem: str, k: int) -> str:
+    """File name of chunk k of a clip: the clip's own name for k = 0, else '<video>_<n>_c<k>_<start>_<end>', so
+    sang.talkvid.clip_times still reads the clip's TalkVid start/end and its labels still match."""
+    if k == 0:
+        return stem
+    head, s, e = stem.rsplit("_", 2) if stem.count("_") >= 2 else (stem, "", "")
+    return f"{head}_c{k}_{s}_{e}" if clip_times(stem) is not None else f"{stem}_c{k}"
+
+
+def clip_id(clip: str) -> tuple[str, str]:
+    """(video folder, file name): stable when the clip folder moves."""
+    p = Path(clip)
+    return p.parent.name, p.name
+
+
+def segments(clip: str, prev: dict, chunks: int, max_frames: int, min_frames: int, decode, extract):
+    """Yield (k, start, d) for each chunk of `clip` still to cache. Chunk k is up to max_frames frames from
+    where chunk k-1 stopped, under one fixed box and cut at its first shot cut (extract -> d with 'span');
+    start = its first frame in the clip. prev = {k: index row} cached earlier: skipped, and the next chunk
+    starts after it. With chunks = 1 a first shot shorter than min_frames is an error, as before --chunks;
+    with more, a short shot is skipped and the next segment starts after it."""
+    k = offset = tries = 0
+    while k < chunks and tries <= 2 * chunks:
+        if k in prev:
+            offset = int(prev[k].get("start", 0)) + int(prev[k]["n"])
+            k += 1
+            continue
+        tries += 1
+        try:
+            frames = decode(clip, max_frames, start=offset)
+        except ValueError:
+            if offset == 0:
+                raise                                       # the clip itself is too short
+            return                                          # < 8 frames left: the clip is done
+        d = extract(frames)
+        a, b = d["span"]
+        if b - a < min_frames:
+            if chunks == 1:
+                raise ValueError(f"only {b - a} frames before a shot cut")
+            offset += max(b, 1)
+            continue
+        yield k, offset + a, d
+        offset += b
+        k += 1
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--clips", default=str(REPO / "data/clips_filtered_all.txt"))
@@ -58,63 +111,85 @@ def main() -> None:
     ap.add_argument("--shard", type=int, default=int(os.environ.get("SLURM_ARRAY_TASK_ID", 0)))
     ap.add_argument("--nshards", type=int, default=1)
     ap.add_argument("--audio-encoder", default="wavlm-large")
+    ap.add_argument("--chunks", type=int, default=1,
+                    help="segments per clip, each up to --max-frames (module docstring); 1 = the first only")
+    ap.add_argument("--tag", default="", help="index files index_<tag>_<shard>.jsonl, so runs never share one")
     args = ap.parse_args()
 
     clips = [l.strip() for l in Path(args.clips).read_text().splitlines() if l.strip()]
     mine = clips[args.shard::args.nshards]
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    index = out / f"index_{args.shard:03d}.jsonl"
-    done = {json.loads(l)["clip"] for l in index.read_text().splitlines()} if index.exists() else set()
-    print(f"shard {args.shard}/{args.nshards}: {len(mine)} clips, {len(done)} already cached", flush=True)
+    index = out / f"index_{args.tag + '_' if args.tag else ''}{args.shard:03d}.jsonl"
+    prev_of = {}                                          # (video, file) -> {chunk: row}, from every index
+    for f in sorted(out.glob("index_*.jsonl")):
+        for l in f.read_text().splitlines():
+            if l.strip():
+                r = json.loads(l)
+                prev_of.setdefault(clip_id(r["clip"]), {})[int(r.get("chunk", 0))] = r
+    full = sum(all(k in prev_of.get(clip_id(c), {}) for k in range(args.chunks)) for c in mine)
+    print(f"shard {args.shard}/{args.nshards}: {len(mine)} clips, {full} already cached "
+          f"(up to {args.chunks} chunk{'s' if args.chunks > 1 else ''} of {args.max_frames} frames) -> {index.name}",
+          flush=True)
 
     from sang.codec import load_wavlm
     codec = MotionCodec(device="cuda")
     wavlm = load_wavlm(args.audio_encoder, device="cuda")
 
-    ok = fail = 0
+    ok = fail = seen = 0                                 # chunks cached, clips failed, clips processed
     t0 = time.time()
     tm = {}                                               # seconds per stage, summed over clips
     def lap(key, since):
         tm[key] = tm.get(key, 0.0) + time.perf_counter() - since
         return time.perf_counter()
+
+    def decode(clip, max_frames, start=0):
+        t = time.perf_counter()
+        frames = decode_clip(clip, max_frames, start=start)
+        lap("decode", t)
+        return frames
+
+    extract = lambda frames: codec.extract(frames, timings=tm)    # fixed box, truncated at a shot cut
     with index.open("a") as log:
-        for k, clip in enumerate(mine):
-            if clip in done:
+        for i, clip in enumerate(mine):
+            prev = prev_of.get(clip_id(clip), {})
+            if all(k in prev for k in range(args.chunks)):
                 continue
-            dst = out / Path(clip).parent.name / f"{Path(clip).stem}.pt"
+            seen += 1
+            new = 0
             try:
-                t = time.perf_counter()
-                frames = decode_clip(clip, args.max_frames)
-                t = lap("decode", t)
-                d = codec.extract(frames, timings=tm)       # fixed box, truncated at a shot cut
-                t = time.perf_counter()
-                n = int(d["m"].shape[0])
-                if n < args.min_frames:
-                    raise ValueError(f"only {n} frames before a shot cut")
-                with torch.no_grad():
-                    a = wavlm.encode(load_audio(clip, d["span"][0], n).cuda())[0].float().cpu()   # [~2n, D]
-                t = lap("audio", t)
-                a = a[: TPF * n]
-                if a.shape[0] < TPF * n:                     # conv edge: pad the last tick(s)
-                    a = torch.cat([a, a[-1:].expand(TPF * n - a.shape[0], -1)])
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                torch.save({"m": d["m"], "kp": d["kp"], "audio": a.half(), "n": n}, dst)
-                t = lap("save", t)
-                log.write(json.dumps({"clip": clip, "path": str(dst), "n": n, "start": d["span"][0]}) + "\n")
-                log.flush()
-                ok += 1
+                for k, start, d in segments(clip, prev, args.chunks, args.max_frames, args.min_frames, decode, extract):
+                    t = time.perf_counter()
+                    n = int(d["m"].shape[0])
+                    with torch.no_grad():
+                        a = wavlm.encode(load_audio(clip, start, n).cuda())[0].float().cpu()   # [~2n, D]
+                    t = lap("audio", t)
+                    a = a[: TPF * n]
+                    if a.shape[0] < TPF * n:                     # conv edge: pad the last tick(s)
+                        a = torch.cat([a, a[-1:].expand(TPF * n - a.shape[0], -1)])
+                    dst = out / Path(clip).parent.name / f"{chunk_stem(Path(clip).stem, k)}.pt"
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    torch.save({"m": d["m"], "kp": d["kp"], "audio": a.half(), "n": n}, dst)
+                    t = lap("save", t)
+                    log.write(json.dumps({"clip": clip, "path": str(dst), "n": n, "start": start,
+                                          **({"chunk": k} if k else {})}) + "\n")
+                    log.flush()
+                    ok += 1
+                    new += 1
+                if not new and not prev:
+                    raise ValueError(f"no shot of {args.min_frames} frames")
             except Exception as e:
                 fail += 1
                 print(f"  skip {Path(clip).name}: {type(e).__name__}: {e}", flush=True)
-            if (k + 1) % 50 == 0:
-                rate = (time.time() - t0) / max(1, ok + fail)
-                n_done = max(1, ok + fail)
+            if (i + 1) % 50 == 0:
+                n_done = max(1, seen)
                 split = "  ".join(f"{k_} {v / n_done:.1f}" for k_, v in sorted(tm.items(), key=lambda x: -x[1]))
-                print(f"  [{k + 1}/{len(mine)}] ok {ok} fail {fail}  {rate:.1f} s/clip  | s/clip by stage: {split}", flush=True)
-    n_done = max(1, ok + fail)
+                print(f"  [{i + 1}/{len(mine)}] ok {ok} chunks, fail {fail} clips  {(time.time() - t0) / n_done:.1f} s/clip"
+                      f"  | s/clip by stage: {split}", flush=True)
+    n_done = max(1, seen)
     split = "  ".join(f"{k_} {v / n_done:.1f}" for k_, v in sorted(tm.items(), key=lambda x: -x[1]))
-    print(f"shard {args.shard} done: {ok} cached, {fail} failed  | s/clip by stage: {split}", flush=True)
+    print(f"shard {args.shard} done: {ok} chunks cached from {seen} clips, {fail} clips failed  | s/clip by stage: {split}",
+          flush=True)
 
 
 if __name__ == "__main__":

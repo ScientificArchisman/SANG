@@ -100,7 +100,8 @@ def test_why_not_cached_and_cache_list(tmp_path):
                           "--clips", str(clips), "--cache", str(cache), "--config", str(cfg), "--probe", "0",
                           "--queued", str(tmp_path / "all.txt"), "--filtered", str(tmp_path / "kept.txt"),
                           "--filter-report", str(tmp_path / "report.jsonl"), "--cache-logs", str(tmp_path / "logs/*.out"),
-                          "--cache-list", str(out), "--out", str(tmp_path / "rep.json")],
+                          "--cache-list", str(out), "--chunk-list", str(tmp_path / "chunks.txt"),
+                          "--out", str(tmp_path / "rep.json")],
                          capture_output=True, encoding="utf-8", cwd=REPO)
     assert res.returncode == 0, res.stderr[-3000:]
 
@@ -123,3 +124,10 @@ def test_why_not_cached_and_cache_list(tmp_path):
     assert len(set(expect.values())) == 7                      # every class is exercised
     usable = sorted(path(v) for v, why in expect.items() if why.startswith(("never queued", "passed")))
     assert sorted(l for l in out.read_text().splitlines() if l) == usable
+    # cached: 6 s of each 10 s clip (k = 0, 1) -> 4 s left per clip; train side = videos 2-7
+    long_ = sorted(str(clips / f"vid{v:02d}" / f"vid{v:02d}_NA_{1 + 15 * k:.3f}_{11 + 15 * k:.3f}.mp4")
+                   for v in range(2, 8) for k in range(2))
+    assert sorted(l for l in (tmp_path / "chunks.txt").read_text().splitlines() if l) == long_
+    ch = {c["K"]: c for c in json.loads((tmp_path / "rep.json").read_text())["chunks"]}
+    assert ch[1]["from_cached_h"] == 0 and abs(ch[2]["from_cached_h"] - 12 * 4 / 3600) < 1e-9
+    assert abs(ch[1]["from_usable_h"] - len(usable) * 10 / 3600) < 1e-9

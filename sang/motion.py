@@ -196,16 +196,18 @@ def first_cut(B: np.ndarray) -> int:
     return len(B)
 
 
-def decode_clip(path: str, max_frames: int, fps: float = 25.0) -> np.ndarray:
-    """First `max_frames` frames of a clip resampled to `fps` -> [T,H,W,3] uint8. Frame f sits at
-    container time f / fps, which is the clock the cached WavLM ticks use (2 ticks per frame)."""
+def decode_clip(path: str, max_frames: int, fps: float = 25.0, start: int = 0) -> np.ndarray:
+    """Up to `max_frames` frames of a clip resampled to `fps`, from frame `start` on -> [T,H,W,3] uint8.
+    Frame f sits at container time f / fps, which is the clock the cached WavLM ticks use (2 ticks per
+    frame)."""
     from sang.video import open_video
     vr = open_video(path)
     stride = vr.get_avg_fps() / fps
-    n = min(max_frames, int(len(vr) / stride))
+    n = min(max_frames, int(len(vr) / stride) - start)
     if n < 8:
-        raise ValueError(f"{len(vr)} frames at {vr.get_avg_fps():.1f} fps is too short")
-    return vr.get_batch([int(round(i * stride)) for i in range(n)]).asnumpy()
+        raise ValueError(f"{len(vr)} frames at {vr.get_avg_fps():.1f} fps is too short"
+                         + (f" after frame {start}" if start else ""))
+    return vr.get_batch([int(round((start + i) * stride)) for i in range(n)]).asnumpy()
 
 
 def paste_back(frames: np.ndarray, M_c2o: np.ndarray, background: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:

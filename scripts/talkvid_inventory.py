@@ -23,7 +23,9 @@ Report:
      scripts/filter_clips.py (--filtered, reasons from --filter-report), failed in scripts/cache_motion.py
      ('skip' lines in --cache-logs), or passed the filter and were never cached. With --cache-list: the
      usable ones (never queued, or passed and never cached), train-split videos only and no val person,
-     one path per line: run scripts/filter_clips.py on it, then scripts/cache_motion.py
+     one path per line: run scripts/filter_clips.py on it, then scripts/cache_motion.py. Long clips: the
+     hours cache_motion.py --chunks K would add for several K, and with --chunk-list the cached train-side
+     clips that have footage left after their cached part
   6. with --target-hours: a download list in TalkVid's own entry format, so TalkVid's
      data_pipeline/0_video_download/download_clips.py takes it as --input. It adds the missing hours
      (target - hours cached now), counted up to --max-seconds per clip, times --overshoot for removed
@@ -287,6 +289,8 @@ def main() -> None:
     ap.add_argument("--filter-report", default=str(REPO / "data/clips_filtered_all.report.jsonl"))
     ap.add_argument("--cache-logs", default=str(REPO / "slurm_logs/*.out"), help="glob of cache_motion.py logs")
     ap.add_argument("--cache-list", default=None, help="write the usable not-cached clips here, one path per line")
+    ap.add_argument("--chunk-list", default=None,
+                    help="write the cached train-side clips with footage left after their cached part (for --chunks)")
     ap.add_argument("--out", default=str(REPO / "results/talkvid_inventory/inventory.json"))
     args = ap.parse_args()
     if args.target_hours and not args.select:
@@ -330,7 +334,12 @@ def main() -> None:
     disk_h = sum(c["dur"] or 0 for c in clips) / 3600
     gb = sum(c["bytes"] for c in clips) / 1e9
     rows = load_index(Path(args.cache)) if any(Path(args.cache).glob("index_*.jsonl")) else []
-    cached = {(Path(r["clip"]).parent.name, Path(r["clip"]).stem): r["n"] / FPS for r in rows}
+    cached, cached_end, cached_chunks = Counter(), {}, Counter()   # per clip, over its chunks (cache_motion --chunks)
+    for r in rows:
+        k = (Path(r["clip"]).parent.name, Path(r["clip"]).stem)
+        cached[k] += r["n"] / FPS
+        cached_end[k] = max(cached_end.get(k, 0.0), (r.get("start", 0) + r["n"]) / FPS)
+        cached_chunks[k] += 1
     cached_h = sum(cached.values()) / 3600
     on_disk = {(c["vid"], c["stem"]): c for c in clips}
     not_cached = [c for k, c in on_disk.items() if k not in cached]
@@ -455,6 +464,33 @@ def main() -> None:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text("\n".join(sorted(c["path"] for c in usable)) + "\n")
         print(f"  wrote {out} ({len(usable):,} clips)")
+
+    # 5b. Long clips: what cache_motion.py --chunks K would add --------------------------------------
+    long_ = []                                            # cached train-side clips with more left than one shot
+    for k, end in cached_end.items():
+        c = on_disk.get(k)
+        if c is None or c["dur"] is None or c["vid"] in val_vids:
+            continue
+        j = c["rec"]
+        if (recs[j]["person"] if j is not None else f"video:{c['vid']}") in val_persons:
+            continue
+        if c["dur"] - end >= args.min_seconds:
+            long_.append((c, end, cached_chunks[k]))
+    rep["chunks"] = []
+    print(f"\n  LONG CLIPS: {len(long_):,} cached train-side clips have >= {args.min_seconds:g} s after their cached part "
+          f"({sum(c['dur'] - e for c, e, _ in long_) / 3600:.2f} h). With cache_motion.py --chunks K "
+          f"(segments of up to {args.max_seconds:g} s; an upper bound, shot cuts take some):")
+    print(f"  {'K':>4}{'from cached clips':>19}{'from the usable list':>22}{'cache total':>13}{'new frames':>12}")
+    for K in (1, 2, 3, 4, 6, 10):
+        more = sum(min(c["dur"] - e, max(0, K - n) * args.max_seconds) for c, e, n in long_) / 3600
+        new_h = sum(min(c["dur"] or 0, K * args.max_seconds) for c in usable) / 3600
+        rep["chunks"].append({"K": K, "from_cached_h": more, "from_usable_h": new_h, "total_h": cached_h + more + new_h})
+        print(f"  {K:>4}{more:>17.1f} h{new_h:>20.1f} h{cached_h + more + new_h:>11.1f} h{(more + new_h) * 3600 * FPS / 1e6:>10.1f} M")
+    if args.chunk_list:
+        out = Path(args.chunk_list)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("\n".join(sorted(c["path"] for c, _, _ in long_)) + "\n")
+        print(f"  wrote {out} ({len(long_):,} clips; run cache_motion.py --chunks K on it, chunk 0 is skipped)")
 
     # 6. Download list --------------------------------------------------------------------------------
     if args.target_hours:
