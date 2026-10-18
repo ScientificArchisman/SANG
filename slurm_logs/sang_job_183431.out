@@ -1,0 +1,62 @@
+[job] 183431 on gpu01 | gpu: NVIDIA A100 80GB PCIe | cpus: 8 | env: avcodec | commit: ad78917 | 2026-10-16 18:04:38
+[job] python -u scripts/latency.py --data /beegfs/work/achakraborti/HDTF --name a100_ort_gpu
+[18:05:04] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+[18:05:05] Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+           Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[18:05:06] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+           Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+[18:05:09] FaceAnalysisDIY warmup time: 2.539s           face_analysis_diy.py:79
+           LandmarkRunner warmup time: 0.061s        human_landmark_runner.py:95
+MotionCodec: ONNX Runtime 1.23.2, 8 CPU threads: insightface landmark_2d_106 on CUDA, insightface detection on CUDA, landmark.onnx on CUDA
+NVIDIA A100 80GB PCIe; 22 clips (2 warm-up) x 10 s; configs baseline: b1_lognorm03 step 15000, Opts(cfg_batch=False, render_batch=1, half=False, gpu_paste=False, reuse_crop=False); fast: b1_lognorm03 step 15000, Opts(cfg_batch=True, render_batch=16, half=True, gpu_paste=True, reuse_crop=True)
+[1/22] MikeCrapo_0                  warm-up
+[2/22] KimSchrier_0                 warm-up
+[3/22] DebbieDingell1_0             baseline 12.09 s (21 fps)  fast 6.21 s (40 fps)  gate B PSNR 62.9 dB, mouth 62.2 dB
+[4/22] SuzanDelBene_0               baseline 12.17 s (21 fps)  fast 5.60 s (45 fps)  gate B PSNR 62.0 dB, mouth 61.2 dB
+[5/22] RichardNeal1_0               baseline 12.64 s (20 fps)  fast 5.90 s (42 fps)  gate B PSNR 62.5 dB, mouth 62.7 dB
+[6/22] JohnYarmuth1_0               baseline 12.07 s (21 fps)  fast 5.64 s (44 fps)  gate B PSNR 63.9 dB, mouth 63.4 dB
+[7/22] KarenBass_0                  baseline 12.05 s (21 fps)  fast 5.56 s (45 fps)  gate B PSNR 62.1 dB, mouth 60.6 dB
+[8/22] JanSchakowsky1_0             baseline 12.08 s (21 fps)  fast 5.70 s (44 fps)  gate B PSNR 62.6 dB, mouth 61.6 dB
+[9/22] KristiNoem2_0                baseline 12.10 s (21 fps)  fast 5.61 s (45 fps)  gate B PSNR 66.1 dB, mouth 64.4 dB
+[10/22] RogerWicker2_0               baseline 11.75 s (21 fps)  fast 5.65 s (44 fps)  gate B PSNR 65.1 dB, mouth 62.0 dB
+[11/22] TerriSewell1_0               baseline 11.89 s (21 fps)  fast 5.87 s (43 fps)  gate B PSNR 63.3 dB, mouth 61.6 dB
+[12/22] BillCassidy0_0               baseline 12.31 s (20 fps)  fast 5.67 s (44 fps)  gate B PSNR 63.0 dB, mouth 62.8 dB
+[13/22] TomCarper_0                  baseline 12.63 s (20 fps)  fast 6.08 s (41 fps)  gate B PSNR 62.9 dB, mouth 61.8 dB
+[14/22] Radio31_0                    baseline 11.85 s (21 fps)  fast 5.54 s (45 fps)  gate B PSNR 62.5 dB, mouth 62.3 dB
+[15/22] TomCotton_0                  baseline 12.52 s (20 fps)  fast 6.48 s (39 fps)  gate B PSNR 62.0 dB, mouth 60.7 dB
+[16/22] DebFischer0_0                baseline 12.09 s (21 fps)  fast 5.81 s (43 fps)  gate B PSNR 62.2 dB, mouth 61.7 dB
+[17/22] TammyBaldwin1_0              baseline 13.28 s (19 fps)  fast 5.72 s (44 fps)  gate B PSNR 62.5 dB, mouth 61.1 dB
+[18/22] RichardBlumenthal_0          baseline 13.07 s (19 fps)  fast 6.09 s (41 fps)  gate B PSNR 62.8 dB, mouth 62.2 dB
+[19/22] CarolynMaloney1_0            baseline 13.29 s (19 fps)  fast 6.05 s (41 fps)  gate B PSNR 59.8 dB, mouth 59.1 dB
+[20/22] JohnSarbanes0_0              baseline 12.07 s (21 fps)  fast 6.45 s (39 fps)  gate B PSNR 62.7 dB, mouth 61.2 dB
+[21/22] KevinBrady2_0                baseline 11.95 s (21 fps)  fast 5.60 s (45 fps)  gate B PSNR 64.6 dB, mouth 63.4 dB
+[22/22] AustinScott2_0               baseline 13.12 s (19 fps)  fast 5.91 s (42 fps)  gate B PSNR 62.9 dB, mouth 61.7 dB
+
+MEDIAN (p90) seconds per 10 s clip over 20 clips, NVIDIA A100 80GB PCIe
+config              source           audio          motion          render           paste          encode           total     fps    RTF  speed-up  VRAM GB
+baseline      0.046 (0.06)    0.041 (0.07)    0.296 (0.32)    8.529 (8.56)    1.839 (1.86)    1.406 (2.32)   12.095 (13.14)    20.7  1.209     1.00x      2.7
+fast          0.074 (0.10)    0.043 (0.05)    0.163 (0.17)    4.405 (4.43)    0.557 (0.59)    0.425 (0.88)    5.765 (6.23)    43.4  0.576     2.10x      9.2
+
+GATE B (fast vs baseline frames, same motion): PSNR median 62.7 dB (min 59.8), mouth box median 61.7 dB (min 59.1); max |diff| 16 grey levels. Pass: >= 40 dB full frame, >= 38 dB mouth
+
+wrote /beegfs/work/achakraborti/SANG/results/latency/a100_ort_gpu.json

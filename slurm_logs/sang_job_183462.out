@@ -1,0 +1,70 @@
+[job] 183462 on gpu03 | gpu: NVIDIA A100 80GB PCIe | cpus: 16 | env: avcodec | commit: ad78917 | 2026-10-16 21:26:37
+[job] python -u scripts/cache_motion.py --clips data/clips_more.txt --nshards 6 --chunks 10 --max-frames 500 --tag c10
+shard 4/6: 1402 clips, 0 already cached (up to 10 chunks of 500 frames) -> index_c10_004.jsonl
+[21:26:54] Load appearance_feature_extractor from    live_portrait_wrapper.py:46
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/appearance_feature_extr                            
+           actor.pth done.                                                      
+[21:26:56] Load motion_extractor from                live_portrait_wrapper.py:49
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/motion_extractor.pth                               
+           done.                                                                
+[21:26:58] Load warping_module from                  live_portrait_wrapper.py:52
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/warping_module.pth                                 
+           done.                                                                
+[21:27:02] Load spade_generator from                 live_portrait_wrapper.py:55
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/base_models/spade_generator.pth                                
+           done.                                                                
+           Load stitching_retargeting_module from    live_portrait_wrapper.py:59
+           /beegfs/work/achakraborti/SANG/third_part                            
+           y/LivePortrait/pretrained_weights/livepor                            
+           trait/retargeting_models/stitching_retarg                            
+           eting_module.pth done.                                               
+[21:27:07] FaceAnalysisDIY warmup time: 1.951s           face_analysis_diy.py:79
+[21:27:09] LandmarkRunner warmup time: 0.537s        human_landmark_runner.py:95
+MotionCodec: ONNX Runtime 1.23.2, 16 CPU threads: insightface landmark_2d_106 on CUDA, insightface detection on CUDA, landmark.onnx on CUDA
+  skip 1jBWzANdJNw_NA_1164.263_1169.535.mp4: ValueError: no shot of 74 frames
+  skip GXJQQqfB-ew_NA_215.773_221.663.mp4: ValueError: no shot of 74 frames
+  [50/1402] ok 76 chunks, fail 2 clips  12.5 s/clip  | s/clip by stage: decode 6.7  landmarks 3.6  motion 0.9  crop 0.9  audio 0.4  save 0.0
+  skip IkU55moQkTw_NA_149.749_159.559.mp4: ValueError: no shot of 74 frames
+  [100/1402] ok 153 chunks, fail 3 clips  9.1 s/clip  | s/clip by stage: decode 4.1  landmarks 2.8  crop 0.9  motion 0.9  audio 0.3  save 0.0
+  skip XV_W6kPqR9U_NA_553.940_561.620.mp4: ValueError: no shot of 74 frames
+  skip f-5AIV6rkfI_NA_1222.866_1228.516.mp4: ValueError: no shot of 74 frames
+  skip jV9lOAk-qH0_NA_188.400_200.866.mp4: ValueError: no shot of 74 frames
+  [150/1402] ok 220 chunks, fail 6 clips  9.8 s/clip  | s/clip by stage: decode 4.6  landmarks 3.0  crop 0.9  motion 0.8  audio 0.3  save 0.0
+  [200/1402] ok 332 chunks, fail 6 clips  10.8 s/clip  | s/clip by stage: decode 4.9  landmarks 3.2  crop 1.1  motion 1.0  audio 0.6  save 0.0
+  skip mZJGBraf_KI_NA_44.700_51.233.mp4: ValueError: no shot of 74 frames
+  [250/1402] ok 409 chunks, fail 7 clips  9.7 s/clip  | s/clip by stage: decode 4.1  landmarks 2.9  crop 1.0  motion 1.0  audio 0.6  save 0.0
+  skip nHPJfNRUk5k_NA_782.666_789.300.mp4: ValueError: no shot of 74 frames
+  [300/1402] ok 498 chunks, fail 8 clips  9.8 s/clip  | s/clip by stage: decode 4.1  landmarks 3.0  crop 1.1  motion 1.0  audio 0.7  save 0.0
+  [350/1402] ok 594 chunks, fail 8 clips  9.4 s/clip  | s/clip by stage: decode 3.6  landmarks 2.9  crop 1.1  motion 1.0  audio 0.7  save 0.0
+  skip qpoRO378qRY_NA_1551.850_1557.022.mp4: ValueError: no shot of 74 frames
+  skip qpoRO378qRY_NA_2171.702_2177.408.mp4: ValueError: no shot of 74 frames
+  [400/1402] ok 678 chunks, fail 10 clips  8.9 s/clip  | s/clip by stage: decode 3.3  landmarks 2.8  crop 1.1  motion 1.0  audio 0.7  save 0.0
+  [450/1402] ok 762 chunks, fail 10 clips  8.6 s/clip  | s/clip by stage: decode 3.1  landmarks 2.7  crop 1.1  motion 1.0  audio 0.6  save 0.0
+  [500/1402] ok 865 chunks, fail 10 clips  8.7 s/clip  | s/clip by stage: decode 3.1  landmarks 2.7  crop 1.1  motion 1.0  audio 0.7  save 0.0
+  [550/1402] ok 969 chunks, fail 10 clips  9.2 s/clip  | s/clip by stage: decode 3.4  landmarks 2.8  crop 1.2  motion 1.1  audio 0.7  save 0.0
+  [600/1402] ok 1061 chunks, fail 10 clips  9.7 s/clip  | s/clip by stage: decode 3.8  landmarks 2.8  crop 1.2  motion 1.1  audio 0.7  save 0.0
+  [650/1402] ok 1167 chunks, fail 10 clips  9.5 s/clip  | s/clip by stage: decode 3.6  landmarks 2.8  crop 1.2  motion 1.1  audio 0.7  save 0.0
+  [700/1402] ok 1280 chunks, fail 10 clips  9.9 s/clip  | s/clip by stage: decode 3.7  landmarks 2.9  crop 1.2  motion 1.1  audio 0.8  save 0.0
+  [750/1402] ok 1357 chunks, fail 10 clips  9.5 s/clip  | s/clip by stage: decode 3.5  landmarks 2.8  crop 1.2  motion 1.1  audio 0.8  save 0.0
+  [800/1402] ok 1460 chunks, fail 10 clips  9.4 s/clip  | s/clip by stage: decode 3.4  landmarks 2.8  crop 1.2  motion 1.1  audio 0.8  save 0.0
+  [850/1402] ok 1583 chunks, fail 10 clips  9.5 s/clip  | s/clip by stage: decode 3.3  landmarks 2.8  crop 1.2  motion 1.1  audio 0.8  save 0.0
+  [900/1402] ok 1693 chunks, fail 10 clips  9.9 s/clip  | s/clip by stage: decode 3.7  landmarks 2.9  crop 1.2  motion 1.2  audio 0.8  save 0.0
+  [950/1402] ok 1772 chunks, fail 10 clips  9.7 s/clip  | s/clip by stage: decode 3.6  landmarks 2.8  crop 1.2  motion 1.1  audio 0.8  save 0.0
+  [1000/1402] ok 1885 chunks, fail 10 clips  9.7 s/clip  | s/clip by stage: decode 3.5  landmarks 2.8  crop 1.3  motion 1.2  audio 0.8  save 0.0
+  [1050/1402] ok 1982 chunks, fail 10 clips  9.5 s/clip  | s/clip by stage: decode 3.4  landmarks 2.8  crop 1.3  motion 1.2  audio 0.8  save 0.0
+  [1100/1402] ok 2098 chunks, fail 10 clips  10.1 s/clip  | s/clip by stage: decode 3.7  landmarks 2.9  crop 1.3  motion 1.2  audio 0.9  save 0.0
+  [1150/1402] ok 2225 chunks, fail 10 clips  10.3 s/clip  | s/clip by stage: decode 3.8  landmarks 3.0  crop 1.3  motion 1.2  audio 0.9  save 0.0
+  [1200/1402] ok 2328 chunks, fail 10 clips  10.1 s/clip  | s/clip by stage: decode 3.7  landmarks 3.0  crop 1.3  motion 1.2  audio 0.9  save 0.0
+  [1250/1402] ok 2435 chunks, fail 10 clips  10.2 s/clip  | s/clip by stage: decode 3.7  landmarks 3.0  crop 1.3  motion 1.2  audio 0.9  save 0.0
+  [1300/1402] ok 2535 chunks, fail 10 clips  10.1 s/clip  | s/clip by stage: decode 3.6  landmarks 3.0  crop 1.3  motion 1.2  audio 0.9  save 0.0
+  [1350/1402] ok 2627 chunks, fail 10 clips  9.9 s/clip  | s/clip by stage: decode 3.5  landmarks 2.9  crop 1.3  motion 1.2  audio 0.9  save 0.0
+  [1400/1402] ok 2751 chunks, fail 10 clips  10.1 s/clip  | s/clip by stage: decode 3.6  landmarks 3.0  crop 1.3  motion 1.2  audio 0.9  save 0.0
+shard 4 done: 2757 chunks cached from 1402 clips, 10 clips failed  | s/clip by stage: decode 3.6  landmarks 3.0  crop 1.3  motion 1.2  audio 0.9  save 0.0
