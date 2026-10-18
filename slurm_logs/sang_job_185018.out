@@ -1,0 +1,35 @@
+[job] 185018 on gpu08 | gpu: NVIDIA A100 80GB PCIe | cpus: 2 | env: avcodec | commit: ac95556 | 2026-10-18 20:59:46
+[job] python -u scripts/naturalness.py --ckpt runs/e1_ref_median/last.pt --modes none --sync-offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json --variants g=2,mouth=1.25,tau=0.5,avg=4,steps=6 --lang all --name e1
+readout lip: held-out R^2 0.763
+readout eye: held-out R^2 0.706
+sync offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json: dropped {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}
+300 val clips from 41 unseen speakers
+audio pass: 300 clips, 1860 bilabials, 45 s
+closure offset -2 frames (hist {-4: 85, -3: 309, -2: 633, -1: 450, 0: 140, 1: 37, 2: 41, 3: 42, 4: 68}), tau_close 0.040, eye_closed 0.142, 1075 real inter-blink intervals
+none@g=2,mouth=1.25,tau=0.5,avg=4,steps=6: 45 s  {}
+
+metric                  real  none@g=2,mouth=1.25,tau=0.5,avg=4,steps=6
+closure_depth          0.040                                      0.028
+closure_viol           0.100                                      0.037
+blinks_per_min        31.600                                     25.164
+ibi_median_s           1.240                                      1.520
+ibi_cv                 0.673                                      0.567
+blink_ms             120.000                                    120.000
+blink_at_pause         0.089                                      0.078
+pause_cover            0.083                                      0.083
+beat_align             0.630                                      0.637
+beat_chance            0.603                                      0.605
+lip_corr                 nan                                      0.786
+lip_std_r                nan                                      1.068
+lip_ccc                  nan                                      0.706
+eye_std_r                nan                                      1.145
+
+setting                                           lip_corr        lip_ccc      lip_std_r   closure_viol  closure_depth      eye_std_r blinks_per_min     beat_align          gen_s
+real                                                   nan            nan            nan          0.100          0.040            nan         31.600          0.630            nan
+none@g=2,mouth=1.25,tau=0.5,avg=4,steps=6            0.786          0.706          1.068          0.037          0.028          1.145         25.164          0.637         45.176
+
+lip sync by group (clips  lip_corr  lip_ccc); val languages all
+setting                                                           all                   English               non-English         no person overlap
+none@g=2,mouth=1.25,tau=0.5,avg=4,steps=6       300    0.786    0.706     265    0.799    0.719      35    0.686    0.608     223    0.769    0.699
+
+wrote /beegfs/work/achakraborti/SANG/results/naturalness/e1_ref_median_step15000_variants_sync_e1.json
