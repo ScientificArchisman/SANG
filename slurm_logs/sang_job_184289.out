@@ -1,0 +1,5 @@
+[job] 184289 on gpu03 | gpu: NVIDIA A100 80GB PCIe | cpus: 8 | env: avcodec | commit: ff60017 | 2026-10-18 08:59:29
+[job] python -u scripts/data_stats.py --sync-offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets_c10.json --out results/data_stats/data_stats_c10.json
+reading the cache index in /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed
+29510 cached clips
+language ID: 13257 cached, 15061 to label

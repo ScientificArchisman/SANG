@@ -1,0 +1,163 @@
+[job] 184279 on gpu08 | gpu: NVIDIA A100 80GB PCIe | cpus: 8 | env: avcodec | commit: 566a857 | 2026-10-18 07:51:49
+[job] python -u scripts/sync_offsets.py --nshards 3
+shard 2/3: 98 videos, 124 clips to measure (3066 measured before, all shards), 4 workers, 8 s each -> /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync/offsets_002.jsonl
+  [lse] syncnet_python failed on clip.mp4: CalledProcessError
+yavi/sang/audio.wav.
+Error opening output files: Invalid argument
+Traceback (most recent call last):
+  File "/beegfs/work/achakraborti/SANG/third_party/syncnet_python/run_pipeline.py", line 281, in <module>
+    subprocess.run(command, check=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/subprocess.py", line 526, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['ffmpeg', '-y', '-loglevel', 'error', '-i', '/tmp/sync_offsets_184279_2/1qdeZ6lITOI__1qdeZ6lITOI_NA_c9_230.330_465.031/syncnet/work/pyavi/sang/video.avi', '-ac', '1', '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '/tmp/sync_offsets_184279_2/1qdeZ6lITOI__1qdeZ6lITOI_NA_c9_230.330_465.031/syncnet/work/pyavi/sang/audio.wav']' returned non-zero exit status 234.
+
+[1/124] 1qdeZ6lITOI/1qdeZ6lITOI_NA_c9_230.330_465.031 offset +nan  conf nan  (23 s, ~48 min left)
+[2/124] -kOE7Q79JLs/-kOE7Q79JLs_NA_c1_16.816_51.618   offset -1  conf 8.28  (48 s, ~48 min left)
+[3/124] 27WucvXpbd4/27WucvXpbd4_NA_c9_28.900_229.566  offset -3  conf 2.90  (63 s, ~43 min left)
+[4/124] 34YRldOWRzo/34YRldOWRzo_NA_c3_132.833_186.333 offset +1  conf 8.16  (63 s, ~32 min left)
+[5/124] -Rd2F1Og-BE/-Rd2F1Og-BE_NA_c4_3.061_95.996    offset +0  conf 9.46  (64 s, ~25 min left)
+[6/124] 3Qjr9nWh5cU/3Qjr9nWh5cU_NA_c9_5.780_305.020   offset -2  conf 0.65  (88 s, ~29 min left)
+[7/124] 5uKynlepIrI/5uKynlepIrI_NA_c1_671.833_687.033 offset +1  conf 7.91  (91 s, ~25 min left)
+[8/124] 9JE-x6L8Q48/9JE-x6L8Q48_NA_c9_6.422_310.426   offset +1  conf 6.25  (98 s, ~24 min left)
+[9/124] 68kCourrDx0/68kCourrDx0_NA_c3_184.634_238.972 offset +1  conf 6.40  (98 s, ~21 min left)
+[10/124] BIQLPEZVXqw/BIQLPEZVXqw_NA_c9_1594.500_1784.766 offset +1  conf 7.57  (117 s, ~22 min left)
+[11/124] CFQJ_bTPpVk/CFQJ_bTPpVk_NA_c3_152.766_216.000 offset -1  conf 4.88  (121 s, ~21 min left)
+[12/124] E6zlmoAaIb8/E6zlmoAaIb8_NA_c2_198.100_247.820 offset -1  conf 2.76  (130 s, ~20 min left)
+[13/124] Dlep-mfcRAY/Dlep-mfcRAY_NA_c9_8.108_195.795   offset +0  conf 6.40  (130 s, ~19 min left)
+[14/124] EYFmGQyYdLI/EYFmGQyYdLI_NA_c1_476.800_513.466 offset +0  conf 6.70  (152 s, ~20 min left)
+[15/124] EscrMLIeJsg/EscrMLIeJsg_NA_c9_1.800_238.700   offset -2  conf 5.84  (158 s, ~19 min left)
+[16/124] FEzP2u_SGMY/FEzP2u_SGMY_NA_227.500_236.366    offset +1  conf 2.87  (170 s, ~19 min left)
+[17/124] FehSk6OdSRc/FehSk6OdSRc_NA_c2_534.183_572.766 offset +1  conf 9.59  (171 s, ~18 min left)
+[18/124] GYpayTHfpP0/GYpayTHfpP0_NA_c2_39.239_83.516   offset +0  conf 6.63  (191 s, ~19 min left)
+[19/124] GYpayTHfpP0/GYpayTHfpP0_NA_130.863_166.032    offset +0  conf 7.77  (194 s, ~18 min left)
+[20/124] GaWxxAeGiQo/GaWxxAeGiQo_NA_c1_18.400_54.800   offset +0  conf 3.63  (202 s, ~18 min left)
+[21/124] HBVYkvjex1g/HBVYkvjex1g_NA_486.450_510.600    offset -5  conf 5.40  (203 s, ~17 min left)
+[22/124] HBVYkvjex1g/HBVYkvjex1g_NA_c1_486.450_510.600 offset -5  conf 6.08  (216 s, ~17 min left)
+[23/124] HMlKINooK2Y/HMlKINooK2Y_NA_1252.317_1307.973  offset +1  conf 9.51  (222 s, ~16 min left)
+[24/124] HSPPR6_btx0/HSPPR6_btx0_NA_64.020_70.860      offset -2  conf 7.83  (237 s, ~16 min left)
+[25/124] HMlKINooK2Y/HMlKINooK2Y_NA_c2_1252.317_1307.973 offset +1  conf 9.35  (238 s, ~16 min left)
+[26/124] HfbZlowr9N0/HfbZlowr9N0_NA_c1_124.166_151.400 offset -3  conf 7.08  (247 s, ~15 min left)
+[27/124] L3cT18yibI4/L3cT18yibI4_NA_c6_372.225_474.358 offset +0  conf 7.44  (268 s, ~16 min left)
+[28/124] S1og2w-FxQE/S1og2w-FxQE_NA_105.500_163.633    offset -2  conf 6.00  (269 s, ~15 min left)
+[29/124] S1og2w-FxQE/S1og2w-FxQE_NA_c3_6.533_79.666    offset -2  conf 3.60  (276 s, ~15 min left)
+[30/124] OXuY3bRFDlY/OXuY3bRFDlY_NA_506.620_515.060    offset -2  conf 6.64  (280 s, ~15 min left)
+[31/124] TtCBz1lutsY/TtCBz1lutsY_NA_c9_11.444_705.438  offset -3  conf 7.87  (304 s, ~15 min left)
+[32/124] U09KubROTD0/U09KubROTD0_NA_c9_0.809_788.646   offset +0  conf 4.55  (304 s, ~15 min left)
+[33/124] U4q9COX1_vU/U4q9COX1_vU_NA_508.420_528.700    offset -3  conf 4.98  (313 s, ~14 min left)
+[34/124] U4q9COX1_vU/U4q9COX1_vU_NA_c9_528.900_743.820 offset -3  conf 4.71  (313 s, ~14 min left)
+[35/124] _qsTm11_aEI/_qsTm11_aEI_NA_c9_0.100_445.900   offset +0  conf 5.49  (345 s, ~15 min left)
+[36/124] UDA0ZAN9eJs/UDA0ZAN9eJs_NA_c1_695.100_715.000 offset +0  conf 8.07  (345 s, ~14 min left)
+[37/124] XEmWV6t4TwE/XEmWV6t4TwE_NA_c3_73.300_143.260  offset -1  conf 8.03  (345 s, ~14 min left)
+[38/124] __xtvxlI9Pc/__xtvxlI9Pc_NA_c2_413.095_449.807 offset -1  conf 7.33  (345 s, ~13 min left)
+[39/124] gyW53JpMxJ8/gyW53JpMxJ8_NA_461.460_469.669    offset +1  conf 6.48  (381 s, ~14 min left)
+[40/124] imzT9ywcL84/imzT9ywcL84_NA_c1_1949.366_1972.666 offset +1  conf 3.35  (381 s, ~13 min left)
+[41/124] elhGjk6kWIY/elhGjk6kWIY_NA_c1_1045.200_1065.433 offset -2  conf 5.43  (382 s, ~13 min left)
+[42/124] j6CyCivBQSU/j6CyCivBQSU_NA_c2_353.619_402.093 offset +0  conf 8.31  (394 s, ~13 min left)
+[43/124] jm0JwXT2O0M/jm0JwXT2O0M_NA_875.900_885.600    offset +1  conf 4.71  (433 s, ~14 min left)
+[44/124] jIKA6hqxj6o/jIKA6hqxj6o_NA_c9_0.100_399.500   offset +0  conf 6.49  (444 s, ~13 min left)
+[45/124] jb2DUV4E49Y/jb2DUV4E49Y_NA_c3_0.100_64.581    offset +0  conf 7.67  (449 s, ~13 min left)
+[46/124] jX28SEx4jAo/jX28SEx4jAo_NA_c1_262.900_280.620 offset -1  conf 6.88  (451 s, ~13 min left)
+[47/124] jsKg_ghJ03g/jsKg_ghJ03g_NA_692.340_697.700    offset -3  conf 6.89  (458 s, ~12 min left)
+[48/124] k1C8KJMbz1I/k1C8KJMbz1I_NA_c1_446.445_460.960 offset +0  conf 7.76  (473 s, ~12 min left)
+[49/124] lAQYP3J9KP4/lAQYP3J9KP4_NA_320.966_326.066    offset +3  conf 6.87  (480 s, ~12 min left)
+[50/124] kD9nxZ_IMBk/kD9nxZ_IMBk_NA_c2_337.266_385.000 offset +2  conf 5.02  (483 s, ~12 min left)
+[51/124] lGoDYwK6_Ek/lGoDYwK6_Ek_NA_27.766_37.666      offset +1  conf 6.96  (505 s, ~12 min left)
+[52/124] lcd3dcw103I/lcd3dcw103I_NA_c1_267.433_285.852 offset +0  conf 6.68  (506 s, ~12 min left)
+[53/124] m_XpFwrdomY/m_XpFwrdomY_NA_c1_128.033_144.633 offset +1  conf 8.24  (512 s, ~11 min left)
+[54/124] mfT-UZCA6Tg/mfT-UZCA6Tg_NA_196.860_204.140    offset -1  conf 4.75  (513 s, ~11 min left)
+[55/124] mr4Q9zdE2Ok/mr4Q9zdE2Ok_NA_0.100_54.766       offset +3  conf 0.71  (544 s, ~11 min left)
+[56/124] mfT-UZCA6Tg/mfT-UZCA6Tg_NA_48.900_58.340      offset -1  conf 9.47  (544 s, ~11 min left)
+[57/124] mvtEaGjLnW4/mvtEaGjLnW4_NA_3.400_384.000      offset +0  conf 6.07  (548 s, ~11 min left)
+[58/124] mr4Q9zdE2Ok/mr4Q9zdE2Ok_NA_c2_0.100_54.766    offset +0  conf 2.47  (549 s, ~10 min left)
+[59/124] n55z6Rk-NJU/n55z6Rk-NJU_NA_28.086_38.605      offset -1  conf 9.04  (581 s, ~11 min left)
+[60/124] mvtEaGjLnW4/mvtEaGjLnW4_NA_c9_3.400_384.000   offset +0  conf 5.90  (582 s, ~10 min left)
+[61/124] n8YZDrcJBZE/n8YZDrcJBZE_NA_185.100_200.300    offset -2  conf 5.42  (588 s, ~10 min left)
+[62/124] nAzOX747_yQ/nAzOX747_yQ_NA_785.784_801.000    offset +0  conf 7.31  (598 s, ~10 min left)
+[63/124] nDTUr7q9WCA/nDTUr7q9WCA_NA_c9_1004.394_1249.815 offset +0  conf 4.63  (618 s, ~10 min left)
+[64/124] nFqWiaFeLT4/nFqWiaFeLT4_NA_0.100_29.566       offset +2  conf 5.76  (634 s, ~10 min left)
+[65/124] nFqWiaFeLT4/nFqWiaFeLT4_NA_c1_29.766_71.266   offset +2  conf 4.72  (642 s, ~10 min left)
+[66/124] nMeM_jbIksg/nMeM_jbIksg_NA_c1_351.933_385.533 offset -2  conf 3.82  (648 s, ~9 min left)
+  [lse] could not parse run_syncnet.py output for clip.mp4:
+
+2026-10-18 08:03:13,700 SyncNetInstance INFO: Using device: cuda
+2026-10-18 08:03:14,397 __main__ INFO: Model data/syncnet_v2.model loaded.
+
+[67/124] nlpJEtWit58/nlpJEtWit58_NA_c3_189.389_226.926 offset +nan  conf nan  (672 s, ~10 min left)
+[68/124] nG1ylmemZls/nG1ylmemZls_NA_746.846_767.299    offset +0  conf 7.92  (676 s, ~9 min left)
+[69/124] o0tY5EDx0l4/o0tY5EDx0l4_NA_c8_139.989_296.154 offset -2  conf 8.33  (680 s, ~9 min left)
+[70/124] ncoiotldS-8/ncoiotldS-8_NA_46.500_55.220      offset -2  conf 5.72  (690 s, ~9 min left)
+[71/124] o8_IDZITni0/o8_IDZITni0_NA_0.100_13.666       offset +0  conf 6.57  (700 s, ~9 min left)
+[72/124] o8_IDZITni0/o8_IDZITni0_NA_c6_13.866_136.766  offset +1  conf 7.22  (703 s, ~8 min left)
+[73/124] oKyAA5i8ycE/oKyAA5i8ycE_NA_366.366_453.866    offset +1  conf 4.20  (709 s, ~8 min left)
+[74/124] oKyAA5i8ycE/oKyAA5i8ycE_NA_c4_366.366_453.866 offset +0  conf 5.91  (717 s, ~8 min left)
+[75/124] oPooneavmLk/oPooneavmLk_NA_701.533_814.033    offset -2  conf 6.20  (726 s, ~8 min left)
+[76/124] oPooneavmLk/oPooneavmLk_NA_c5_701.533_814.033 offset -2  conf 8.85  (731 s, ~8 min left)
+[77/124] o_Q86qg8WsA/o_Q86qg8WsA_NA_498.030_548.548    offset -1  conf 6.87  (738 s, ~8 min left)
+[78/124] o_Q86qg8WsA/o_Q86qg8WsA_NA_c2_498.030_548.548 offset -1  conf 5.46  (746 s, ~7 min left)
+[79/124] ogj3U1xSsM0/ogj3U1xSsM0_NA_c4_0.100_82.415    offset +4  conf 3.77  (756 s, ~7 min left)
+[80/124] ovwfWoL-l_A/ovwfWoL-l_A_NA_c1_244.377_270.103 offset +1  conf 7.23  (757 s, ~7 min left)
+[81/124] p29BCHkh9fw/p29BCHkh9fw_NA_1134.199_1145.377  offset -1  conf 7.35  (766 s, ~7 min left)
+[82/124] p29BCHkh9fw/p29BCHkh9fw_NA_c1_979.445_1018.384 offset -1  conf 7.78  (774 s, ~7 min left)
+[83/124] pE0-hE2p5nw/pE0-hE2p5nw_NA_c1_67.125_76.851   offset -1  conf 5.97  (786 s, ~6 min left)
+[84/124] pLwwDOATcCo/pLwwDOATcCo_NA_0.100_7.983        offset +1  conf 8.28  (786 s, ~6 min left)
+[85/124] pZcCGNeNuNc/pZcCGNeNuNc_NA_c9_0.100_273.000   offset +1  conf 1.02  (793 s, ~6 min left)
+[86/124] pgxHtAHjM7Y/pgxHtAHjM7Y_NA_0.100_95.203       offset -2  conf 6.93  (804 s, ~6 min left)
+  [lse] could not parse run_syncnet.py output for clip.mp4:
+
+2026-10-18 08:05:36,545 SyncNetInstance INFO: Using device: cuda
+2026-10-18 08:05:37,138 __main__ INFO: Model data/syncnet_v2.model loaded.
+
+[87/124] qSWL5Mn-iUE/qSWL5Mn-iUE_NA_c3_0.100_64.000    offset +nan  conf nan  (815 s, ~6 min left)
+[88/124] pgxHtAHjM7Y/pgxHtAHjM7Y_NA_c6_503.144_636.577 offset -3  conf 7.74  (818 s, ~6 min left)
+[89/124] qo4hK5AOaGc/qo4hK5AOaGc_NA_1052.434_1078.193  offset -1  conf 4.90  (821 s, ~5 min left)
+[90/124] qo4hK5AOaGc/qo4hK5AOaGc_NA_c1_1052.434_1078.193 offset -1  conf 4.28  (829 s, ~5 min left)
+[91/124] qv526Qfwy2c/qv526Qfwy2c_NA_27.566_46.600      offset +0  conf 8.23  (844 s, ~5 min left)
+[92/124] r0pxv8LTMg4/r0pxv8LTMg4_NA_103.369_136.036    offset -1  conf 6.30  (847 s, ~5 min left)
+[93/124] r0pxv8LTMg4/r0pxv8LTMg4_NA_c4_259.025_358.691 offset +0  conf 4.77  (850 s, ~5 min left)
+[94/124] r4oH3AXsuo0/r4oH3AXsuo0_NA_299.315_322.597    offset -2  conf 5.58  (858 s, ~5 min left)
+[95/124] r4oH3AXsuo0/r4oH3AXsuo0_NA_30.964_38.313      offset -2  conf 6.58  (873 s, ~4 min left)
+[96/124] rCbLGVjjoOE/rCbLGVjjoOE_NA_c9_89.166_434.866  offset +1  conf 7.26  (879 s, ~4 min left)
+[97/124] rTHrTfcFSB0/rTHrTfcFSB0_NA_0.100_9.780        offset -3  conf 6.93  (909 s, ~4 min left)
+[98/124] rTHrTfcFSB0/rTHrTfcFSB0_NA_550.420_557.980    offset -2  conf 4.83  (913 s, ~4 min left)
+[99/124] rW-j-VZmF5g/rW-j-VZmF5g_NA_c7_565.766_696.366 offset +0  conf 5.71  (940 s, ~4 min left)
+[100/124] rn0ig_k21Mk/rn0ig_k21Mk_NA_294.083_300.233    offset +1  conf 4.67  (944 s, ~4 min left)
+[101/124] rK8YgXX-GJk/rK8YgXX-GJk_NA_0.100_64.000       offset +2  conf 5.89  (949 s, ~4 min left)
+[102/124] rK8YgXX-GJk/rK8YgXX-GJk_NA_c2_0.100_64.000    offset +2  conf 3.76  (958 s, ~3 min left)
+[103/124] roI0D_9kPl8/roI0D_9kPl8_NA_152.043_208.149    offset -1  conf 9.17  (971 s, ~3 min left)
+[104/124] roI0D_9kPl8/roI0D_9kPl8_NA_c2_152.043_208.149 offset -1  conf 7.60  (973 s, ~3 min left)
+[105/124] rsMruj9zGJQ/rsMruj9zGJQ_NA_c2_2180.020_2227.260 offset +2  conf 7.44  (978 s, ~3 min left)
+[106/124] s1wBdcNXdCM/s1wBdcNXdCM_NA_c1_142.158_152.519 offset +1  conf 5.12  (986 s, ~3 min left)
+[107/124] sEOy0Fl9TrI/sEOy0Fl9TrI_NA_518.920_524.240    offset -1  conf 5.76  (997 s, ~3 min left)
+[108/124] ssRWDwWnum0/ssRWDwWnum0_NA_0.100_22.122       offset +1  conf 6.46  (1004 s, ~2 min left)
+[109/124] ssRWDwWnum0/ssRWDwWnum0_NA_c1_0.100_22.122    offset +1  conf 6.03  (1008 s, ~2 min left)
+[110/124] syCD65v0dJQ/syCD65v0dJQ_NA_391.424_432.665    offset +0  conf 8.70  (1016 s, ~2 min left)
+[111/124] syCD65v0dJQ/syCD65v0dJQ_NA_c1_536.986_565.882 offset +1  conf 8.94  (1027 s, ~2 min left)
+  [lse] could not parse run_syncnet.py output for clip.mp4:
+
+2026-10-18 08:09:09,079 SyncNetInstance INFO: Using device: cuda
+2026-10-18 08:09:09,612 __main__ INFO: Model data/syncnet_v2.model loaded.
+
+[112/124] t2gKCDdbKRY/t2gKCDdbKRY_NA_1708.139_1713.612  offset +nan  conf nan  (1027 s, ~2 min left)
+[113/124] t2gKCDdbKRY/t2gKCDdbKRY_NA_c3_416.749_475.808 offset +0  conf 7.65  (1038 s, ~2 min left)
+[114/124] tBDRVktCQLU/tBDRVktCQLU_NA_c9_0.834_220.000   offset +0  conf 5.08  (1045 s, ~2 min left)
+[115/124] wZ3TcnWosRs/wZ3TcnWosRs_NA_0.100_134.934      offset +2  conf 8.31  (1059 s, ~1 min left)
+[116/124] u4wIR6OemmE/u4wIR6OemmE_NA_c2_49.233_89.266   offset +0  conf 7.54  (1059 s, ~1 min left)
+[117/124] wZ3TcnWosRs/wZ3TcnWosRs_NA_c9_671.837_905.104 offset +2  conf 8.16  (1069 s, ~1 min left)
+[118/124] xS_jImNzeYs/xS_jImNzeYs_NA_204.233_211.233    offset +1  conf 0.84  (1077 s, ~1 min left)
+  [lse] syncnet_python failed on clip.mp4: CalledProcessError
+rk/pyavi/sang/audio.wav.
+Error opening output files: Invalid argument
+Traceback (most recent call last):
+  File "/beegfs/work/achakraborti/SANG/third_party/syncnet_python/run_pipeline.py", line 281, in <module>
+    subprocess.run(command, check=True)
+  File "/home/achakraborti/miniconda3/envs/avcodec/lib/python3.10/subprocess.py", line 526, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['ffmpeg', '-y', '-loglevel', 'error', '-i', '/tmp/sync_offsets_184279_2/yEaXP47rtx0__yEaXP47rtx0_NA_c5_0.100_117.716/syncnet/work/pyavi/sang/video.avi', '-ac', '1', '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '/tmp/sync_offsets_184279_2/yEaXP47rtx0__yEaXP47rtx0_NA_c5_0.100_117.716/syncnet/work/pyavi/sang/audio.wav']' returned non-zero exit status 234.
+
+[119/124] yEaXP47rtx0/yEaXP47rtx0_NA_c5_0.100_117.716   offset +nan  conf nan  (1084 s, ~1 min left)
+[120/124] yEaXP47rtx0/yEaXP47rtx0_NA_0.100_117.716      offset -3  conf 4.20  (1111 s, ~1 min left)
+[121/124] yOIyfHsVivA/yOIyfHsVivA_NA_128.766_134.016    offset +1  conf 4.42  (1111 s, ~0 min left)
+[122/124] yUhAt3q0MGY/yUhAt3q0MGY_NA_308.766_314.566    offset -1  conf 4.08  (1121 s, ~0 min left)
+[123/124] yiMQFEWuHYg/yiMQFEWuHYg_NA_1241.100_1250.900  offset -3  conf 0.23  (1147 s, ~0 min left)
+[124/124] yaf5e2AP5qo/yaf5e2AP5qo_NA_771.500_777.700    offset -2  conf 1.68  (1156 s, ~0 min left)
+shard 2 done in 1156 s
