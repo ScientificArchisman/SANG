@@ -9,8 +9,8 @@ training and evaluation read (sang/sync.py has the convention and the merge rule
 
 Offsets are constant within a source video (diagnosis job 176657), so 2 clips per video are enough:
 the video's mean offset is applied to all its clips, at half-frame resolution. Clips where SyncNet
-finds no sync or has confidence < 3 are dropped. Rerun step 1 after the cache grows; finished
-clips are skipped.
+finds no sync or has confidence < 3 are dropped. Rerun step 1 after the cache grows: only videos with fewer
+than --per-video measurements are measured (new segments of a measured video take its offset at --merge).
 """
 import argparse
 import json
@@ -19,6 +19,7 @@ import shutil
 import sys
 import threading
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -29,22 +30,42 @@ from sang.paths import MOTION_CACHE, load_index
 from sang.sync import FPS, clip_key, merge, pick_clips, real_clip_mp4, video_of
 
 
+def read_measured(cache: Path) -> list[dict]:
+    """Every SyncNet measurement so far, from all <cache>/sync/offsets_*.jsonl."""
+    out = []
+    for f in sorted((cache / "sync").glob("offsets_*.jsonl")):
+        out += [json.loads(l) for l in f.read_text().splitlines() if l.strip()]
+    return out
+
+
+def to_measure(rows: list[dict], measured: list[dict], per_video: int, min_frames: int) -> list[dict]:
+    """Clips still to measure: pick_clips' up to per_video per video, minus clips measured before, and no
+    video that already has per_video measurements. When the cache grows (new segments of long clips,
+    cache_motion.py --chunks), a measured video's offset carries over to its new clips at --merge, so only
+    new videos cost SyncNet runs. Without this, the new segments change pick_clips' last clip of almost
+    every video and the whole cache would be measured again."""
+    have = Counter(m["video"] for m in measured)
+    done = {m["key"] for m in measured}
+    picks = pick_clips([r for r in rows if have[video_of(r)] < per_video], per_video, min_frames=min_frames)
+    return [r for r in picks if clip_key(r) not in done]
+
+
 def measure(args, cache: Path) -> None:
     from sang.bench import SYNCNET, lse
     if not (SYNCNET / "run_syncnet.py").exists():
         sys.exit(f"no syncnet_python at {SYNCNET} (bash_scripts/install_motion.sh)")
     rows = load_index(cache)
-    picks = pick_clips(rows, args.per_video, min_frames=args.min_frames)
+    measured = read_measured(cache)
+    picks = to_measure(rows, measured, args.per_video, args.min_frames)
     videos = sorted({video_of(r) for r in picks})
     mine = {v for i, v in enumerate(videos) if i % args.nshards == args.shard}
     todo = [r for r in picks if video_of(r) in mine]
     out = cache / "sync" / f"offsets_{args.shard:03d}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
-    done = {json.loads(l)["key"] for l in out.read_text().splitlines() if l.strip()} if out.exists() else set()
-    todo = [r for r in todo if clip_key(r) not in done]
     tmp = Path(os.environ.get("TMPDIR", "/tmp")) / f"sync_offsets_{os.environ.get('SLURM_JOB_ID', 'local')}_{args.shard}"
     print(f"shard {args.shard}/{args.nshards}: {len(mine)} videos, {len(todo)} clips to measure "
-          f"({len(done)} already done), {args.workers} workers, {args.seconds:g} s each -> {out}", flush=True)
+          f"({len(measured)} measured before, all shards), {args.workers} workers, {args.seconds:g} s each -> {out}",
+          flush=True)
 
     lock, t0, count = threading.Lock(), time.time(), [0]
 
@@ -76,9 +97,7 @@ def measure(args, cache: Path) -> None:
 
 
 def do_merge(args, cache: Path) -> None:
-    measured = []
-    for f in sorted((cache / "sync").glob("offsets_*.jsonl")):
-        measured += [json.loads(l) for l in f.read_text().splitlines() if l.strip()]
+    measured = read_measured(cache)
     if not measured:
         sys.exit(f"nothing measured under {cache / 'sync'}; run the measuring job first")
     rows = load_index(cache)
