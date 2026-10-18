@@ -1,0 +1,69 @@
+[job] 184305 on gpu01 | gpu: NVIDIA A100 80GB PCIe | cpus: 8 | env: avcodec | commit: cf65a11 | 2026-10-18 10:12:50
+[job] python -u scripts/data_stats.py --sync-offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets_c10.json --out results/data_stats/data_stats_c10.json --workers 2
+reading the cache index in /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed
+29510 cached clips
+language ID: 23833 cached, 4485 to label
+reading TalkVid metadata /beegfs/work_fast/shared/li_shared/archi_data/talkvid/metadata/filtered_video_clips.json ...
+188127 metadata entries read in 4 s
+TalkVid metadata: 29267/29510 cached clips matched -> /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/talkvid_meta.json
+
+train: 27845 clips, 97.13 h, 1680 source videos; clip 10.0 s median; 10 clips/video median (max 334, top 10% of videos hold 37% of clips)
+  languages (clips): en 23065, zh 4028, es 190, ko 128, cy 112, hi 96, ja 78, pl 26
+  language (TalkVid labels, 27617/27845 clips matched):            clips        hours
+    English          22613   81.21 %    78.75   81.08 %
+    Chinese           3970   14.26 %    13.77   14.18 %
+    Unknown            537    1.93 %     1.85    1.91 %
+    unmatched          228    0.82 %     1.02    1.05 %
+    Spanish            158    0.57 %     0.59    0.61 %
+    Korean             121    0.43 %     0.37    0.38 %
+    Japanese            78    0.28 %     0.27    0.28 %
+    Hindi               75    0.27 %     0.27    0.28 %
+    Polish              26    0.09 %     0.12    0.13 %
+    Other               20    0.07 %     0.05    0.05 %
+    French              17    0.06 %     0.05    0.05 %
+    Portuguese           1    0.00 %     0.00    0.00 %
+    Russian              1    0.00 %     0.00    0.00 %
+  language (Whisper):            clips        hours
+    English          23065   82.83 %    80.56   82.94 %
+    Chinese           4028   14.47 %    14.06   14.48 %
+    Spanish            190    0.68 %     0.71    0.73 %
+    Korean             128    0.46 %     0.39    0.40 %
+    Welsh              112    0.40 %     0.31    0.32 %
+    Hindi               96    0.34 %     0.33    0.34 %
+    Japanese            78    0.28 %     0.27    0.28 %
+    Polish              26    0.09 %     0.12    0.13 %
+    Portuguese          23    0.08 %     0.10    0.10 %
+    unk                 22    0.08 %     0.05    0.05 %
+    French              19    0.07 %     0.06    0.06 %
+    Malay               18    0.06 %     0.05    0.05 %
+    Dutch               16    0.06 %     0.04    0.04 %
+    tl                   9    0.03 %     0.04    0.04 %
+    German               4    0.01 %     0.01    0.01 %
+    yo                   4    0.01 %     0.01    0.01 %
+    ta                   4    0.01 %     0.01    0.01 %
+    Indonesian           1    0.00 %     0.00    0.00 %
+    Russian              1    0.00 %     0.00    0.00 %
+    ca                   1    0.00 %     0.00    0.00 %
+  Whisper agrees with TalkVid's language on 97.2 % of matched clips; 1478 distinct TalkVid persons
+
+val: 471 clips, 1.25 h, 70 source videos; clip 10.0 s median; 4 clips/video median (max 36, top 10% of videos hold 39% of clips)
+  languages (clips): en 399, zh 66, hi 2, unk 2, sw 1, ur 1
+  language (TalkVid labels, 468/471 clips matched):            clips        hours
+    English            388   82.38 %     1.04   83.40 %
+    Chinese             64   13.59 %     0.17   13.41 %
+    Unknown             13    2.76 %     0.03    2.08 %
+    unmatched            3    0.64 %     0.01    0.44 %
+    Hindi                3    0.64 %     0.01    0.67 %
+  language (Whisper):            clips        hours
+    English            399   84.71 %     1.07   85.22 %
+    Chinese             66   14.01 %     0.17   13.63 %
+    Hindi                2    0.42 %     0.01    0.44 %
+    unk                  2    0.42 %     0.00    0.32 %
+    Swahili              1    0.21 %     0.00    0.17 %
+    Urdu                 1    0.21 %     0.00    0.22 %
+  Whisper agrees with TalkVid's language on 96.8 % of matched clips; 70 distinct TalkVid persons
+
+TalkVid persons in both train and val: 18 (99/471 val clips); the split is by source video, so one person with several videos can land on both sides
+
+cache total {'clips': 29510, 'videos': 1812, 'hours': 102.88}; dropped by the offset filter: train {'low confidence': 111, 'video offsets disagree': 777, 'no sync': 53, 'no sync in video': 175, 'audio partial': 23, 'not measured': 9, 'audio none': 35}, val {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3}
+wrote results/data_stats/data_stats_c10.json

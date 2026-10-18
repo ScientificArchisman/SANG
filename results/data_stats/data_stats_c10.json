@@ -1,0 +1,1318 @@
+{
+ "source": "TalkVid motion cache",
+ "cache": "/beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed",
+ "fps": 25,
+ "split": {
+  "rule": "hash of source-video name",
+  "val_frac": 0.05,
+  "seed": 0
+ },
+ "sync_offsets": "/beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets_c10.json",
+ "cache_total": {
+  "clips": 29510,
+  "videos": 1812,
+  "hours": 102.88
+ },
+ "dropped": {
+  "train": {
+   "low confidence": 111,
+   "video offsets disagree": 777,
+   "no sync": 53,
+   "no sync in video": 175,
+   "audio partial": 23,
+   "not measured": 9,
+   "audio none": 35
+  },
+  "val": {
+   "low confidence": 5,
+   "video offsets disagree": 3,
+   "no sync": 3
+  }
+ },
+ "language_id": {
+  "model": "openai/whisper-large-v3",
+  "min_prob": 0.5,
+  "audio": "first <= 10 s of each clip"
+ },
+ "talkvid_meta": "/beegfs/work_fast/shared/li_shared/archi_data/talkvid/metadata/filtered_video_clips.json",
+ "train": {
+  "clips": 27845,
+  "frames": 8741680,
+  "hours": 97.13,
+  "videos": 1680,
+  "clip_seconds": {
+   "mean": 12.56,
+   "median": 10.0,
+   "min": 2.96,
+   "max": 20.0,
+   "hist": [
+    {
+     "bin": "0-5",
+     "count": 1316
+    },
+    {
+     "bin": "5-10",
+     "count": 8619
+    },
+    {
+     "bin": "10-15",
+     "count": 7702
+    },
+    {
+     "bin": "15-20",
+     "count": 1783
+    },
+    {
+     "bin": ">=20",
+     "count": 8425
+    }
+   ]
+  },
+  "clips_per_video": {
+   "mean": 16.57,
+   "median": 10.0,
+   "max": 334,
+   "hist": [
+    {
+     "bin": "1",
+     "count": 177
+    },
+    {
+     "bin": "2",
+     "count": 156
+    },
+    {
+     "bin": "3-5",
+     "count": 231
+    },
+    {
+     "bin": "6-10",
+     "count": 297
+    },
+    {
+     "bin": "11-20",
+     "count": 338
+    },
+    {
+     "bin": "21-50",
+     "count": 397
+    },
+    {
+     "bin": ">50",
+     "count": 84
+    }
+   ],
+   "share_top10pct_videos": 0.369
+  },
+  "hours_per_video": {
+   "mean": 3.47,
+   "median": 2.07,
+   "unit": "minutes"
+  },
+  "language": {
+   "clips": {
+    "en": 23065,
+    "zh": 4028,
+    "es": 190,
+    "ko": 128,
+    "cy": 112,
+    "hi": 96,
+    "ja": 78,
+    "pl": 26,
+    "pt": 23,
+    "unk": 22,
+    "fr": 19,
+    "ms": 18,
+    "nl": 16,
+    "tl": 9,
+    "de": 4,
+    "yo": 4,
+    "ta": 4,
+    "id": 1,
+    "ru": 1,
+    "ca": 1
+   },
+   "hours": {
+    "en": 80.56,
+    "zh": 14.06,
+    "es": 0.71,
+    "ko": 0.39,
+    "hi": 0.33,
+    "cy": 0.31,
+    "ja": 0.27,
+    "pl": 0.12,
+    "pt": 0.1,
+    "fr": 0.06,
+    "unk": 0.05,
+    "ms": 0.05,
+    "tl": 0.04,
+    "nl": 0.04,
+    "yo": 0.01,
+    "de": 0.01,
+    "ta": 0.01,
+    "id": 0.0,
+    "ru": 0.0,
+    "ca": 0.0
+   },
+   "videos": {
+    "en": 1327,
+    "zh": 290,
+    "es": 16,
+    "hi": 12,
+    "cy": 8,
+    "ko": 6,
+    "pt": 5,
+    "ja": 4,
+    "fr": 3,
+    "pl": 1,
+    "ms": 1,
+    "nl": 1,
+    "tl": 1,
+    "de": 1,
+    "unk": 1,
+    "ta": 1,
+    "ru": 1,
+    "ca": 1
+   }
+  },
+  "language_whisper": [
+   {
+    "label": "English",
+    "clips": 23065,
+    "pct_clips": 82.83,
+    "hours": 80.56,
+    "pct_hours": 82.94,
+    "videos": 1338
+   },
+   {
+    "label": "Chinese",
+    "clips": 4028,
+    "pct_clips": 14.47,
+    "hours": 14.06,
+    "pct_hours": 14.48,
+    "videos": 291
+   },
+   {
+    "label": "Spanish",
+    "clips": 190,
+    "pct_clips": 0.68,
+    "hours": 0.71,
+    "pct_hours": 0.73,
+    "videos": 17
+   },
+   {
+    "label": "Korean",
+    "clips": 128,
+    "pct_clips": 0.46,
+    "hours": 0.39,
+    "pct_hours": 0.4,
+    "videos": 9
+   },
+   {
+    "label": "Welsh",
+    "clips": 112,
+    "pct_clips": 0.4,
+    "hours": 0.31,
+    "pct_hours": 0.32,
+    "videos": 19
+   },
+   {
+    "label": "Hindi",
+    "clips": 96,
+    "pct_clips": 0.34,
+    "hours": 0.33,
+    "pct_hours": 0.34,
+    "videos": 15
+   },
+   {
+    "label": "Japanese",
+    "clips": 78,
+    "pct_clips": 0.28,
+    "hours": 0.27,
+    "pct_hours": 0.28,
+    "videos": 5
+   },
+   {
+    "label": "Polish",
+    "clips": 26,
+    "pct_clips": 0.09,
+    "hours": 0.12,
+    "pct_hours": 0.13,
+    "videos": 1
+   },
+   {
+    "label": "Portuguese",
+    "clips": 23,
+    "pct_clips": 0.08,
+    "hours": 0.1,
+    "pct_hours": 0.1,
+    "videos": 7
+   },
+   {
+    "label": "unk",
+    "clips": 22,
+    "pct_clips": 0.08,
+    "hours": 0.05,
+    "pct_hours": 0.05,
+    "videos": 17
+   },
+   {
+    "label": "French",
+    "clips": 19,
+    "pct_clips": 0.07,
+    "hours": 0.06,
+    "pct_hours": 0.06,
+    "videos": 5
+   },
+   {
+    "label": "Malay",
+    "clips": 18,
+    "pct_clips": 0.06,
+    "hours": 0.05,
+    "pct_hours": 0.05,
+    "videos": 1
+   },
+   {
+    "label": "Dutch",
+    "clips": 16,
+    "pct_clips": 0.06,
+    "hours": 0.04,
+    "pct_hours": 0.04,
+    "videos": 1
+   },
+   {
+    "label": "tl",
+    "clips": 9,
+    "pct_clips": 0.03,
+    "hours": 0.04,
+    "pct_hours": 0.04,
+    "videos": 2
+   },
+   {
+    "label": "German",
+    "clips": 4,
+    "pct_clips": 0.01,
+    "hours": 0.01,
+    "pct_hours": 0.01,
+    "videos": 1
+   },
+   {
+    "label": "yo",
+    "clips": 4,
+    "pct_clips": 0.01,
+    "hours": 0.01,
+    "pct_hours": 0.01,
+    "videos": 3
+   },
+   {
+    "label": "ta",
+    "clips": 4,
+    "pct_clips": 0.01,
+    "hours": 0.01,
+    "pct_hours": 0.01,
+    "videos": 1
+   },
+   {
+    "label": "Indonesian",
+    "clips": 1,
+    "pct_clips": 0.0,
+    "hours": 0.0,
+    "pct_hours": 0.0,
+    "videos": 1
+   },
+   {
+    "label": "Russian",
+    "clips": 1,
+    "pct_clips": 0.0,
+    "hours": 0.0,
+    "pct_hours": 0.0,
+    "videos": 1
+   },
+   {
+    "label": "ca",
+    "clips": 1,
+    "pct_clips": 0.0,
+    "hours": 0.0,
+    "pct_hours": 0.0,
+    "videos": 1
+   }
+  ],
+  "talkvid": {
+   "matched": 27617,
+   "persons": 1478,
+   "language": [
+    {
+     "label": "English",
+     "clips": 22613,
+     "pct_clips": 81.21,
+     "hours": 78.75,
+     "pct_hours": 81.08,
+     "videos": 1287
+    },
+    {
+     "label": "Chinese",
+     "clips": 3970,
+     "pct_clips": 14.26,
+     "hours": 13.77,
+     "pct_hours": 14.18,
+     "videos": 288
+    },
+    {
+     "label": "Unknown",
+     "clips": 537,
+     "pct_clips": 1.93,
+     "hours": 1.85,
+     "pct_hours": 1.91,
+     "videos": 53
+    },
+    {
+     "label": "unmatched",
+     "clips": 228,
+     "pct_clips": 0.82,
+     "hours": 1.02,
+     "pct_hours": 1.05,
+     "videos": 69
+    },
+    {
+     "label": "Spanish",
+     "clips": 158,
+     "pct_clips": 0.57,
+     "hours": 0.59,
+     "pct_hours": 0.61,
+     "videos": 14
+    },
+    {
+     "label": "Korean",
+     "clips": 121,
+     "pct_clips": 0.43,
+     "hours": 0.37,
+     "pct_hours": 0.38,
+     "videos": 6
+    },
+    {
+     "label": "Japanese",
+     "clips": 78,
+     "pct_clips": 0.28,
+     "hours": 0.27,
+     "pct_hours": 0.28,
+     "videos": 4
+    },
+    {
+     "label": "Hindi",
+     "clips": 75,
+     "pct_clips": 0.27,
+     "hours": 0.27,
+     "pct_hours": 0.28,
+     "videos": 11
+    },
+    {
+     "label": "Polish",
+     "clips": 26,
+     "pct_clips": 0.09,
+     "hours": 0.12,
+     "pct_hours": 0.13,
+     "videos": 1
+    },
+    {
+     "label": "Other",
+     "clips": 20,
+     "pct_clips": 0.07,
+     "hours": 0.05,
+     "pct_hours": 0.05,
+     "videos": 4
+    },
+    {
+     "label": "French",
+     "clips": 17,
+     "pct_clips": 0.06,
+     "hours": 0.05,
+     "pct_hours": 0.05,
+     "videos": 3
+    },
+    {
+     "label": "Portuguese",
+     "clips": 1,
+     "pct_clips": 0.0,
+     "hours": 0.0,
+     "pct_hours": 0.0,
+     "videos": 1
+    },
+    {
+     "label": "Russian",
+     "clips": 1,
+     "pct_clips": 0.0,
+     "hours": 0.0,
+     "pct_hours": 0.0,
+     "videos": 1
+    }
+   ],
+   "gender": [
+    {
+     "label": "Female",
+     "clips": 20126,
+     "pct_clips": 72.28,
+     "hours": 70.87,
+     "pct_hours": 72.96,
+     "videos": 1175
+    },
+    {
+     "label": "Male",
+     "clips": 7443,
+     "pct_clips": 26.73,
+     "hours": 25.02,
+     "pct_hours": 25.76,
+     "videos": 495
+    },
+    {
+     "label": "unmatched",
+     "clips": 228,
+     "pct_clips": 0.82,
+     "hours": 1.02,
+     "pct_hours": 1.05,
+     "videos": 69
+    },
+    {
+     "label": "Unknown",
+     "clips": 48,
+     "pct_clips": 0.17,
+     "hours": 0.21,
+     "pct_hours": 0.22,
+     "videos": 3
+    }
+   ],
+   "ethnicity": [
+    {
+     "label": "White",
+     "clips": 16819,
+     "pct_clips": 60.4,
+     "hours": 58.32,
+     "pct_hours": 60.04,
+     "videos": 983
+    },
+    {
+     "label": "Asian",
+     "clips": 6742,
+     "pct_clips": 24.21,
+     "hours": 22.93,
+     "pct_hours": 23.61,
+     "videos": 464
+    },
+    {
+     "label": "African",
+     "clips": 4008,
+     "pct_clips": 14.39,
+     "hours": 14.64,
+     "pct_hours": 15.08,
+     "videos": 223
+    },
+    {
+     "label": "unmatched",
+     "clips": 228,
+     "pct_clips": 0.82,
+     "hours": 1.02,
+     "pct_hours": 1.05,
+     "videos": 69
+    },
+    {
+     "label": "Unknown",
+     "clips": 48,
+     "pct_clips": 0.17,
+     "hours": 0.21,
+     "pct_hours": 0.22,
+     "videos": 3
+    }
+   ],
+   "age": [
+    {
+     "label": "31-45",
+     "clips": 18426,
+     "pct_clips": 66.17,
+     "hours": 64.65,
+     "pct_hours": 66.56,
+     "videos": 1113
+    },
+    {
+     "label": "19-30",
+     "clips": 6353,
+     "pct_clips": 22.82,
+     "hours": 21.72,
+     "pct_hours": 22.36,
+     "videos": 400
+    },
+    {
+     "label": "46-60",
+     "clips": 2261,
+     "pct_clips": 8.12,
+     "hours": 7.37,
+     "pct_hours": 7.59,
+     "videos": 121
+    },
+    {
+     "label": "60+",
+     "clips": 460,
+     "pct_clips": 1.65,
+     "hours": 1.9,
+     "pct_hours": 1.95,
+     "videos": 31
+    },
+    {
+     "label": "unmatched",
+     "clips": 228,
+     "pct_clips": 0.82,
+     "hours": 1.02,
+     "pct_hours": 1.05,
+     "videos": 69
+    },
+    {
+     "label": "Unknown",
+     "clips": 117,
+     "pct_clips": 0.42,
+     "hours": 0.47,
+     "pct_hours": 0.49,
+     "videos": 8
+    }
+   ],
+   "category": [
+    {
+     "label": "Personal Experience",
+     "clips": 10956,
+     "pct_clips": 39.35,
+     "hours": 39.5,
+     "pct_hours": 40.67,
+     "videos": 625
+    },
+    {
+     "label": "Vlogger/Creator",
+     "clips": 8488,
+     "pct_clips": 30.48,
+     "hours": 29.06,
+     "pct_hours": 29.92,
+     "videos": 564
+    },
+    {
+     "label": "Popular Science",
+     "clips": 1487,
+     "pct_clips": 5.34,
+     "hours": 4.78,
+     "pct_hours": 4.92,
+     "videos": 70
+    },
+    {
+     "label": "Global Culture",
+     "clips": 1178,
+     "pct_clips": 4.23,
+     "hours": 3.58,
+     "pct_hours": 3.69,
+     "videos": 56
+    },
+    {
+     "label": "Health Advice",
+     "clips": 821,
+     "pct_clips": 2.95,
+     "hours": 2.9,
+     "pct_hours": 2.98,
+     "videos": 62
+    },
+    {
+     "label": "Online Course/Lecture",
+     "clips": 518,
+     "pct_clips": 1.86,
+     "hours": 1.83,
+     "pct_hours": 1.89,
+     "videos": 31
+    },
+    {
+     "label": "Interview",
+     "clips": 464,
+     "pct_clips": 1.67,
+     "hours": 1.58,
+     "pct_hours": 1.63,
+     "videos": 26
+    },
+    {
+     "label": "Motivational Speech",
+     "clips": 460,
+     "pct_clips": 1.65,
+     "hours": 1.6,
+     "pct_hours": 1.65,
+     "videos": 32
+    },
+    {
+     "label": "Life Hacks",
+     "clips": 458,
+     "pct_clips": 1.64,
+     "hours": 1.74,
+     "pct_hours": 1.8,
+     "videos": 24
+    },
+    {
+     "label": "Independent Media",
+     "clips": 419,
+     "pct_clips": 1.5,
+     "hours": 1.43,
+     "pct_hours": 1.47,
+     "videos": 22
+    },
+    {
+     "label": "Language Learning",
+     "clips": 399,
+     "pct_clips": 1.43,
+     "hours": 1.54,
+     "pct_hours": 1.59,
+     "videos": 17
+    },
+    {
+     "label": "Product Review & Unboxing",
+     "clips": 370,
+     "pct_clips": 1.33,
+     "hours": 1.22,
+     "pct_hours": 1.25,
+     "videos": 35
+    },
+    {
+     "label": "Social Issues Discussion",
+     "clips": 315,
+     "pct_clips": 1.13,
+     "hours": 1.15,
+     "pct_hours": 1.18,
+     "videos": 24
+    },
+    {
+     "label": "unmatched",
+     "clips": 228,
+     "pct_clips": 0.82,
+     "hours": 1.02,
+     "pct_hours": 1.05,
+     "videos": 69
+    },
+    {
+     "label": "Success Case Study",
+     "clips": 186,
+     "pct_clips": 0.67,
+     "hours": 0.59,
+     "pct_hours": 0.61,
+     "videos": 9
+    },
+    {
+     "label": "Programming & Development",
+     "clips": 184,
+     "pct_clips": 0.66,
+     "hours": 0.61,
+     "pct_hours": 0.63,
+     "videos": 8
+    },
+    {
+     "label": "Photography & Editing",
+     "clips": 127,
+     "pct_clips": 0.46,
+     "hours": 0.51,
+     "pct_hours": 0.52,
+     "videos": 5
+    },
+    {
+     "label": "Tech Explained",
+     "clips": 118,
+     "pct_clips": 0.42,
+     "hours": 0.26,
+     "pct_hours": 0.27,
+     "videos": 5
+    },
+    {
+     "label": "Academic Course",
+     "clips": 105,
+     "pct_clips": 0.38,
+     "hours": 0.35,
+     "pct_hours": 0.36,
+     "videos": 10
+    },
+    {
+     "label": "Tech Trends",
+     "clips": 95,
+     "pct_clips": 0.34,
+     "hours": 0.31,
+     "pct_hours": 0.32,
+     "videos": 5
+    },
+    {
+     "label": "Cooking Tutorial",
+     "clips": 93,
+     "pct_clips": 0.33,
+     "hours": 0.26,
+     "pct_hours": 0.27,
+     "videos": 14
+    },
+    {
+     "label": "Game Commentary",
+     "clips": 86,
+     "pct_clips": 0.31,
+     "hours": 0.27,
+     "pct_hours": 0.27,
+     "videos": 5
+    },
+    {
+     "label": "Creative Short Video",
+     "clips": 79,
+     "pct_clips": 0.28,
+     "hours": 0.28,
+     "pct_hours": 0.28,
+     "videos": 6
+    },
+    {
+     "label": "Historical Events",
+     "clips": 62,
+     "pct_clips": 0.22,
+     "hours": 0.15,
+     "pct_hours": 0.16,
+     "videos": 5
+    },
+    {
+     "label": "Religion & Spirituality",
+     "clips": 52,
+     "pct_clips": 0.19,
+     "hours": 0.25,
+     "pct_hours": 0.26,
+     "videos": 4
+    },
+    {
+     "label": "Art & Creation",
+     "clips": 46,
+     "pct_clips": 0.17,
+     "hours": 0.16,
+     "pct_hours": 0.16,
+     "videos": 3
+    },
+    {
+     "label": "Finance & Business",
+     "clips": 23,
+     "pct_clips": 0.08,
+     "hours": 0.1,
+     "pct_hours": 0.1,
+     "videos": 2
+    },
+    {
+     "label": "Press Conference",
+     "clips": 22,
+     "pct_clips": 0.08,
+     "hours": 0.07,
+     "pct_hours": 0.07,
+     "videos": 2
+    },
+    {
+     "label": "Engineering & Tech Demo",
+     "clips": 6,
+     "pct_clips": 0.02,
+     "hours": 0.02,
+     "pct_hours": 0.02,
+     "videos": 2
+    }
+   ],
+   "whisper_agrees": 0.9716
+  },
+  "av_offset_abs_frames": {
+   "corrected_clips": 22064,
+   "hist": [
+    {
+     "bin": "0",
+     "count": 8531
+    },
+    {
+     "bin": "1",
+     "count": 10136
+    },
+    {
+     "bin": "2",
+     "count": 7224
+    },
+    {
+     "bin": ">2",
+     "count": 1954
+    }
+   ]
+  }
+ },
+ "val": {
+  "clips": 471,
+  "frames": 112621,
+  "hours": 1.25,
+  "videos": 70,
+  "clip_seconds": {
+   "mean": 9.56,
+   "median": 10.0,
+   "min": 3.2,
+   "max": 20.0,
+   "hist": [
+    {
+     "bin": "0-5",
+     "count": 8
+    },
+    {
+     "bin": "5-10",
+     "count": 204
+    },
+    {
+     "bin": "10-15",
+     "count": 220
+    },
+    {
+     "bin": "15-20",
+     "count": 10
+    },
+    {
+     "bin": ">=20",
+     "count": 29
+    }
+   ]
+  },
+  "clips_per_video": {
+   "mean": 6.73,
+   "median": 4.0,
+   "max": 36,
+   "hist": [
+    {
+     "bin": "1",
+     "count": 17
+    },
+    {
+     "bin": "2",
+     "count": 8
+    },
+    {
+     "bin": "3-5",
+     "count": 15
+    },
+    {
+     "bin": "6-10",
+     "count": 17
+    },
+    {
+     "bin": "11-20",
+     "count": 8
+    },
+    {
+     "bin": "21-50",
+     "count": 5
+    },
+    {
+     "bin": ">50",
+     "count": 0
+    }
+   ],
+   "share_top10pct_videos": 0.386
+  },
+  "hours_per_video": {
+   "mean": 1.07,
+   "median": 0.61,
+   "unit": "minutes"
+  },
+  "language": {
+   "clips": {
+    "en": 399,
+    "zh": 66,
+    "hi": 2,
+    "unk": 2,
+    "sw": 1,
+    "ur": 1
+   },
+   "hours": {
+    "en": 1.07,
+    "zh": 0.17,
+    "hi": 0.01,
+    "unk": 0.0,
+    "ur": 0.0,
+    "sw": 0.0
+   },
+   "videos": {
+    "en": 53,
+    "zh": 16,
+    "hi": 1
+   }
+  },
+  "language_whisper": [
+   {
+    "label": "English",
+    "clips": 399,
+    "pct_clips": 84.71,
+    "hours": 1.07,
+    "pct_hours": 85.22,
+    "videos": 53
+   },
+   {
+    "label": "Chinese",
+    "clips": 66,
+    "pct_clips": 14.01,
+    "hours": 0.17,
+    "pct_hours": 13.63,
+    "videos": 16
+   },
+   {
+    "label": "Hindi",
+    "clips": 2,
+    "pct_clips": 0.42,
+    "hours": 0.01,
+    "pct_hours": 0.44,
+    "videos": 1
+   },
+   {
+    "label": "unk",
+    "clips": 2,
+    "pct_clips": 0.42,
+    "hours": 0.0,
+    "pct_hours": 0.32,
+    "videos": 2
+   },
+   {
+    "label": "Swahili",
+    "clips": 1,
+    "pct_clips": 0.21,
+    "hours": 0.0,
+    "pct_hours": 0.17,
+    "videos": 1
+   },
+   {
+    "label": "Urdu",
+    "clips": 1,
+    "pct_clips": 0.21,
+    "hours": 0.0,
+    "pct_hours": 0.22,
+    "videos": 1
+   }
+  ],
+  "talkvid": {
+   "matched": 468,
+   "persons": 70,
+   "language": [
+    {
+     "label": "English",
+     "clips": 388,
+     "pct_clips": 82.38,
+     "hours": 1.04,
+     "pct_hours": 83.4,
+     "videos": 52
+    },
+    {
+     "label": "Chinese",
+     "clips": 64,
+     "pct_clips": 13.59,
+     "hours": 0.17,
+     "pct_hours": 13.41,
+     "videos": 16
+    },
+    {
+     "label": "Unknown",
+     "clips": 13,
+     "pct_clips": 2.76,
+     "hours": 0.03,
+     "pct_hours": 2.08,
+     "videos": 1
+    },
+    {
+     "label": "unmatched",
+     "clips": 3,
+     "pct_clips": 0.64,
+     "hours": 0.01,
+     "pct_hours": 0.44,
+     "videos": 3
+    },
+    {
+     "label": "Hindi",
+     "clips": 3,
+     "pct_clips": 0.64,
+     "hours": 0.01,
+     "pct_hours": 0.67,
+     "videos": 1
+    }
+   ],
+   "gender": [
+    {
+     "label": "Female",
+     "clips": 330,
+     "pct_clips": 70.06,
+     "hours": 0.91,
+     "pct_hours": 72.33,
+     "videos": 43
+    },
+    {
+     "label": "Male",
+     "clips": 125,
+     "pct_clips": 26.54,
+     "hours": 0.31,
+     "pct_hours": 25.15,
+     "videos": 26
+    },
+    {
+     "label": "Unknown",
+     "clips": 13,
+     "pct_clips": 2.76,
+     "hours": 0.03,
+     "pct_hours": 2.08,
+     "videos": 1
+    },
+    {
+     "label": "unmatched",
+     "clips": 3,
+     "pct_clips": 0.64,
+     "hours": 0.01,
+     "pct_hours": 0.44,
+     "videos": 3
+    }
+   ],
+   "ethnicity": [
+    {
+     "label": "White",
+     "clips": 287,
+     "pct_clips": 60.93,
+     "hours": 0.78,
+     "pct_hours": 62.52,
+     "videos": 41
+    },
+    {
+     "label": "Asian",
+     "clips": 108,
+     "pct_clips": 22.93,
+     "hours": 0.29,
+     "pct_hours": 22.94,
+     "videos": 22
+    },
+    {
+     "label": "African",
+     "clips": 60,
+     "pct_clips": 12.74,
+     "hours": 0.15,
+     "pct_hours": 12.02,
+     "videos": 6
+    },
+    {
+     "label": "Unknown",
+     "clips": 13,
+     "pct_clips": 2.76,
+     "hours": 0.03,
+     "pct_hours": 2.08,
+     "videos": 1
+    },
+    {
+     "label": "unmatched",
+     "clips": 3,
+     "pct_clips": 0.64,
+     "hours": 0.01,
+     "pct_hours": 0.44,
+     "videos": 3
+    }
+   ],
+   "age": [
+    {
+     "label": "31-45",
+     "clips": 327,
+     "pct_clips": 69.43,
+     "hours": 0.89,
+     "pct_hours": 71.18,
+     "videos": 47
+    },
+    {
+     "label": "19-30",
+     "clips": 108,
+     "pct_clips": 22.93,
+     "hours": 0.29,
+     "pct_hours": 22.99,
+     "videos": 19
+    },
+    {
+     "label": "46-60",
+     "clips": 16,
+     "pct_clips": 3.4,
+     "hours": 0.03,
+     "pct_hours": 2.59,
+     "videos": 2
+    },
+    {
+     "label": "Unknown",
+     "clips": 13,
+     "pct_clips": 2.76,
+     "hours": 0.03,
+     "pct_hours": 2.08,
+     "videos": 1
+    },
+    {
+     "label": "60+",
+     "clips": 4,
+     "pct_clips": 0.85,
+     "hours": 0.01,
+     "pct_hours": 0.72,
+     "videos": 1
+    },
+    {
+     "label": "unmatched",
+     "clips": 3,
+     "pct_clips": 0.64,
+     "hours": 0.01,
+     "pct_hours": 0.44,
+     "videos": 3
+    }
+   ],
+   "category": [
+    {
+     "label": "Personal Experience",
+     "clips": 222,
+     "pct_clips": 47.13,
+     "hours": 0.59,
+     "pct_hours": 46.75,
+     "videos": 27
+    },
+    {
+     "label": "Vlogger/Creator",
+     "clips": 140,
+     "pct_clips": 29.72,
+     "hours": 0.39,
+     "pct_hours": 31.39,
+     "videos": 20
+    },
+    {
+     "label": "Product Review & Unboxing",
+     "clips": 26,
+     "pct_clips": 5.52,
+     "hours": 0.06,
+     "pct_hours": 4.98,
+     "videos": 2
+    },
+    {
+     "label": "Health Advice",
+     "clips": 21,
+     "pct_clips": 4.46,
+     "hours": 0.06,
+     "pct_hours": 4.69,
+     "videos": 5
+    },
+    {
+     "label": "Life Hacks",
+     "clips": 12,
+     "pct_clips": 2.55,
+     "hours": 0.03,
+     "pct_hours": 2.68,
+     "videos": 3
+    },
+    {
+     "label": "Academic Course",
+     "clips": 11,
+     "pct_clips": 2.34,
+     "hours": 0.03,
+     "pct_hours": 2.19,
+     "videos": 2
+    },
+    {
+     "label": "Success Case Study",
+     "clips": 9,
+     "pct_clips": 1.91,
+     "hours": 0.02,
+     "pct_hours": 1.87,
+     "videos": 1
+    },
+    {
+     "label": "Popular Science",
+     "clips": 6,
+     "pct_clips": 1.27,
+     "hours": 0.01,
+     "pct_hours": 1.03,
+     "videos": 1
+    },
+    {
+     "label": "Motivational Speech",
+     "clips": 4,
+     "pct_clips": 0.85,
+     "hours": 0.01,
+     "pct_hours": 0.89,
+     "videos": 2
+    },
+    {
+     "label": "Cooking Tutorial",
+     "clips": 4,
+     "pct_clips": 0.85,
+     "hours": 0.01,
+     "pct_hours": 0.67,
+     "videos": 1
+    },
+    {
+     "label": "Historical Events",
+     "clips": 4,
+     "pct_clips": 0.85,
+     "hours": 0.01,
+     "pct_hours": 0.7,
+     "videos": 1
+    },
+    {
+     "label": "Interview",
+     "clips": 4,
+     "pct_clips": 0.85,
+     "hours": 0.01,
+     "pct_hours": 0.72,
+     "videos": 1
+    },
+    {
+     "label": "unmatched",
+     "clips": 3,
+     "pct_clips": 0.64,
+     "hours": 0.01,
+     "pct_hours": 0.44,
+     "videos": 3
+    },
+    {
+     "label": "Independent Media",
+     "clips": 2,
+     "pct_clips": 0.42,
+     "hours": 0.01,
+     "pct_hours": 0.44,
+     "videos": 1
+    },
+    {
+     "label": "Programming & Development",
+     "clips": 1,
+     "pct_clips": 0.21,
+     "hours": 0.0,
+     "pct_hours": 0.13,
+     "videos": 1
+    },
+    {
+     "label": "Global Culture",
+     "clips": 1,
+     "pct_clips": 0.21,
+     "hours": 0.0,
+     "pct_hours": 0.19,
+     "videos": 1
+    },
+    {
+     "label": "Art & Creation",
+     "clips": 1,
+     "pct_clips": 0.21,
+     "hours": 0.0,
+     "pct_hours": 0.22,
+     "videos": 1
+    }
+   ],
+   "whisper_agrees": 0.9678
+  },
+  "av_offset_abs_frames": {
+   "corrected_clips": 385,
+   "hist": [
+    {
+     "bin": "0",
+     "count": 159
+    },
+    {
+     "bin": "1",
+     "count": 173
+    },
+    {
+     "bin": "2",
+     "count": 109
+    },
+    {
+     "bin": ">2",
+     "count": 30
+    }
+   ]
+  }
+ },
+ "persons_in_both_splits": {
+  "persons": 18,
+  "val_clips": 99,
+  "val_clips_total": 471
+ }
+}
