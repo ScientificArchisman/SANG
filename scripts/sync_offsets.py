@@ -102,6 +102,16 @@ def do_merge(args, cache: Path) -> None:
         sys.exit(f"nothing measured under {cache / 'sync'}; run the measuring job first")
     rows = load_index(cache)
     res = merge(measured, rows, min_conf=args.min_conf, max_abs=args.max_abs, max_spread=args.max_spread)
+    if args.exclude:                                       # scripts/check_audio.py: segments without their audio
+        bad = json.loads(Path(args.exclude).read_text())["bad"]
+        hit = [k for k in bad if k in res["clips"]]
+        for k in hit:
+            res["clips"][k] = {"keep": False, "why": f"audio {bad[k]['why']}", "source": "audio_check", "shift_ticks": 0}
+        m = res["meta"]
+        m["kept"] = sum(c["keep"] for c in res["clips"].values())
+        m["dropped"] = dict(Counter(c["why"] for c in res["clips"].values() if not c["keep"]))
+        m["excluded"] = {"file": str(args.exclude), "segments": len(hit)}
+        print(f"excluded {len(hit)} segments without full audio ({args.exclude})")
     dst = Path(args.out) if args.out else cache / "sync_offsets.json"
     dst.write_text(json.dumps(res, indent=1))
     m = res["meta"]
@@ -127,6 +137,7 @@ def main() -> None:
     ap.add_argument("--max-abs", type=float, default=10.0, help="|offset| at or above this = no sync found")
     ap.add_argument("--max-spread", type=float, default=1.0, help="frames a video's clips may disagree by")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--exclude", default=None, help="with --merge: scripts/check_audio.py's json; its segments are dropped")
     args = ap.parse_args()
     cache = Path(args.cache)
     do_merge(args, cache) if args.merge else measure(args, cache)
