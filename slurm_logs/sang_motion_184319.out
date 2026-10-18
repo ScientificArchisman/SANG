@@ -1,0 +1,189 @@
+sync offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets_c10.json: audio moved in 22449/28316 clips; dropped train {'low confidence': 111, 'video offsets disagree': 777, 'no sync': 53, 'no sync in video': 175, 'audio partial': 23, 'not measured': 9, 'audio none': 35}, val {'low confidence': 5, 'video offsets disagree': 3, 'no sync': 3} (val loss is not comparable with runs without it)
+  preloaded 27845 clips in 178 s, audio 35.8 GB
+  preloaded 471 clips in 3 s, audio 0.5 GB
+27845 train / 471 val clips (70 unseen val speakers)
+  preloaded 471 clips in 3 s, audio 0.6 GB
+train_eval: 471 fixed training clips scored like val at every eval
+MotionFlowTransformer: 53.4 M params
+objective: t_dist logit_normal {'t_mean': 0.3}; extra EMAs none
+step     100 lr 1.50e-05 fm 7.4708 fm_rot 1.9873 fm_brow 1.8325 fm_eyes 1.8596 fm_mouth 1.7913 vel 3.1170 loss 10.5878 gnorm 3.014 5.3 it/s  (data 0.053 s + gpu 0.134 s per step)
+step     200 lr 3.00e-05 fm 4.2624 fm_rot 0.6585 fm_brow 0.8193 fm_eyes 1.3322 fm_mouth 1.4523 vel 1.1743 loss 5.4367 gnorm 15.216 10.6 it/s  (data 0.000 s + gpu 0.094 s per step)
+step     300 lr 4.50e-05 fm 3.6162 fm_rot 0.7566 fm_brow 0.7402 fm_eyes 1.0556 fm_mouth 1.0639 vel 0.4642 loss 4.0804 gnorm 47.975 10.8 it/s  (data 0.001 s + gpu 0.091 s per step)
+step     400 lr 6.00e-05 fm 2.5646 fm_rot 0.4641 fm_brow 0.5444 fm_eyes 0.7033 fm_mouth 0.8528 vel 0.2987 loss 2.8633 gnorm 18.218 11.0 it/s  (data 0.000 s + gpu 0.090 s per step)
+step     500 lr 7.50e-05 fm 2.3681 fm_rot 0.4863 fm_brow 0.5294 fm_eyes 0.6361 fm_mouth 0.7164 vel 0.2474 loss 2.6155 gnorm 30.078 11.1 it/s  (data 0.000 s + gpu 0.090 s per step)
+step     600 lr 9.00e-05 fm 2.0439 fm_rot 0.4093 fm_brow 0.4407 fm_eyes 0.5509 fm_mouth 0.6431 vel 0.2094 loss 2.2533 gnorm 20.572 11.0 it/s  (data 0.000 s + gpu 0.090 s per step)
+step     700 lr 1.05e-04 fm 2.3308 fm_rot 0.3871 fm_brow 0.6537 fm_eyes 0.6283 fm_mouth 0.6617 vel 0.2028 loss 2.5336 gnorm 17.647 10.8 it/s  (data 0.000 s + gpu 0.092 s per step)
+step     800 lr 1.20e-04 fm 1.7345 fm_rot 0.3515 fm_brow 0.3831 fm_eyes 0.4675 fm_mouth 0.5324 vel 0.1849 loss 1.9194 gnorm 11.165 10.4 it/s  (data 0.000 s + gpu 0.096 s per step)
+step     900 lr 1.35e-04 fm 1.8077 fm_rot 0.3576 fm_brow 0.4257 fm_eyes 0.4821 fm_mouth 0.5423 vel 0.1868 loss 1.9945 gnorm 14.388 9.9 it/s  (data 0.004 s + gpu 0.097 s per step)
+step    1000 lr 1.50e-04 fm 1.5974 fm_rot 0.3066 fm_brow 0.3595 fm_eyes 0.4252 fm_mouth 0.5061 vel 0.1666 loss 1.7640 gnorm 6.778 10.1 it/s  (data 0.000 s + gpu 0.098 s per step)
+EVAL step 1000 val_loss 2.0437 mse_mouth 0.6130 mse_rot 0.6062 std_r_mouth 1.0939 vc_r_mouth 1.3315 std_r_rot 1.0816 vc_r_rot 1.6703 audio_gain 1.2852
+EVAL_TRAIN step 1000 loss 2.0984 mse_mouth 0.6109 mse_rot 0.6289 std_r_mouth 1.0745 vc_r_mouth 1.3326 std_r_rot 0.9795 vc_r_rot 1.6033 audio_gain 1.2890
+step    1100 lr 1.65e-04 fm 1.4630 fm_rot 0.3016 fm_brow 0.3261 fm_eyes 0.3815 fm_mouth 0.4538 vel 0.1451 loss 1.6081 gnorm 6.857 2.6 it/s  (data 0.000 s + gpu 0.097 s per step)
+step    1200 lr 1.80e-04 fm 1.5333 fm_rot 0.3120 fm_brow 0.3473 fm_eyes 0.4087 fm_mouth 0.4653 vel 0.1429 loss 1.6762 gnorm 6.881 10.2 it/s  (data 0.000 s + gpu 0.097 s per step)
+step    1300 lr 1.95e-04 fm 1.4577 fm_rot 0.3303 fm_brow 0.3240 fm_eyes 0.3760 fm_mouth 0.4274 vel 0.1379 loss 1.5956 gnorm 8.162 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    1400 lr 2.10e-04 fm 1.6846 fm_rot 0.3178 fm_brow 0.4267 fm_eyes 0.4353 fm_mouth 0.5047 vel 0.1737 loss 1.8583 gnorm 6.639 10.4 it/s  (data 0.000 s + gpu 0.096 s per step)
+step    1500 lr 2.25e-04 fm 1.2737 fm_rot 0.2622 fm_brow 0.2847 fm_eyes 0.3324 fm_mouth 0.3945 vel 0.1329 loss 1.4066 gnorm 3.736 10.2 it/s  (data 0.000 s + gpu 0.098 s per step)
+step    1600 lr 2.40e-04 fm 1.4067 fm_rot 0.2937 fm_brow 0.3148 fm_eyes 0.3663 fm_mouth 0.4319 vel 0.1437 loss 1.5503 gnorm 2.965 10.2 it/s  (data 0.000 s + gpu 0.098 s per step)
+step    1700 lr 2.55e-04 fm 1.3047 fm_rot 0.2718 fm_brow 0.3015 fm_eyes 0.3302 fm_mouth 0.4012 vel 0.1298 loss 1.4345 gnorm 2.865 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    1800 lr 2.70e-04 fm 1.3308 fm_rot 0.2766 fm_brow 0.2999 fm_eyes 0.3445 fm_mouth 0.4099 vel 0.1212 loss 1.4520 gnorm 2.634 10.0 it/s  (data 0.003 s + gpu 0.096 s per step)
+step    1900 lr 2.85e-04 fm 1.2825 fm_rot 0.2681 fm_brow 0.2862 fm_eyes 0.3253 fm_mouth 0.4030 vel 0.1158 loss 1.3983 gnorm 2.222 10.4 it/s  (data 0.000 s + gpu 0.096 s per step)
+step    2000 lr 3.00e-04 fm 1.3623 fm_rot 0.2892 fm_brow 0.3157 fm_eyes 0.3504 fm_mouth 0.4070 vel 0.1258 loss 1.4881 gnorm 2.754 10.2 it/s  (data 0.000 s + gpu 0.098 s per step)
+EVAL step 2000 val_loss 1.4426 mse_mouth 0.5549 mse_rot 0.5112 std_r_mouth 1.1768 vc_r_mouth 1.0914 std_r_rot 0.9319 vc_r_rot 1.1648 audio_gain 1.4800
+EVAL_TRAIN step 2000 loss 1.4680 mse_mouth 0.5513 mse_rot 0.5498 std_r_mouth 1.1539 vc_r_mouth 1.0831 std_r_rot 0.8322 vc_r_rot 1.1214 audio_gain 1.4946
+step    2100 lr 3.00e-04 fm 1.5718 fm_rot 0.2635 fm_brow 0.3519 fm_eyes 0.4113 fm_mouth 0.5452 vel 0.1416 loss 1.7134 gnorm 3.798 2.7 it/s  (data 0.000 s + gpu 0.097 s per step)
+step    2200 lr 3.00e-04 fm 1.1886 fm_rot 0.2451 fm_brow 0.2674 fm_eyes 0.3021 fm_mouth 0.3740 vel 0.1167 loss 1.3053 gnorm 2.040 10.4 it/s  (data 0.001 s + gpu 0.096 s per step)
+step    2300 lr 3.00e-04 fm 1.1874 fm_rot 0.2370 fm_brow 0.2705 fm_eyes 0.3016 fm_mouth 0.3784 vel 0.1163 loss 1.3037 gnorm 1.677 10.3 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    2400 lr 2.99e-04 fm 1.3560 fm_rot 0.2852 fm_brow 0.3276 fm_eyes 0.3306 fm_mouth 0.4125 vel 0.1485 loss 1.5045 gnorm 1.833 10.3 it/s  (data 0.000 s + gpu 0.096 s per step)
+step    2500 lr 2.99e-04 fm 1.1420 fm_rot 0.2362 fm_brow 0.2560 fm_eyes 0.2878 fm_mouth 0.3620 vel 0.1175 loss 1.2595 gnorm 1.356 10.3 it/s  (data 0.000 s + gpu 0.097 s per step)
+step    2600 lr 2.98e-04 fm 1.3217 fm_rot 0.2701 fm_brow 0.3262 fm_eyes 0.3305 fm_mouth 0.3950 vel 0.1567 loss 1.4784 gnorm 1.931 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    2700 lr 2.98e-04 fm 1.1428 fm_rot 0.2538 fm_brow 0.2568 fm_eyes 0.2872 fm_mouth 0.3450 vel 0.1065 loss 1.2493 gnorm 1.266 10.1 it/s  (data 0.003 s + gpu 0.096 s per step)
+step    2800 lr 2.97e-04 fm 1.1831 fm_rot 0.2512 fm_brow 0.2617 fm_eyes 0.2994 fm_mouth 0.3708 vel 0.1238 loss 1.3069 gnorm 2.462 10.3 it/s  (data 0.000 s + gpu 0.097 s per step)
+step    2900 lr 2.97e-04 fm 1.1953 fm_rot 0.2336 fm_brow 0.2875 fm_eyes 0.2983 fm_mouth 0.3759 vel 0.1184 loss 1.3138 gnorm 1.085 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    3000 lr 2.96e-04 fm 1.1484 fm_rot 0.2277 fm_brow 0.2627 fm_eyes 0.2978 fm_mouth 0.3603 vel 0.1144 loss 1.2628 gnorm 1.582 10.4 it/s  (data 0.000 s + gpu 0.095 s per step)
+EVAL step 3000 val_loss 1.2952 mse_mouth 0.5054 mse_rot 0.5063 std_r_mouth 1.1073 vc_r_mouth 1.0059 std_r_rot 0.9465 vc_r_rot 0.9460 audio_gain 1.5158
+EVAL_TRAIN step 3000 loss 1.3015 mse_mouth 0.5083 mse_rot 0.5386 std_r_mouth 1.0918 vc_r_mouth 1.0029 std_r_rot 0.8544 vc_r_rot 0.9124 audio_gain 1.5342
+step    3100 lr 2.95e-04 fm 1.1776 fm_rot 0.2351 fm_brow 0.2695 fm_eyes 0.3082 fm_mouth 0.3648 vel 0.1194 loss 1.2970 gnorm 1.573 2.6 it/s  (data 0.000 s + gpu 0.096 s per step)
+step    3200 lr 2.94e-04 fm 1.1667 fm_rot 0.2431 fm_brow 0.2645 fm_eyes 0.2870 fm_mouth 0.3721 vel 0.1224 loss 1.2891 gnorm 1.134 10.2 it/s  (data 0.000 s + gpu 0.097 s per step)
+step    3300 lr 2.93e-04 fm 1.1290 fm_rot 0.2226 fm_brow 0.2782 fm_eyes 0.2806 fm_mouth 0.3475 vel 0.1139 loss 1.2429 gnorm 1.882 10.3 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    3400 lr 2.92e-04 fm 3.6230 fm_rot 0.2276 fm_brow 0.9523 fm_eyes 1.3069 fm_mouth 1.1361 vel 0.1474 loss 3.7704 gnorm 2.598 10.4 it/s  (data 0.001 s + gpu 0.096 s per step)
+step    3500 lr 2.91e-04 fm 1.0620 fm_rot 0.2168 fm_brow 0.2367 fm_eyes 0.2675 fm_mouth 0.3410 vel 0.1116 loss 1.1736 gnorm 1.055 9.9 it/s  (data 0.005 s + gpu 0.096 s per step)
+step    3600 lr 2.89e-04 fm 1.0709 fm_rot 0.2255 fm_brow 0.2422 fm_eyes 0.2671 fm_mouth 0.3362 vel 0.1254 loss 1.1964 gnorm 1.087 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    3700 lr 2.88e-04 fm 1.0883 fm_rot 0.2182 fm_brow 0.2539 fm_eyes 0.2743 fm_mouth 0.3418 vel 0.1098 loss 1.1981 gnorm 1.009 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    3800 lr 2.87e-04 fm 1.0551 fm_rot 0.2130 fm_brow 0.2402 fm_eyes 0.2692 fm_mouth 0.3326 vel 0.1073 loss 1.1623 gnorm 2.242 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    3900 lr 2.85e-04 fm 1.5267 fm_rot 0.2237 fm_brow 0.3451 fm_eyes 0.4858 fm_mouth 0.4722 vel 0.1918 loss 1.7186 gnorm 3.882 10.3 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    4000 lr 2.83e-04 fm 1.0842 fm_rot 0.2347 fm_brow 0.2479 fm_eyes 0.2675 fm_mouth 0.3342 vel 0.1025 loss 1.1867 gnorm 1.397 10.3 it/s  (data 0.001 s + gpu 0.097 s per step)
+EVAL step 4000 val_loss 1.2435 mse_mouth 0.4905 mse_rot 0.4938 std_r_mouth 1.0898 vc_r_mouth 1.0056 std_r_rot 0.9465 vc_r_rot 0.9111 audio_gain 1.5284
+EVAL_TRAIN step 4000 loss 1.2357 mse_mouth 0.4852 mse_rot 0.5321 std_r_mouth 1.0725 vc_r_mouth 0.9986 std_r_rot 0.8641 vc_r_rot 0.8852 audio_gain 1.5705
+step    4100 lr 2.82e-04 fm 1.0670 fm_rot 0.2213 fm_brow 0.2429 fm_eyes 0.2682 fm_mouth 0.3346 vel 0.1088 loss 1.1758 gnorm 1.003 2.6 it/s  (data 0.000 s + gpu 0.097 s per step)
+step    4200 lr 2.80e-04 fm 1.0832 fm_rot 0.2167 fm_brow 0.2525 fm_eyes 0.2679 fm_mouth 0.3461 vel 0.1164 loss 1.1995 gnorm 1.862 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    4300 lr 2.78e-04 fm 1.0979 fm_rot 0.2000 fm_brow 0.2379 fm_eyes 0.2972 fm_mouth 0.3628 vel 0.1060 loss 1.2039 gnorm 1.534 10.3 it/s  (data 0.001 s + gpu 0.096 s per step)
+step    4400 lr 2.76e-04 fm 1.2938 fm_rot 0.2463 fm_brow 0.3107 fm_eyes 0.3538 fm_mouth 0.3830 vel 0.1189 loss 1.4127 gnorm 2.598 9.9 it/s  (data 0.004 s + gpu 0.097 s per step)
+step    4500 lr 2.74e-04 fm 1.0902 fm_rot 0.2330 fm_brow 0.2540 fm_eyes 0.2739 fm_mouth 0.3293 vel 0.1094 loss 1.1996 gnorm 0.885 10.1 it/s  (data 0.000 s + gpu 0.098 s per step)
+step    4600 lr 2.72e-04 fm 0.9836 fm_rot 0.2079 fm_brow 0.2138 fm_eyes 0.2450 fm_mouth 0.3168 vel 0.1007 loss 1.0843 gnorm 0.649 10.2 it/s  (data 0.000 s + gpu 0.097 s per step)
+step    4700 lr 2.70e-04 fm 1.0638 fm_rot 0.2240 fm_brow 0.2372 fm_eyes 0.2739 fm_mouth 0.3287 vel 0.1121 loss 1.1759 gnorm 0.970 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    4800 lr 2.68e-04 fm 1.0314 fm_rot 0.1981 fm_brow 0.2301 fm_eyes 0.2741 fm_mouth 0.3291 vel 0.0994 loss 1.1308 gnorm 1.220 10.3 it/s  (data 0.000 s + gpu 0.097 s per step)
+step    4900 lr 2.66e-04 fm 1.0197 fm_rot 0.2116 fm_brow 0.2264 fm_eyes 0.2561 fm_mouth 0.3256 vel 0.1019 loss 1.1216 gnorm 0.676 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    5000 lr 2.64e-04 fm 1.0093 fm_rot 0.2084 fm_brow 0.2312 fm_eyes 0.2535 fm_mouth 0.3162 vel 0.1012 loss 1.1105 gnorm 0.666 10.2 it/s  (data 0.000 s + gpu 0.097 s per step)
+EVAL step 5000 val_loss 1.2104 mse_mouth 0.4816 mse_rot 0.5024 std_r_mouth 1.0837 vc_r_mouth 1.0054 std_r_rot 0.9489 vc_r_rot 0.9067 audio_gain 1.5565
+EVAL_TRAIN step 5000 loss 1.1958 mse_mouth 0.4833 mse_rot 0.5260 std_r_mouth 1.0744 vc_r_mouth 1.0115 std_r_rot 0.8609 vc_r_rot 0.8870 audio_gain 1.5947
+step    5100 lr 2.61e-04 fm 1.0710 fm_rot 0.2385 fm_brow 0.2372 fm_eyes 0.2649 fm_mouth 0.3304 vel 0.1141 loss 1.1851 gnorm 0.696 2.6 it/s  (data 0.000 s + gpu 0.098 s per step)
+step    5200 lr 2.59e-04 fm 1.0463 fm_rot 0.2110 fm_brow 0.2359 fm_eyes 0.2602 fm_mouth 0.3392 vel 0.1031 loss 1.1494 gnorm 1.094 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    5300 lr 2.56e-04 fm 1.0031 fm_rot 0.2077 fm_brow 0.2207 fm_eyes 0.2519 fm_mouth 0.3228 vel 0.1049 loss 1.1080 gnorm 0.736 9.9 it/s  (data 0.003 s + gpu 0.097 s per step)
+step    5400 lr 2.54e-04 fm 1.0264 fm_rot 0.2287 fm_brow 0.2268 fm_eyes 0.2553 fm_mouth 0.3156 vel 0.1018 loss 1.1282 gnorm 1.515 10.2 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    5500 lr 2.51e-04 fm 1.0052 fm_rot 0.1998 fm_brow 0.2303 fm_eyes 0.2579 fm_mouth 0.3172 vel 0.1051 loss 1.1103 gnorm 0.719 10.3 it/s  (data 0.001 s + gpu 0.096 s per step)
+step    5600 lr 2.49e-04 fm 0.9415 fm_rot 0.1988 fm_brow 0.2084 fm_eyes 0.2324 fm_mouth 0.3019 vel 0.0934 loss 1.0348 gnorm 0.792 10.2 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    5700 lr 2.46e-04 fm 1.0303 fm_rot 0.1977 fm_brow 0.2374 fm_eyes 0.2660 fm_mouth 0.3292 vel 0.1127 loss 1.1430 gnorm 0.711 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    5800 lr 2.43e-04 fm 0.9754 fm_rot 0.1936 fm_brow 0.2296 fm_eyes 0.2397 fm_mouth 0.3124 vel 0.0940 loss 1.0693 gnorm 0.728 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    5900 lr 2.40e-04 fm 1.1329 fm_rot 0.2246 fm_brow 0.2833 fm_eyes 0.2941 fm_mouth 0.3308 vel 0.1130 loss 1.2458 gnorm 0.786 10.3 it/s  (data 0.000 s + gpu 0.097 s per step)
+step    6000 lr 2.37e-04 fm 0.9910 fm_rot 0.1995 fm_brow 0.2205 fm_eyes 0.2450 fm_mouth 0.3260 vel 0.1003 loss 1.0913 gnorm 0.689 10.3 it/s  (data 0.001 s + gpu 0.096 s per step)
+EVAL step 6000 val_loss 1.1969 mse_mouth 0.4810 mse_rot 0.5092 std_r_mouth 1.0927 vc_r_mouth 1.0291 std_r_rot 0.9673 vc_r_rot 0.9120 audio_gain 1.5621
+EVAL_TRAIN step 6000 loss 1.1690 mse_mouth 0.4762 mse_rot 0.5218 std_r_mouth 1.0823 vc_r_mouth 1.0373 std_r_rot 0.8774 vc_r_rot 0.8955 audio_gain 1.6225
+step    6100 lr 2.34e-04 fm 0.9581 fm_rot 0.1901 fm_brow 0.2114 fm_eyes 0.2462 fm_mouth 0.3104 vel 0.1078 loss 1.0658 gnorm 0.647 2.6 it/s  (data 0.005 s + gpu 0.097 s per step)
+step    6200 lr 2.32e-04 fm 0.9927 fm_rot 0.2131 fm_brow 0.2240 fm_eyes 0.2407 fm_mouth 0.3149 vel 0.0973 loss 1.0900 gnorm 1.014 10.2 it/s  (data 0.000 s + gpu 0.098 s per step)
+step    6300 lr 2.29e-04 fm 0.9751 fm_rot 0.1920 fm_brow 0.2245 fm_eyes 0.2471 fm_mouth 0.3114 vel 0.1026 loss 1.0777 gnorm 0.821 10.2 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    6400 lr 2.25e-04 fm 1.0338 fm_rot 0.2197 fm_brow 0.2368 fm_eyes 0.2623 fm_mouth 0.3151 vel 0.0999 loss 1.1337 gnorm 1.179 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    6500 lr 2.22e-04 fm 0.9927 fm_rot 0.2009 fm_brow 0.2261 fm_eyes 0.2512 fm_mouth 0.3146 vel 0.1066 loss 1.0994 gnorm 0.752 10.2 it/s  (data 0.000 s + gpu 0.097 s per step)
+step    6600 lr 2.19e-04 fm 0.9874 fm_rot 0.2136 fm_brow 0.2207 fm_eyes 0.2487 fm_mouth 0.3044 vel 0.0962 loss 1.0837 gnorm 0.891 10.1 it/s  (data 0.001 s + gpu 0.099 s per step)
+step    6700 lr 2.16e-04 fm 0.9717 fm_rot 0.2022 fm_brow 0.2192 fm_eyes 0.2459 fm_mouth 0.3044 vel 0.0964 loss 1.0681 gnorm 0.985 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    6800 lr 2.13e-04 fm 1.0004 fm_rot 0.1970 fm_brow 0.2285 fm_eyes 0.2523 fm_mouth 0.3226 vel 0.1012 loss 1.1017 gnorm 0.836 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    6900 lr 2.10e-04 fm 0.9923 fm_rot 0.2058 fm_brow 0.2225 fm_eyes 0.2512 fm_mouth 0.3127 vel 0.0990 loss 1.0913 gnorm 0.781 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    7000 lr 2.06e-04 fm 0.9658 fm_rot 0.1999 fm_brow 0.2180 fm_eyes 0.2435 fm_mouth 0.3044 vel 0.1013 loss 1.0672 gnorm 0.619 10.0 it/s  (data 0.004 s + gpu 0.097 s per step)
+EVAL step 7000 val_loss 1.1876 mse_mouth 0.4806 mse_rot 0.5071 std_r_mouth 1.0857 vc_r_mouth 1.0206 std_r_rot 0.9691 vc_r_rot 0.9113 audio_gain 1.5559
+EVAL_TRAIN step 7000 loss 1.1493 mse_mouth 0.4635 mse_rot 0.5121 std_r_mouth 1.0745 vc_r_mouth 1.0316 std_r_rot 0.8818 vc_r_rot 0.8981 audio_gain 1.6494
+step    7100 lr 2.03e-04 fm 0.9877 fm_rot 0.2013 fm_brow 0.2336 fm_eyes 0.2534 fm_mouth 0.2994 vel 0.0988 loss 1.0865 gnorm 0.731 2.6 it/s  (data 0.000 s + gpu 0.099 s per step)
+step    7200 lr 2.00e-04 fm 0.9517 fm_rot 0.1933 fm_brow 0.2150 fm_eyes 0.2372 fm_mouth 0.3063 vel 0.1000 loss 1.0517 gnorm 0.705 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    7300 lr 1.96e-04 fm 0.9598 fm_rot 0.1936 fm_brow 0.2220 fm_eyes 0.2443 fm_mouth 0.2999 vel 0.0959 loss 1.0556 gnorm 0.783 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    7400 lr 1.93e-04 fm 0.9496 fm_rot 0.2079 fm_brow 0.2085 fm_eyes 0.2423 fm_mouth 0.2909 vel 0.0986 loss 1.0481 gnorm 0.703 10.1 it/s  (data 0.000 s + gpu 0.098 s per step)
+step    7500 lr 1.90e-04 fm 0.9108 fm_rot 0.1857 fm_brow 0.1996 fm_eyes 0.2336 fm_mouth 0.2919 vel 0.0993 loss 1.0101 gnorm 0.629 10.3 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    7600 lr 1.86e-04 fm 0.9640 fm_rot 0.1943 fm_brow 0.2164 fm_eyes 0.2408 fm_mouth 0.3124 vel 0.1051 loss 1.0690 gnorm 0.599 10.1 it/s  (data 0.000 s + gpu 0.098 s per step)
+step    7700 lr 1.83e-04 fm 0.9495 fm_rot 0.1904 fm_brow 0.2243 fm_eyes 0.2386 fm_mouth 0.2961 vel 0.0944 loss 1.0439 gnorm 0.756 10.2 it/s  (data 0.000 s + gpu 0.098 s per step)
+step    7800 lr 1.79e-04 fm 0.9535 fm_rot 0.1972 fm_brow 0.2125 fm_eyes 0.2429 fm_mouth 0.3010 vel 0.0994 loss 1.0529 gnorm 0.544 10.2 it/s  (data 0.000 s + gpu 0.098 s per step)
+step    7900 lr 1.76e-04 fm 0.9608 fm_rot 0.1985 fm_brow 0.2182 fm_eyes 0.2436 fm_mouth 0.3004 vel 0.0945 loss 1.0552 gnorm 0.585 9.8 it/s  (data 0.005 s + gpu 0.097 s per step)
+step    8000 lr 1.73e-04 fm 0.9265 fm_rot 0.1932 fm_brow 0.2069 fm_eyes 0.2327 fm_mouth 0.2937 vel 0.0985 loss 1.0250 gnorm 0.617 10.1 it/s  (data 0.000 s + gpu 0.098 s per step)
+EVAL step 8000 val_loss 1.1769 mse_mouth 0.4803 mse_rot 0.5012 std_r_mouth 1.0872 vc_r_mouth 1.0251 std_r_rot 0.9632 vc_r_rot 0.9008 audio_gain 1.5574
+EVAL_TRAIN step 8000 loss 1.1321 mse_mouth 0.4534 mse_rot 0.4991 std_r_mouth 1.0762 vc_r_mouth 1.0430 std_r_rot 0.8775 vc_r_rot 0.8933 audio_gain 1.6807
+step    8100 lr 1.69e-04 fm 1.0076 fm_rot 0.2109 fm_brow 0.2269 fm_eyes 0.2533 fm_mouth 0.3164 vel 0.1028 loss 1.1104 gnorm 0.689 2.6 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    8200 lr 1.66e-04 fm 0.9254 fm_rot 0.1761 fm_brow 0.2169 fm_eyes 0.2301 fm_mouth 0.3023 vel 0.0948 loss 1.0202 gnorm 0.627 10.1 it/s  (data 0.000 s + gpu 0.098 s per step)
+step    8300 lr 1.62e-04 fm 0.9203 fm_rot 0.1773 fm_brow 0.2081 fm_eyes 0.2314 fm_mouth 0.3035 vel 0.0946 loss 1.0149 gnorm 0.697 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    8400 lr 1.59e-04 fm 0.9468 fm_rot 0.1966 fm_brow 0.2140 fm_eyes 0.2385 fm_mouth 0.2977 vel 0.0986 loss 1.0454 gnorm 0.603 10.3 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    8500 lr 1.55e-04 fm 0.9032 fm_rot 0.1882 fm_brow 0.2062 fm_eyes 0.2282 fm_mouth 0.2805 vel 0.0956 loss 0.9988 gnorm 0.699 10.2 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    8600 lr 1.52e-04 fm 0.9436 fm_rot 0.1873 fm_brow 0.2193 fm_eyes 0.2384 fm_mouth 0.2986 vel 0.1121 loss 1.0557 gnorm 0.822 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    8700 lr 1.48e-04 fm 0.9192 fm_rot 0.1697 fm_brow 0.2112 fm_eyes 0.2345 fm_mouth 0.3038 vel 0.0993 loss 1.0184 gnorm 0.630 10.4 it/s  (data 0.001 s + gpu 0.096 s per step)
+step    8800 lr 1.45e-04 fm 0.9389 fm_rot 0.1881 fm_brow 0.2142 fm_eyes 0.2430 fm_mouth 0.2937 vel 0.1000 loss 1.0389 gnorm 0.707 9.9 it/s  (data 0.005 s + gpu 0.097 s per step)
+step    8900 lr 1.41e-04 fm 0.9271 fm_rot 0.1792 fm_brow 0.2116 fm_eyes 0.2349 fm_mouth 0.3014 vel 0.0916 loss 1.0187 gnorm 0.912 10.2 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    9000 lr 1.38e-04 fm 0.9199 fm_rot 0.1900 fm_brow 0.2033 fm_eyes 0.2358 fm_mouth 0.2909 vel 0.0948 loss 1.0147 gnorm 0.700 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+EVAL step 9000 val_loss 1.1741 mse_mouth 0.4845 mse_rot 0.5188 std_r_mouth 1.0951 vc_r_mouth 1.0292 std_r_rot 0.9922 vc_r_rot 0.9202 audio_gain 1.5634
+EVAL_TRAIN step 9000 loss 1.1182 mse_mouth 0.4541 mse_rot 0.5099 std_r_mouth 1.0870 vc_r_mouth 1.0517 std_r_rot 0.9013 vc_r_rot 0.9121 audio_gain 1.7045
+step    9100 lr 1.34e-04 fm 0.9486 fm_rot 0.1918 fm_brow 0.2148 fm_eyes 0.2462 fm_mouth 0.2957 vel 0.0961 loss 1.0447 gnorm 0.736 2.6 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    9200 lr 1.31e-04 fm 0.9117 fm_rot 0.1806 fm_brow 0.2032 fm_eyes 0.2351 fm_mouth 0.2928 vel 0.0920 loss 1.0038 gnorm 0.545 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    9300 lr 1.27e-04 fm 0.9484 fm_rot 0.1862 fm_brow 0.2175 fm_eyes 0.2379 fm_mouth 0.3068 vel 0.1066 loss 1.0550 gnorm 0.597 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    9400 lr 1.24e-04 fm 0.9522 fm_rot 0.1959 fm_brow 0.2062 fm_eyes 0.2418 fm_mouth 0.3083 vel 0.1101 loss 1.0623 gnorm 0.943 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step    9500 lr 1.20e-04 fm 0.8975 fm_rot 0.1934 fm_brow 0.1943 fm_eyes 0.2232 fm_mouth 0.2867 vel 0.0947 loss 0.9922 gnorm 0.680 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    9600 lr 1.17e-04 fm 0.9139 fm_rot 0.1904 fm_brow 0.2090 fm_eyes 0.2283 fm_mouth 0.2862 vel 0.0954 loss 1.0092 gnorm 0.539 9.8 it/s  (data 0.005 s + gpu 0.097 s per step)
+step    9700 lr 1.14e-04 fm 0.8989 fm_rot 0.1732 fm_brow 0.2009 fm_eyes 0.2346 fm_mouth 0.2902 vel 0.0988 loss 0.9976 gnorm 0.567 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step    9800 lr 1.10e-04 fm 0.8945 fm_rot 0.1863 fm_brow 0.2033 fm_eyes 0.2210 fm_mouth 0.2839 vel 0.0891 loss 0.9836 gnorm 0.605 10.0 it/s  (data 0.001 s + gpu 0.099 s per step)
+step    9900 lr 1.07e-04 fm 0.9634 fm_rot 0.1945 fm_brow 0.2249 fm_eyes 0.2357 fm_mouth 0.3083 vel 0.0979 loss 1.0613 gnorm 0.639 10.2 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   10000 lr 1.04e-04 fm 0.9358 fm_rot 0.1897 fm_brow 0.2110 fm_eyes 0.2356 fm_mouth 0.2995 vel 0.0970 loss 1.0329 gnorm 0.563 10.2 it/s  (data 0.001 s + gpu 0.098 s per step)
+EVAL step 10000 val_loss 1.1688 mse_mouth 0.4877 mse_rot 0.5179 std_r_mouth 1.0898 vc_r_mouth 1.0246 std_r_rot 0.9917 vc_r_rot 0.9157 audio_gain 1.5531
+EVAL_TRAIN step 10000 loss 1.1070 mse_mouth 0.4540 mse_rot 0.5053 std_r_mouth 1.0830 vc_r_mouth 1.0477 std_r_rot 0.9043 vc_r_rot 0.9098 audio_gain 1.7066
+step   10100 lr 1.00e-04 fm 1.4811 fm_rot 0.1834 fm_brow 0.3292 fm_eyes 0.5245 fm_mouth 0.4440 vel 0.2256 loss 1.7067 gnorm 2.328 2.6 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   10200 lr 9.71e-05 fm 0.9210 fm_rot 0.1789 fm_brow 0.2070 fm_eyes 0.2353 fm_mouth 0.2998 vel 0.1059 loss 1.0269 gnorm 0.809 10.0 it/s  (data 0.001 s + gpu 0.099 s per step)
+step   10300 lr 9.39e-05 fm 1.0501 fm_rot 0.1856 fm_brow 0.2508 fm_eyes 0.2659 fm_mouth 0.3478 vel 0.1102 loss 1.1603 gnorm 1.498 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step   10400 lr 9.08e-05 fm 0.8728 fm_rot 0.1827 fm_brow 0.1929 fm_eyes 0.2262 fm_mouth 0.2710 vel 0.0903 loss 0.9631 gnorm 0.507 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   10500 lr 8.76e-05 fm 0.8909 fm_rot 0.1813 fm_brow 0.1986 fm_eyes 0.2274 fm_mouth 0.2836 vel 0.0942 loss 0.9851 gnorm 0.525 9.7 it/s  (data 0.005 s + gpu 0.098 s per step)
+step   10600 lr 8.46e-05 fm 0.8975 fm_rot 0.1857 fm_brow 0.1970 fm_eyes 0.2335 fm_mouth 0.2812 vel 0.0942 loss 0.9917 gnorm 0.554 10.2 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   10700 lr 8.15e-05 fm 0.8975 fm_rot 0.1773 fm_brow 0.2069 fm_eyes 0.2273 fm_mouth 0.2860 vel 0.0949 loss 0.9924 gnorm 0.506 10.1 it/s  (data 0.001 s + gpu 0.099 s per step)
+step   10800 lr 7.85e-05 fm 0.9396 fm_rot 0.1849 fm_brow 0.2186 fm_eyes 0.2401 fm_mouth 0.2961 vel 0.1026 loss 1.0423 gnorm 0.560 10.0 it/s  (data 0.001 s + gpu 0.099 s per step)
+step   10900 lr 7.56e-05 fm 0.9162 fm_rot 0.1766 fm_brow 0.2109 fm_eyes 0.2381 fm_mouth 0.2905 vel 0.0905 loss 1.0067 gnorm 0.765 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   11000 lr 7.27e-05 fm 0.8917 fm_rot 0.1758 fm_brow 0.2003 fm_eyes 0.2292 fm_mouth 0.2863 vel 0.0894 loss 0.9810 gnorm 0.696 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+EVAL step 11000 val_loss 1.1664 mse_mouth 0.4857 mse_rot 0.5129 std_r_mouth 1.0935 vc_r_mouth 1.0281 std_r_rot 0.9928 vc_r_rot 0.9232 audio_gain 1.5661
+EVAL_TRAIN step 11000 loss 1.0968 mse_mouth 0.4460 mse_rot 0.4978 std_r_mouth 1.0897 vc_r_mouth 1.0569 std_r_rot 0.9099 vc_r_rot 0.9219 audio_gain 1.7391
+step   11100 lr 6.98e-05 fm 0.9509 fm_rot 0.1962 fm_brow 0.2176 fm_eyes 0.2376 fm_mouth 0.2995 vel 0.1061 loss 1.0570 gnorm 0.593 2.6 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   11200 lr 6.70e-05 fm 0.8994 fm_rot 0.1828 fm_brow 0.2008 fm_eyes 0.2295 fm_mouth 0.2864 vel 0.0956 loss 0.9951 gnorm 0.516 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step   11300 lr 6.42e-05 fm 0.9189 fm_rot 0.1859 fm_brow 0.2055 fm_eyes 0.2294 fm_mouth 0.2982 vel 0.1066 loss 1.0255 gnorm 0.548 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step   11400 lr 6.15e-05 fm 0.8896 fm_rot 0.2036 fm_brow 0.1947 fm_eyes 0.2255 fm_mouth 0.2659 vel 0.0889 loss 0.9785 gnorm 0.545 10.0 it/s  (data 0.004 s + gpu 0.096 s per step)
+step   11500 lr 5.89e-05 fm 0.8767 fm_rot 0.1667 fm_brow 0.2025 fm_eyes 0.2255 fm_mouth 0.2821 vel 0.0951 loss 0.9718 gnorm 0.551 10.0 it/s  (data 0.001 s + gpu 0.099 s per step)
+step   11600 lr 5.63e-05 fm 0.8819 fm_rot 0.1663 fm_brow 0.2001 fm_eyes 0.2307 fm_mouth 0.2848 vel 0.0937 loss 0.9755 gnorm 0.496 10.4 it/s  (data 0.001 s + gpu 0.096 s per step)
+step   11700 lr 5.37e-05 fm 0.8891 fm_rot 0.1707 fm_brow 0.1978 fm_eyes 0.2290 fm_mouth 0.2915 vel 0.0940 loss 0.9831 gnorm 0.616 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   11800 lr 5.13e-05 fm 0.8888 fm_rot 0.1706 fm_brow 0.1995 fm_eyes 0.2317 fm_mouth 0.2871 vel 0.0919 loss 0.9807 gnorm 0.731 10.0 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   11900 lr 4.88e-05 fm 0.9258 fm_rot 0.1759 fm_brow 0.2117 fm_eyes 0.2376 fm_mouth 0.3006 vel 0.1003 loss 1.0261 gnorm 0.549 10.0 it/s  (data 0.001 s + gpu 0.099 s per step)
+step   12000 lr 4.65e-05 fm 0.9010 fm_rot 0.1824 fm_brow 0.2062 fm_eyes 0.2251 fm_mouth 0.2873 vel 0.0956 loss 0.9967 gnorm 0.623 10.1 it/s  (data 0.000 s + gpu 0.099 s per step)
+EVAL step 12000 val_loss 1.1635 mse_mouth 0.4857 mse_rot 0.5173 std_r_mouth 1.0923 vc_r_mouth 1.0314 std_r_rot 1.0035 vc_r_rot 0.9273 audio_gain 1.5714
+EVAL_TRAIN step 12000 loss 1.0890 mse_mouth 0.4450 mse_rot 0.4975 std_r_mouth 1.0891 vc_r_mouth 1.0606 std_r_rot 0.9171 vc_r_rot 0.9237 audio_gain 1.7504
+step   12100 lr 4.42e-05 fm 0.8870 fm_rot 0.1738 fm_brow 0.2058 fm_eyes 0.2210 fm_mouth 0.2864 vel 0.0961 loss 0.9832 gnorm 0.577 2.6 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   12200 lr 4.20e-05 fm 0.8702 fm_rot 0.1730 fm_brow 0.1932 fm_eyes 0.2171 fm_mouth 0.2869 vel 0.0908 loss 0.9610 gnorm 0.523 9.6 it/s  (data 0.006 s + gpu 0.098 s per step)
+step   12300 lr 3.98e-05 fm 0.8443 fm_rot 0.1653 fm_brow 0.1877 fm_eyes 0.2178 fm_mouth 0.2735 vel 0.0897 loss 0.9339 gnorm 0.462 10.2 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   12400 lr 3.77e-05 fm 0.8927 fm_rot 0.1851 fm_brow 0.1996 fm_eyes 0.2269 fm_mouth 0.2812 vel 0.0968 loss 0.9895 gnorm 0.554 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   12500 lr 3.57e-05 fm 0.8394 fm_rot 0.1703 fm_brow 0.1885 fm_eyes 0.2131 fm_mouth 0.2674 vel 0.0883 loss 0.9277 gnorm 0.621 10.2 it/s  (data 0.000 s + gpu 0.097 s per step)
+step   12600 lr 3.37e-05 fm 1.7138 fm_rot 0.1809 fm_brow 0.4078 fm_eyes 0.5812 fm_mouth 0.5438 vel 0.3431 loss 2.0568 gnorm 3.284 10.2 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   12700 lr 3.18e-05 fm 0.8713 fm_rot 0.1680 fm_brow 0.2051 fm_eyes 0.2231 fm_mouth 0.2751 vel 0.0928 loss 0.9641 gnorm 0.561 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step   12800 lr 3.00e-05 fm 0.9121 fm_rot 0.1824 fm_brow 0.1972 fm_eyes 0.2380 fm_mouth 0.2945 vel 0.0948 loss 1.0069 gnorm 0.581 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   12900 lr 2.83e-05 fm 0.9121 fm_rot 0.1741 fm_brow 0.2057 fm_eyes 0.2325 fm_mouth 0.2998 vel 0.0985 loss 1.0106 gnorm 0.574 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   13000 lr 2.66e-05 fm 0.8473 fm_rot 0.1639 fm_brow 0.1901 fm_eyes 0.2171 fm_mouth 0.2762 vel 0.0928 loss 0.9401 gnorm 0.545 10.2 it/s  (data 0.000 s + gpu 0.097 s per step)
+EVAL step 13000 val_loss 1.1612 mse_mouth 0.4904 mse_rot 0.5184 std_r_mouth 1.0975 vc_r_mouth 1.0338 std_r_rot 1.0069 vc_r_rot 0.9264 audio_gain 1.5648
+EVAL_TRAIN step 13000 loss 1.0839 mse_mouth 0.4420 mse_rot 0.4919 std_r_mouth 1.0895 vc_r_mouth 1.0590 std_r_rot 0.9151 vc_r_rot 0.9222 audio_gain 1.7629
+step   13100 lr 2.50e-05 fm 0.9063 fm_rot 0.1810 fm_brow 0.2073 fm_eyes 0.2289 fm_mouth 0.2892 vel 0.0988 loss 1.0051 gnorm 1.072 2.5 it/s  (data 0.005 s + gpu 0.097 s per step)
+step   13200 lr 2.35e-05 fm 0.8915 fm_rot 0.1861 fm_brow 0.1969 fm_eyes 0.2254 fm_mouth 0.2831 vel 0.0956 loss 0.9872 gnorm 0.480 10.1 it/s  (data 0.001 s + gpu 0.099 s per step)
+step   13300 lr 2.21e-05 fm 0.8291 fm_rot 0.1559 fm_brow 0.1802 fm_eyes 0.2159 fm_mouth 0.2771 vel 0.0896 loss 0.9187 gnorm 0.448 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step   13400 lr 2.07e-05 fm 0.8995 fm_rot 0.1886 fm_brow 0.1990 fm_eyes 0.2328 fm_mouth 0.2791 vel 0.0980 loss 0.9975 gnorm 0.608 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   13500 lr 1.94e-05 fm 0.8175 fm_rot 0.1605 fm_brow 0.1832 fm_eyes 0.2093 fm_mouth 0.2645 vel 0.0897 loss 0.9071 gnorm 0.514 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   13600 lr 1.82e-05 fm 0.8532 fm_rot 0.1701 fm_brow 0.1890 fm_eyes 0.2136 fm_mouth 0.2805 vel 0.0969 loss 0.9500 gnorm 0.504 10.0 it/s  (data 0.001 s + gpu 0.099 s per step)
+step   13700 lr 1.71e-05 fm 0.8937 fm_rot 0.1838 fm_brow 0.1968 fm_eyes 0.2278 fm_mouth 0.2852 vel 0.0957 loss 0.9894 gnorm 0.671 10.0 it/s  (data 0.001 s + gpu 0.099 s per step)
+step   13800 lr 1.61e-05 fm 0.8769 fm_rot 0.1673 fm_brow 0.1981 fm_eyes 0.2229 fm_mouth 0.2886 vel 0.0921 loss 0.9690 gnorm 0.515 10.0 it/s  (data 0.000 s + gpu 0.100 s per step)
+step   13900 lr 1.51e-05 fm 0.8949 fm_rot 0.1754 fm_brow 0.1990 fm_eyes 0.2274 fm_mouth 0.2930 vel 0.1037 loss 0.9986 gnorm 0.478 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step   14000 lr 1.42e-05 fm 0.8896 fm_rot 0.1775 fm_brow 0.2055 fm_eyes 0.2297 fm_mouth 0.2768 vel 0.1033 loss 0.9928 gnorm 0.531 9.8 it/s  (data 0.004 s + gpu 0.098 s per step)
+EVAL step 14000 val_loss 1.1609 mse_mouth 0.4921 mse_rot 0.5199 std_r_mouth 1.1002 vc_r_mouth 1.0333 std_r_rot 1.0118 vc_r_rot 0.9286 audio_gain 1.5631
+EVAL_TRAIN step 14000 loss 1.0790 mse_mouth 0.4434 mse_rot 0.4935 std_r_mouth 1.0931 vc_r_mouth 1.0598 std_r_rot 0.9214 vc_r_rot 0.9277 audio_gain 1.7659
+step   14100 lr 1.34e-05 fm 0.8485 fm_rot 0.1715 fm_brow 0.1883 fm_eyes 0.2131 fm_mouth 0.2756 vel 0.0921 loss 0.9407 gnorm 0.522 2.6 it/s  (data 0.001 s + gpu 0.097 s per step)
+step   14200 lr 1.27e-05 fm 0.8720 fm_rot 0.1814 fm_brow 0.1954 fm_eyes 0.2171 fm_mouth 0.2781 vel 0.0904 loss 0.9624 gnorm 0.529 10.2 it/s  (data 0.000 s + gpu 0.098 s per step)
+step   14300 lr 1.21e-05 fm 0.8844 fm_rot 0.1864 fm_brow 0.1934 fm_eyes 0.2231 fm_mouth 0.2814 vel 0.0956 loss 0.9800 gnorm 0.514 10.2 it/s  (data 0.001 s + gpu 0.097 s per step)
+step   14400 lr 1.15e-05 fm 0.8934 fm_rot 0.1883 fm_brow 0.2046 fm_eyes 0.2227 fm_mouth 0.2778 vel 0.0944 loss 0.9878 gnorm 0.546 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   14500 lr 1.11e-05 fm 0.8729 fm_rot 0.1748 fm_brow 0.1949 fm_eyes 0.2243 fm_mouth 0.2789 vel 0.1018 loss 0.9747 gnorm 0.508 10.2 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   14600 lr 1.07e-05 fm 0.8746 fm_rot 0.1766 fm_brow 0.1930 fm_eyes 0.2184 fm_mouth 0.2865 vel 0.0961 loss 0.9706 gnorm 0.995 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   14700 lr 1.04e-05 fm 0.8763 fm_rot 0.1592 fm_brow 0.2054 fm_eyes 0.2301 fm_mouth 0.2816 vel 0.0932 loss 0.9696 gnorm 0.842 10.1 it/s  (data 0.001 s + gpu 0.098 s per step)
+step   14800 lr 1.02e-05 fm 0.8793 fm_rot 0.1742 fm_brow 0.1980 fm_eyes 0.2206 fm_mouth 0.2865 vel 0.0958 loss 0.9751 gnorm 0.556 10.0 it/s  (data 0.004 s + gpu 0.096 s per step)
+step   14900 lr 1.00e-05 fm 0.8976 fm_rot 0.1774 fm_brow 0.2010 fm_eyes 0.2274 fm_mouth 0.2919 vel 0.1010 loss 0.9986 gnorm 0.602 10.1 it/s  (data 0.000 s + gpu 0.098 s per step)
+step   15000 lr 1.00e-05 fm 0.8284 fm_rot 0.1641 fm_brow 0.1844 fm_eyes 0.2110 fm_mouth 0.2689 vel 0.0906 loss 0.9190 gnorm 0.546 10.1 it/s  (data 0.000 s + gpu 0.098 s per step)
+EVAL step 15000 val_loss 1.1603 mse_mouth 0.4933 mse_rot 0.5251 std_r_mouth 1.1022 vc_r_mouth 1.0338 std_r_rot 1.0233 vc_r_rot 0.9334 audio_gain 1.5645
+EVAL_TRAIN step 15000 loss 1.0761 mse_mouth 0.4421 mse_rot 0.4937 std_r_mouth 1.0940 vc_r_mouth 1.0589 std_r_rot 0.9288 vc_r_rot 0.9320 audio_gain 1.7729
+done. best val_loss 1.1603 -> runs/d1_97h/best.pt
