@@ -25,8 +25,8 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.bench import write_mp4
-from sang.motion import MotionCodec, from_target, to_target
-from sang.motion_model import Norm, build, ema_weights, guidance_vector, load_ema, parse_spec, sampler_kwargs
+from sang.motion import MotionCodec, from_target, smooth_placement, to_target
+from sang.motion_model import Norm, build, ema_weights, guidance_vector, load_ema, parse_spec, sampler_kwargs, t_dim_of
 from sang.naturalness import Guide, guided_generate
 from sang.paths import motion_cache
 from sang.voice import load_knnvc
@@ -90,7 +90,8 @@ def main() -> None:
     model = build(cfg).to(dev).eval()
     model.load_state_dict(ck["model"] if args.raw else ema_weights(ck, args.ema))
     norm = Norm(**ck["norm"]).to(dev)
-    gamma = guidance_vector(cfg["cfg_audio"] if args.cfg is None else args.cfg, mouth=args.cfg_mouth)
+    gamma = guidance_vector(cfg["cfg_audio"] if args.cfg is None else args.cfg, mouth=args.cfg_mouth, t_dim=t_dim_of(cfg))
+    spec = parse_spec(args.sampler)
     samp = sampler_kwargs(parse_spec(args.sampler), cfg, load_ema(args.guide_ckpt, dev, norm) if args.guide_ckpt else None,
                           steps=args.steps) if args.sampler else None
 
@@ -108,7 +109,7 @@ def main() -> None:
     start, lead = None, 0
     if args.start == "source":                                       # the photo, still and silent, for P frames
         lead = cfg["prefix"]
-        start = norm.target(to_target(m_src)).unsqueeze(1).expand(1, lead, -1)
+        start = norm.target(to_target(m_src, ref=m_src if norm.place else None)).unsqueeze(1).expand(1, lead, -1)
     with torch.no_grad():
         audio = wavlm.encode(torch.nn.functional.pad(wav, (lead * SR // FPS, 0)).to(dev)).float()   # [1, ~2(lead+n), D]
     guide = Guide.load(motion_cache(cfg["cache_dir"]), dev) if args.guide != "none" else None
@@ -117,7 +118,8 @@ def main() -> None:
                               sampler=samp)
     if info:
         print(f"constraints: {info}")
-    m = from_target(norm.untarget(y[0]), m_src, held=args.held)     # [n, 70], source scale/t/shape
+    y_raw = smooth_placement(norm.untarget(y[0]), spec.get("pamp", 1.0), int(spec.get("psmooth", 1)))
+    m = from_target(y_raw, m_src, held=args.held)                   # [n, 70], source scale/t/shape
     frames = codec.render(src, m.cpu(), relative=False, stitch=args.stitch,
                           **({"batch": 16, "half": True} if args.fast else {}))
     track = Path(args.audio)

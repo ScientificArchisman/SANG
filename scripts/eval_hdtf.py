@@ -140,8 +140,8 @@ class Evaluator:
         a = self.args
         d = self.codec.extract(frames)                      # fixed box; truncated at a shot cut
         m = d["m"].float()
-        if a.gt_target == 42:
-            m = from_target(to_target(m), m[:1], held=a.held)
+        if a.gt_target in (42, 45):                         # 45: SANG's target with the real head placement
+            m = from_target(to_target(m, ref=m[:1] if a.gt_target == 45 else None), m[:1], held=a.held)
         state = self.codec.source_state(d["crops"][0], precropped=True)
         crops = self.codec.render(None, m, relative=False, stitch=a.stitch, state=state)
         s0 = d["span"][0]
@@ -341,7 +341,8 @@ def main() -> None:
     ap.add_argument("--half", action="store_true", help="FP16 warping module and decoder")
     ap.add_argument("--gpu-paste", action="store_true", help="paste-back on the GPU inside the face's box")
     ap.add_argument("--reuse-crop", action="store_true", help="detect the source face once, not three times")
-    ap.add_argument("--gt-target", type=int, default=42, choices=[42, 70], help="ceiling row: SANG's 42-d target or full 70-d")
+    ap.add_argument("--gt-target", type=int, default=42, choices=[42, 45, 70],
+                    help="ceiling row: SANG's 42-d target, 45 = with the real head placement (C4), or full 70-d")
     ap.add_argument("--stitch", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--paste-back", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--lse", action=argparse.BooleanOptionalAction, default=True)

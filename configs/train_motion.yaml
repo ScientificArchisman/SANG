@@ -30,6 +30,8 @@ layers: 8
 heads: 8
 dropout: 0.1               # run 172260 (dropout 0) memorised 3.7k clips after <5k steps
 max_frames: 512
+place: false              # C4 head placement: also generate t_x, t_y, log scale relative to the reference frame
+                          # (45-d target, a fifth loss region; <cache>/norm45.pt). false = hold the photo's (42-d)
 
 # ---- objective ----
 lam_vel: 1.0              # FLOAT lambda_vel = 1

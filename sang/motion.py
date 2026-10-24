@@ -47,6 +47,19 @@ def _span(kps: tuple[int, ...]) -> list[int]:
 
 REGIONS = {"rot": [0, 1, 2], "brow": _span(BROW_KP), "eyes": _span(EYE_KP), "mouth": _span(LIP_KP)}
 
+# Head placement (C4, `place: true`): 3 more target columns after the 42, the head's position and size
+# RELATIVE to the reference frame -- (t_x - t_x,ref, t_y - t_y,ref, log s - log s_ref). t_z stays held
+# (KDTalker holds it too). With the photo as reference, 0 = where the photo has the head.
+PLACE_DIM = 3
+PLACE = list(range(T_DIM, T_DIM + PLACE_DIM))
+
+
+def regions(t_dim: int = T_DIM) -> dict:
+    """The target's regions: REGIONS, plus 'place' for a 45-d (placement) target."""
+    if t_dim not in (T_DIM, T_DIM + PLACE_DIM):
+        raise ValueError(f"target width must be {T_DIM} or {T_DIM + PLACE_DIM}, got {t_dim}")
+    return REGIONS if t_dim == T_DIM else {**REGIONS, "place": PLACE}
+
 
 def rotation_matrix(pitch: torch.Tensor, yaw: torch.Tensor, roll: torch.Tensor) -> torch.Tensor:
     """Degrees [N] -> [N,3,3], LivePortrait's convention: (Rz @ Ry @ Rx) transposed, row vectors.
@@ -64,18 +77,43 @@ def _rot(m: torch.Tensor) -> torch.Tensor:
     return rotation_matrix(m[:, 2], m[:, 1], m[:, 3])        # layout is (scale, yaw, pitch, roll, ...)
 
 
-def to_target(m: torch.Tensor) -> torch.Tensor:
-    """[N,70] motion -> [N,42] target: (pitch, yaw, roll) + head-frame exp of EXPR_KP."""
+def placement(m: torch.Tensor) -> torch.Tensor:
+    """[N,70] motion -> [N,3] absolute head placement (t_x, t_y, log scale)."""
+    m = m.float()
+    return torch.stack([m[:, 4], m[:, 5], m[:, 0].clamp_min(1e-6).log()], 1)
+
+
+def to_target(m: torch.Tensor, ref: torch.Tensor | None = None) -> torch.Tensor:
+    """[N,70] motion -> [N,42] target: (pitch, yaw, roll) + head-frame exp of EXPR_KP.
+    With `ref` ([1 or N, 70], the reference frame's motion): [N,45], the placement relative to it appended."""
     m = m.float()
     exp_head = m[:, 7:M_DIM].reshape(-1, 21, 3) @ _rot(m).transpose(1, 2)   # delta @ R^T
-    return torch.cat([m[:, [2, 1, 3]], exp_head[:, list(EXPR_KP)].reshape(-1, 3 * len(EXPR_KP))], 1)
+    y = torch.cat([m[:, [2, 1, 3]], exp_head[:, list(EXPR_KP)].reshape(-1, 3 * len(EXPR_KP))], 1)
+    return y if ref is None else torch.cat([y, placement(m) - placement(ref)], 1)
+
+
+def smooth_placement(y: torch.Tensor, amp: float = 1.0, k: int = 1) -> torch.Tensor:
+    """Render-time control of a RAW [N,45] target's placement columns: scale them by `amp` (0 = hold the
+    photo's placement, as a 42-d model does) and take a centred moving mean over `k` frames (Ditto
+    smooths scale and translation over 3). A [N,42] target is returned unchanged."""
+    if y.shape[1] == T_DIM or (amp == 1.0 and k <= 1):
+        return y
+    y = y.clone()
+    p = y[:, PLACE] * amp
+    if k > 1:
+        h = k // 2
+        pad = torch.cat([p[:1].expand(h, -1), p, p[-1:].expand(h, -1)])    # hold the ends
+        p = pad.unfold(0, 2 * h + 1, 1).mean(-1)
+    y[:, PLACE] = p
+    return y
 
 
 def from_target(y: torch.Tensor, base: torch.Tensor, held: str = "camera") -> torch.Tensor:
-    """[N,42] target + [N or 1,70] base motion -> [N,70], ready for MotionCodec.render(relative=False).
+    """[N,42 or 45] target + [N or 1,70] base motion -> [N,70], ready for MotionCodec.render(relative=False).
 
     Scale, translation and the 24 non-driven expression coordinates (keypoints 0,3,4,5,7,8,9,10)
-    come from `base` (the source frame). The 39 driven coordinates are the target's head-frame
+    come from `base` (the source frame); a 45-d target moves t_x, t_y and the scale by its placement
+    columns, relative to `base` (t_z stays held). The 39 driven coordinates are the target's head-frame
     expression, rotated into the camera frame by the NEW pose. `held` sets how the non-driven ones
     follow a pose change:
 
@@ -94,8 +132,13 @@ def from_target(y: torch.Tensor, base: torch.Tensor, held: str = "camera") -> to
     R_new = _rot(out)
     exp = base[:, 7:M_DIM].reshape(-1, 21, 3)
     exp = exp @ _rot(base).transpose(1, 2) @ R_new if held == "head" else exp.clone()
-    exp[:, list(EXPR_KP)] = y[:, 3:].reshape(-1, len(EXPR_KP), 3) @ R_new   # head frame -> camera frame
+    exp[:, list(EXPR_KP)] = y[:, 3:T_DIM].reshape(-1, len(EXPR_KP), 3) @ R_new   # head frame -> camera frame
     out[:, 7:M_DIM] = exp.reshape(-1, EXP_DIM)
+    if y.shape[1] > T_DIM:                                    # placement, relative to the base frame
+        regions(y.shape[1])
+        d = y[:, PLACE]
+        out[:, 4], out[:, 5] = base[:, 4] + d[:, 0], base[:, 5] + d[:, 1]
+        out[:, 0] = base[:, 0] * d[:, 2].exp()
     return out
 
 

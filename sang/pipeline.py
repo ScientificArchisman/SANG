@@ -41,12 +41,14 @@ class Talker:
         from sang.motion import MotionCodec
         from sang.motion_model import Norm, build, ema_weights, load_ema, parse_spec, sampler_kwargs
         ck = torch.load(ckpt, map_location=device, weights_only=False)
+        spec = parse_spec(sampler)
+        self.place = {"amp": spec.get("pamp", 1.0), "k": int(spec.get("psmooth", 1))}   # render-time placement
         self.cfg, self.step, self.dev = ck["cfg"], ck["step"], device
         self.model = build(self.cfg).to(device).eval()
         self.model.load_state_dict(ema_weights(ck, ema))
         self.norm = Norm(**ck["norm"]).to(device)
         guide = load_ema(guide_ckpt, device, self.norm) if guide_ckpt else None
-        self.sampler = (sampler_kwargs(parse_spec(sampler), self.cfg, guide, steps=steps) if sampler else
+        self.sampler = (sampler_kwargs(spec, self.cfg, guide, steps=steps) if sampler else
                         {"cfg_audio": self.cfg["cfg_audio"] if cfg_audio is None else cfg_audio,
                          "steps": steps or self.cfg["sample_steps"]})
         self.codec = codec or MotionCodec(device=device)
@@ -62,7 +64,7 @@ class Talker:
         sink: called with each [b,H,W,3] uint8 batch of finished frames (e.g. AsyncWriter.write); with
         gpu_paste the batches stream out as they are rendered, so encoding overlaps rendering.
         keep=False: do not also return the frames (frames is then None)."""
-        from sang.motion import from_target, paste_back, to_target
+        from sang.motion import from_target, paste_back, smooth_placement, to_target
         from sang.naturalness import guided_generate
         timer = timer or Timer()
         codec = self.codec
@@ -77,10 +79,12 @@ class Talker:
         with timer("motion"):
             samp = dict(self.sampler)
             samp["cfg_batch"] = opts.cfg_batch
-            first = self.norm.target(to_target(m_src)).unsqueeze(1).expand(1, lead, -1) if lead else None
+            first = (self.norm.target(to_target(m_src, ref=m_src if self.norm.place else None))
+                     .unsqueeze(1).expand(1, lead, -1) if lead else None)
             y, _ = guided_generate(self.model, audio, ref, n_frames, self.cfg, self.norm, wav, None, "none", seed,
                                    start=first, sampler=samp)
-            m = from_target(self.norm.untarget(y[0]), m_src, held=held)
+            m = from_target(smooth_placement(self.norm.untarget(y[0]), self.place["amp"], self.place["k"]),
+                            m_src, held=held)
         fast = opts.render_batch > 1 or opts.half or opts.gpu_paste
         if fast and paste and opts.gpu_paste:                # streamed: render a batch, paste it, hand it on
             with timer("render"):

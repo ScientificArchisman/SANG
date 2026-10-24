@@ -28,7 +28,7 @@ from torch.utils.data import DataLoader, Dataset
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.motion import REGIONS, to_target
+from sang.motion import PLACE, REGIONS, T_DIM, placement, to_target
 from sang.motion_model import Norm, build, flow_loss, sample
 from sang.naturalness import typical_frames
 from sang.paths import load_index
@@ -67,6 +67,19 @@ def fit_norm(rows: list[dict], n_clips: int = 500, seed: int = 0) -> Norm:
     return Norm.fit(torch.cat(ys), torch.cat(kps))
 
 
+def fit_place_norm(rows: list[dict], base: Norm, n_clips: int = 500, seed: int = 0, floor: float = 1e-3) -> Norm:
+    """`base` (the 42-d Norm, kept as it is) + statistics of the 3 head-placement columns: each frame's
+    placement relative to a random frame of its clip, as training draws the reference."""
+    rng = random.Random(seed)
+    ps = []
+    for r in rng.sample(rows, min(n_clips, len(rows))):
+        p = placement(torch.load(r["path"], map_location="cpu", weights_only=True)["m"].float())
+        ps.append(p - p[rng.randrange(len(p))])
+    ps = torch.cat(ps)
+    return Norm(torch.cat([base.t_mean, ps.mean(0)]), torch.cat([base.t_std, ps.std(0).clamp_min(floor)]),
+                base.kp_mean, base.kp_std)
+
+
 class MotionWindows(Dataset):
     """Random windows of P prefix + L target frames. The reference is a random frame of the same
     clip (Ditto's choice), which at inference becomes the source image. ref_frame='median': a random
@@ -76,7 +89,10 @@ class MotionWindows(Dataset):
 
     preload=True reads every clip once at start-up and keeps the normalised 42-d targets, reference
     features and fp16 audio in RAM (~2 MB per 20 s clip). Reading one .pt per SAMPLE from BeeGFS
-    capped the first run at ~1.4 it/s: 256 network file opens per step."""
+    capped the first run at ~1.4 it/s: 256 network file opens per step.
+
+    A 45-d Norm (head placement, C4) adds 3 columns to every window: the frames' placement relative to
+    the window's reference frame (sang.motion.to_target with ref), normalised like the rest."""
 
     def __init__(self, rows, L: int, P: int, norm: Norm, per_clip: int, fixed: bool = False,
                  preload: bool = True, threads: int = 16, shifts: dict | None = None, neg: bool = False,
@@ -88,6 +104,7 @@ class MotionWindows(Dataset):
         self.ref_frame, self.lip, self.ref_band = ref_frame, lip, ref_band
         self.rows = [r for r in rows if r["n"] >= L + P]
         self.L, self.P, self.norm, self.per_clip = L, P, norm, per_clip
+        self.place = norm.place           # 45-d target: append the placement relative to the reference
         self.neg = neg                    # also return another window of the same clip (contrastive FM)
         self.shifts = shifts or {}        # clip_key -> WavLM ticks the audio is moved by (sang/sync.py)
         self.fixed = fixed                # val: the same windows every eval, so curves are comparable
@@ -110,23 +127,31 @@ class MotionWindows(Dataset):
         audio = shift_ticks(d["audio"], self.shifts.get(clip_key(r), 0))  # audio-video offset corrected
         cands = (torch.from_numpy(typical_frames(self.lip(y_raw).numpy(), self.ref_band))
                  if self.ref_frame == "median" else None)                # the clip's typical frames
-        return y, ref, audio.half().contiguous(), cands
+        place = placement(d["m"].float()) if self.place else None        # [n, 3] absolute, raw
+        return y, ref, audio.half().contiguous(), cands, place
+
+    def _frames(self, y_all, p_all, sl: slice, k: int) -> torch.Tensor:
+        """Normalised target rows `sl`, with their placement relative to frame k when the target has it."""
+        if p_all is None:
+            return y_all[sl]
+        zp = (p_all[sl] - p_all[k] - self.norm.t_mean[T_DIM:]) / self.norm.t_std[T_DIM:]
+        return torch.cat([y_all[sl], zp], -1)
 
     def __len__(self):
         return len(self.rows) * self.per_clip
 
     def __getitem__(self, i):
         j = i % len(self.rows)
-        y_all, ref_all, audio, cands = self.mem[j] if self.mem is not None else self._load(self.rows[j])
+        y_all, ref_all, audio, cands, p_all = self.mem[j] if self.mem is not None else self._load(self.rows[j])
         n, span = y_all.shape[0], self.L + self.P
         rng = random.Random(i) if self.fixed else random
         s = rng.randint(0, n - span)
         k = int(cands[rng.randrange(len(cands))]) if cands is not None else rng.randint(0, n - 1)
-        y = y_all[s:s + span]
+        y = self._frames(y_all, p_all, slice(s, s + span), k)
         item = {"prefix": y[: self.P], "target": y[self.P:], "ref": ref_all[k],
                 "audio": audio[TPF * s: TPF * (s + span)]}          # fp16: half the bytes per batch; the model casts
         if self.neg:
-            item["neg_target"] = y_all[neg_start(n, self.L, s + self.P, rng)][: self.L]
+            item["neg_target"] = self._frames(y_all, p_all, neg_start(n, self.L, s + self.P, rng), k)[: self.L]
         return item
 
 
@@ -145,9 +170,11 @@ def evaluate(model, loader, cfg, dev, max_batches: int) -> dict:
     model.eval()
     g = torch.Generator(device=dev).manual_seed(0)
     fm = n = 0.0
-    stats = {k: [] for k in ("mse_mouth", "mse_rot", "std_r_mouth", "vc_r_mouth",
-                             "std_r_rot", "vc_r_rot", "audio_gain")}
+    place = getattr(model, "t_dim", T_DIM) > T_DIM
+    stats = {k: [] for k in ("mse_mouth", "mse_rot", "std_r_mouth", "vc_r_mouth", "std_r_rot", "vc_r_rot")
+             + (("mse_place", "std_r_place", "vc_r_place") if place else ()) + ("audio_gain",)}
     mouth, rot = REGIONS["mouth"], REGIONS["rot"]
+    parts = (("mouth", mouth), ("rot", rot)) + ((("place", PLACE),) if place else ())
 
     def ratio(a, b):
         return float(a.std(1).mean() / b.std(1).mean().clamp_min(1e-6))
@@ -170,7 +197,9 @@ def evaluate(model, loader, cfg, dev, max_batches: int) -> dict:
         e = (gen - gt).pow(2)
         stats["mse_mouth"].append(float(e[..., mouth].mean()))
         stats["mse_rot"].append(float(e[..., rot].mean()))
-        for name, idx in (("mouth", mouth), ("rot", rot)):
+        if place:
+            stats["mse_place"].append(float(e[..., PLACE].mean()))
+        for name, idx in parts:
             stats[f"std_r_{name}"].append(ratio(gen[..., idx], gt[..., idx]))
             stats[f"vc_r_{name}"].append(ratio(gen[:, 1:, idx] - gen[:, :-1, idx],
                                                gt[:, 1:, idx] - gt[:, :-1, idx]))
@@ -247,6 +276,16 @@ def main() -> None:
     else:
         norm = fit_norm(train_rows, seed=cfg["seed"])       # train speakers only: no val leakage
         torch.save({k: v for k, v in norm.state_dict().items()}, norm_path)
+    if cfg.get("place"):                                  # C4: 3 more columns, the 42 normalised as before
+        place_path = cache / "norm45.pt"
+        if place_path.exists():
+            norm = Norm(**torch.load(place_path, weights_only=True))
+        else:
+            norm = fit_place_norm(train_rows, norm, seed=cfg["seed"])
+            torch.save({k: v for k, v in norm.state_dict().items()}, place_path)
+        print(f"head placement: 45-d target (t_x, t_y, log scale relative to the reference frame; std "
+              f"{', '.join(f'{v:.4f}' for v in norm.t_std[T_DIM:].tolist())}). Val loss has a fifth region: "
+              f"not comparable with 42-d runs", flush=True)
     shifts = None
     if cfg.get("sync_offsets"):
         so = SyncOffsets.load(cfg["sync_offsets"])
