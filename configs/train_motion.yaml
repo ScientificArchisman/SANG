@@ -6,7 +6,8 @@
 cache_dir: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed   # sang/paths.py MOTION_CACHE
 out_dir: runs/motion_bidir
 val_frac: 0.05            # split by SPEAKER, as scripts/train.py
-seed: 0
+seed: 0                   # salts the speaker split too: keep it fixed so every run validates on the same speakers
+init_seed: null           # weights, noise, dropout and batch order; null = seed. Change THIS for a second seed
 workers: 8
 frames: 64                # L. KDTalker Tab. 7: LSE-C 6.875 / 7.256 / 7.326 at 8 / 32 / 64 frames
 prefix: 10                # FLOAT's L' = 10 preceding frames

@@ -50,3 +50,15 @@ def test_train_eval_leaves_the_run_bit_identical_and_plots(tmp_path):
                           "--out", str(tmp_path / "curves")], capture_output=True, encoding="utf-8", cwd=REPO)
     assert res.returncode == 0, res.stderr[-2000:]
     assert (tmp_path / "curves" / "t.png").stat().st_size > 0 and (tmp_path / "curves" / "t.pdf").exists()
+
+
+def test_init_seed_changes_the_weights_not_the_split(tmp_path):
+    cache = tmp_path / "cache"
+    make_cache(cache)
+    a = train(cache, tmp_path / "a", "train_eval=false")
+    b = train(cache, tmp_path / "b", "train_eval=false", "init_seed=1")
+    split = lambda s: next(l for l in s.splitlines() if "unseen val speakers" in l)
+    assert split(a) == split(b) and "init seed 1 (split seed 0)" in b and "init seed" not in a
+    wa = torch.load(tmp_path / "a" / "last.pt", weights_only=False)["model"]
+    wb = torch.load(tmp_path / "b" / "last.pt", weights_only=False)["model"]
+    assert any(not torch.equal(wa[k], wb[k]) for k in wa)

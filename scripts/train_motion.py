@@ -247,8 +247,13 @@ def main() -> None:
     langs = parse_langs(cfg.get("lang"))
     cfg["lang"] = langs or "all"                          # saved in every checkpoint; evaluation follows it
 
-    torch.manual_seed(cfg["seed"])
-    random.seed(cfg["seed"])
+    # `seed` also salts the speaker split (and every script that rebuilds it), so a second training seed
+    # changes `init_seed` only: weights, noise, condition dropout and batch order; same split, same val set.
+    init = cfg["seed"] if cfg.get("init_seed") is None else int(cfg["init_seed"])
+    torch.manual_seed(init)
+    random.seed(init)
+    if init != cfg["seed"]:
+        print(f"init seed {init} (split seed {cfg['seed']})", flush=True)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     if dev == "cpu":
         cfg["bf16"] = False                                # smoke tests only
