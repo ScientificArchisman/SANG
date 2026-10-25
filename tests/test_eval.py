@@ -84,4 +84,7 @@ def test_tables():
     assert "mouth γ 1.25" in rows[-1]["method"]
     md = markdown_table(rows)
     assert md.splitlines()[2].startswith("| Ours (n=75, 10 s) | Real video")
+    rule = {**summary, "name": "d1_oracle", "protocol": {"seconds": 10, "sampler": "g=2", "rules": "blinks",
+                                                          "lip_oracle": "range"}}
+    assert ev.ours_rows([rule])[-1]["method"] == "SANG-M (d1_oracle: g=2, rules blinks, lip oracle range)"
     assert "| KDTalker Tab. 1 | KDTalker |" in md and "9.756" in md

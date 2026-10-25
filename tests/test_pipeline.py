@@ -112,3 +112,32 @@ def test_fast_pipeline_matches_the_original_and_streams(monkeypatch, tiny_ckpt):
     assert set(t_fast.t) == {"source", "audio", "motion", "render", "paste"}
     none, _, _ = talker.run(src, wav, n, Opts.fast(), keep=False, sink=lambda b: None)
     assert none is None
+
+
+def test_rules_and_lip_style(monkeypatch, tiny_ckpt):
+    """rules='blinks' loads the Guide from the run's motion cache (no phoneme model) and reports what it
+    added; style moves the lip opening to the given median before rendering."""
+    from sang.motion import REGIONS, T_DIM, to_target
+    from sang.naturalness import Readout, lip_style
+    cache = Path(tiny_ckpt).parents[1] / "cache"
+    g = torch.Generator().manual_seed(3)
+    w_lip, w_eye = torch.zeros(T_DIM), torch.zeros(T_DIM)
+    w_lip[REGIONS["mouth"]] = torch.randn(18, generator=g)
+    w_eye[REGIONS["eyes"]] = torch.randn(len(REGIONS["eyes"]), generator=g)
+    (cache / "openness.json").write_text(json.dumps({"lip": Readout(w_lip, 0.2).to_dict(),
+                                                     "eye": Readout(w_eye, 0.3).to_dict()}))
+    (cache / "naturalness_stats.json").write_text(json.dumps(
+        {"closure_offset": 0, "tau_close": 0.1, "ibi_s": [0.6, 0.8], "blink_frames": [4], "eye_closed": -5.0}))
+    codec, _ = fake_codec(monkeypatch)
+    src = np.random.default_rng(0).integers(0, 256, (100, 120, 3), dtype=np.uint8)
+    wav, n = torch.randn(16000 * 3) * 0.1, 75
+    talker = Talker(tiny_ckpt, "g=2,steps=3", device="cpu", codec=codec, wavlm=FakeWavLM(), rules="blinks")
+    assert talker.rules.phon is None
+    _, m, _ = talker.run(src, wav, n, Opts(), start="source", paste=False)
+    info = talker.last["info"]
+    assert info["added_blinks"] > 0 and "own_blinks" in info
+    want = lip_style(np.linspace(1.0, 2.0, 50))
+    _, m2, _ = talker.run(src, wav, n, Opts(), start="source", paste=False, style=want, restyle="level")
+    lip = talker.readouts["lip"](to_target(m2.float())).numpy()
+    assert abs(np.median(lip) - want["mid"]) < 1e-3
+    assert torch.allclose(talker.readouts["lip"](talker.last["y"]), talker.readouts["lip"](to_target(m.float())), atol=1e-4)

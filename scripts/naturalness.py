@@ -22,6 +22,10 @@ Metrics (real is the reference column; aim to match it, not to maximise):
     lip_ccc          concordance with the real lip trajectory (timing AND amplitude; 1 = identical)
     blinks_per_min, ibi_median_s, ibi_cv, blink_ms, blink_at_pause (vs pause_cover = chance)
     beat_align       head-stroke / loudness-onset alignment (Bailando-style), vs beat_chance
+
+--lip-oracle level range adds a column '<setting>+level' / '+range' per setting: the same samples with the
+lip opening moved to the REAL clip's median / robust range (sang.naturalness.restyle_lip; timing untouched,
+so lip_corr is unchanged). The lip_ccc gain is the most a per-speaker style predictor could buy.
 """
 import argparse
 import json
@@ -40,7 +44,7 @@ from sang.motion import to_target
 from sang.motion_model import Norm, build, ema_weights, load_ema, parse_spec, sampler_kwargs
 from sang.naturalness import (FPS, Guide, PhonemeRecognizer, audio_onsets, beat_alignment, blink_events,
                               closure_minima, closure_offset, energy_db, guided_generate, head_beats,
-                              load_readouts, load_wav, median_frame, pauses)
+                              lip_style, load_readouts, load_wav, median_frame, pauses, restyle_lip)
 from sang.paths import motion_cache
 from sang.sync import clip_key
 from sang.talkvid import clip_languages, filter_langs, parse_langs
@@ -145,6 +149,9 @@ def main() -> None:
     ap.add_argument("--ref-frame", default="first", choices=["first", "median"],
                     help="reference frame: frame 0 (default, as always) or the frame with the clip's median lip opening "
                          "(the convention of ref_frame=median training; an oracle 'typical photo')")
+    ap.add_argument("--lip-oracle", nargs="*", default=[], choices=["level", "range"],
+                    help="speaker-style oracle columns: each sample moved to the real clip's lip median / robust range")
+    ap.add_argument("--style-q", type=float, default=5.0, help="--lip-oracle range: the q / 100-q percentiles")
     ap.add_argument("--name", default="", help="suffix for the results file, so parallel sweeps do not overwrite")
     ap.add_argument("--out", default=str(REPO / "results/naturalness"))
     args = ap.parse_args()
@@ -240,12 +247,16 @@ def main() -> None:
         for mode in args.modes:
             col = mode if not vname else f"{mode}@{vname}"
             ms, infos, t0 = [], Counter(), time.time()
+            oracle = {h: [] for h in args.lip_oracle}
             for c, rm in zip(clips, real):
                 ref = norm.ref(c["kp0"][None].to(dev), c["y_ref"].to(dev))
                 y, info = guided_generate(model, c["audio"][None].to(dev), ref, c["n"], cfg, norm, c["wav"],
                                           guide, mode, args.seed, events=c["events"], sampler=samp)
                 infos.update(info)
                 ms.append(measure(norm.untarget(y[0]).cpu(), c, read, st, real=rm))
+                for h, hm in oracle.items():                 # the same sample in the real clip's lip style
+                    z = restyle_lip(y[0], norm, read["lip"], lip_style(rm["lip"], args.style_q), h, args.style_q)
+                    hm.append(measure(norm.untarget(z).cpu(), c, read, st, real=rm))
                 if args.self_corr:
                     y2, _ = guided_generate(model, c["audio"][None].to(dev), ref, c["n"], cfg, norm, c["wav"],
                                             guide, mode, args.seed + 1, events=c["events"], sampler=samp)
@@ -255,6 +266,10 @@ def main() -> None:
             table[col] = summarise(ms, st)
             table[col]["gen_s"] = time.time() - t0
             by_group[col] = {g: lip_summary([m for m, c in zip(ms, clips) if g in c["groups"]]) for g in GROUPS}
+            for h, hm in oracle.items():
+                table[f"{col}+{h}"] = summarise(hm, st)
+                by_group[f"{col}+{h}"] = {g: lip_summary([m for m, c in zip(hm, clips) if g in c["groups"]])
+                                          for g in GROUPS}
             extra[col] = dict(infos)
             print(f"{col}: {time.time() - t0:.0f} s  {dict(infos)}", flush=True)
 
@@ -282,6 +297,7 @@ def main() -> None:
     tag += (f"_lang-{'-'.join(langs)}" if langs and args.lang is not None else "")
     tag += ("_sync" if so is not None else "") + (f"_ema{args.ema}" if args.ema else "") + (f"_{args.name}" if args.name else "")
     tag += "_ref-median" if args.ref_frame == "median" else ""
+    tag += ("_oracle-" + "-".join(args.lip_oracle)) if args.lip_oracle else ""
     name = f"{Path(args.ckpt).parent.name}_step{ck['step']}{tag}.json"
     (out / name).write_text(json.dumps({"ckpt": args.ckpt, "step": ck["step"], "stats": {k: v for k, v in st.items() if k != "ibi_s"},
                                         "val_languages": langs or "all", "table": table, "by_group": by_group,

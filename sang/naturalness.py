@@ -341,14 +341,19 @@ class Guide:
         self.read, self.stats, self.phon = readouts, stats, phonemes
 
     @classmethod
-    def load(cls, cache_dir: Path, device: str = "cuda") -> "Guide":
+    def load(cls, cache_dir: Path, device: str = "cuda", phonemes: bool = True) -> "Guide":
+        """phonemes=False: skip the recogniser (blinks need none; lips do). Stats: naturalness_stats.json,
+        else the offset-corrected naturalness_stats_sync.json (a cache only ever measured with --sync-offsets)."""
         cache_dir = Path(cache_dir)
-        for f in ("openness.json", "naturalness_stats.json"):
-            if not (cache_dir / f).exists():
-                raise FileNotFoundError(f"{cache_dir / f} missing: run scripts/calibrate_openness.py, "
+        stats = next((cache_dir / f for f in ("naturalness_stats.json", "naturalness_stats_sync.json")
+                      if (cache_dir / f).exists()), cache_dir / "naturalness_stats.json")
+        for f in (cache_dir / "openness.json", stats):
+            if not f.exists():
+                raise FileNotFoundError(f"{f} missing: run scripts/calibrate_openness.py, "
                                         "then scripts/naturalness.py, first")
-        return cls(load_readouts(cache_dir / "openness.json"),
-                   json.loads((cache_dir / "naturalness_stats.json").read_text()), PhonemeRecognizer(device))
+        print(f"rule constraints: {stats}", flush=True)
+        return cls(load_readouts(cache_dir / "openness.json"), json.loads(stats.read_text()),
+                   PhonemeRecognizer(device) if phonemes else None)
 
     def to_z(self, name: str, ub_raw: np.ndarray, norm) -> tuple[torch.Tensor, torch.Tensor]:
         a, c = self.read[name].in_z(norm)
@@ -398,3 +403,40 @@ def guided_generate(model, audio, ref, n: int, cfg: dict, norm, wav: torch.Tenso
     first = run(None) if mode in ("blinks", "both") else None
     bounds, info = guide.bounds(mode, wav, n, norm, None if first is None else first[0], seed, events)
     return run(bounds), info
+
+
+# ---------------------------------------------------------------------- speaker style
+def ccc(x, y) -> float:
+    """Concordance of two trajectories: timing AND level AND amplitude (1 = identical)."""
+    x, y = np.asarray(x, np.float64), np.asarray(y, np.float64)
+    cov = float(np.mean((x - x.mean()) * (y - y.mean())))
+    return 2 * cov / (x.var() + y.var() + (x.mean() - y.mean()) ** 2 + 1e-12)
+
+
+def lip_style(lip, q: float = 5.0) -> dict:
+    """A clip's lip-opening style in three numbers: robust floor, median and ceiling (the q-th, 50th
+    and (100-q)-th percentiles), i.e. the parameters of an STL template 'lo <= lip <= hi'."""
+    lo, mid, hi = np.percentile(np.asarray(lip, np.float64), [q, 50.0, 100.0 - q])
+    return {"lo": float(lo), "mid": float(mid), "hi": float(hi)}
+
+
+def restyle_lip(z: torch.Tensor, norm, readout: Readout, style: dict, how: str = "range",
+                q: float = 5.0) -> torch.Tensor:
+    """Give a generated clip the lip style `style` (lip_style of some target) by moving every frame's
+    mouth along the lip readout, the smallest move in normalised space (as motion_model.project):
+      level  shift the opening so its median is style['mid']
+      range  map its q / 100-q percentiles onto style['lo'] / style['hi'] (level and amplitude)
+    Timing is untouched: the lip correlation with any reference stays exactly the same.
+    With the REAL clip's style this is the speaker-style oracle: the most a per-speaker style
+    predictor could gain. z [n, t_dim] normalised -> the same shape."""
+    a, c = readout.in_z(norm)
+    a = a.to(z)
+    lip = z @ a + c
+    have = lip_style(lip.cpu().numpy(), q)
+    if how == "level":
+        new = lip + (style["mid"] - have["mid"])
+    elif how == "range":
+        new = style["lo"] + (lip - have["lo"]) * (style["hi"] - style["lo"]) / max(have["hi"] - have["lo"], 1e-6)
+    else:
+        raise ValueError(f"restyle: level | range, not {how!r}")
+    return z + (new - lip).unsqueeze(-1) * a / (a @ a)

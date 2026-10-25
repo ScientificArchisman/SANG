@@ -7,6 +7,9 @@ LSE-D (plus PSNR / SSIM), and a merged table with the published numbers (sang/so
         --ckpt runs/motion_12k_anneal/best.pt --data /beegfs/work/$USER/HDTF --name g2
     # a second setting, SANG row only (real and ceiling rows are shared with the first run)
     sbatch ... scripts/eval_hdtf.py --ckpt ... --data ... --name m125 --cfg-mouth 1.25 --rows sang
+    # d1 with the blink rule; d1 with the speaker-style oracle (the real clip's own lip range)
+    sbatch ... scripts/eval_hdtf.py ... --name d1_blinks --rows sang --rules blinks
+    sbatch ... scripts/eval_hdtf.py ... --name d1_oracle --rows sang --lip-oracle range
     # table only: merge any runs with the published numbers -> docs/hdtf_results.md
     python scripts/eval_hdtf.py --table results/hdtf/*/summary.json --write-doc docs/hdtf_results.md
 
@@ -33,6 +36,10 @@ Protocol (also written to <out>/protocol.json):
             LSE-C/D joonson/syncnet_python, full face-detection pipeline (sang.bench.lse)
             PSNR / SSIM vs the ground-truth frames: audio-driven output is a different take, so
             these measure closeness to the real performance, not reconstruction quality
+  motion    (sang row, with openness.json in the run's motion cache) blinks_per_min and lip_std of the
+            generated motion; with --rules the constraint info (own_blinks, added_blinks); with
+            --lip-oracle also the real clip's (real_blinks_per_min) and lip_ccc / lip_corr against the
+            real lip trajectory after and before (lip_ccc0) the oracle
 Resumable: per-clip results go to <out>/clips/<row>/<clip>.{json,npz}; a rerun skips them.
 """
 import argparse
@@ -54,6 +61,8 @@ from sang.sota_hdtf import METRICS, markdown_table
 
 SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
+MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "own_blinks", "added_blinks", "lip_std", "lip_corr",
+               "lip_ccc0", "lip_ccc")
 
 
 # ---------------------------------------------------------------------- test set
@@ -110,13 +119,20 @@ class Evaluator:
         self.codec = MotionCodec(device=self.dev)
         self.arc = ArcFace(device=self.dev)
         self.incep, self.i3d = InceptionFeats(self.dev), I3DFeats(self.dev)
-        self.last_t = {}
+        self.last_t, self.last_stats, self.read = {}, {}, None
         if "sang" in args.rows:
             from sang.pipeline import Opts, Talker
             cfg = torch.load(args.ckpt, map_location="cpu", weights_only=False)["cfg"]
             gamma = guidance_vector(cfg["cfg_audio"] if args.cfg is None else args.cfg, mouth=args.cfg_mouth)
             self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec, ema=args.ema, cfg_audio=gamma,
-                                 steps=args.steps, guide_ckpt=args.guide_ckpt)
+                                 steps=args.steps, guide_ckpt=args.guide_ckpt, rules=args.rules)
+            try:
+                self.read = self.talker.readouts
+            except OSError as e:                             # no openness.json: generation unchanged, no motion stats
+                if args.lip_oracle:
+                    sys.exit(f"--lip-oracle needs the openness readouts: {e}")
+                self.read = None
+                print(f"no openness readouts ({e}): no blink / lip stats", flush=True)
             self.opts = Opts.fast() if args.fast else Opts(cfg_batch=args.cfg_batch, render_batch=args.render_batch,
                                                            half=args.half, gpu_paste=args.gpu_paste,
                                                            reuse_crop=args.reuse_crop)
@@ -126,14 +142,44 @@ class Evaluator:
     def gen_sang(self, frames, wav):
         """sang.pipeline.Talker: with every option off this is the original path, stage for stage; the stage
         times (source, audio, motion, render, paste; CUDA-synchronised) go into the clip's json."""
+        from sang.naturalness import lip_style
         a, src = self.args, frames[0]
-        gen, _, timer = self.talker.run(src, wav, len(frames), self.opts, seed=a.seed, held=a.held, stitch=a.stitch,
-                                        paste=a.paste_back, start=a.start)
+        real = self.real_motion(frames) if a.lip_oracle else None
+        gen, m, timer = self.talker.run(src, wav, len(frames), self.opts, seed=a.seed, held=a.held, stitch=a.stitch,
+                                        paste=a.paste_back, start=a.start, restyle=a.lip_oracle or "range",
+                                        style=lip_style(real["lip"], a.style_q) if real else None)
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
+        self.last_stats = self.motion_stats(m, real)
         if not a.paste_back:
             box = self.codec._box(self.codec.landmarks(src))
             return gen, self.codec.crop_with_box(frames, box, size=gen.shape[1])[0]
         return gen, frames
+
+    def real_motion(self, frames) -> dict:
+        """The real clip's lip and eye openness (from its LivePortrait motion) and the frames they cover."""
+        from sang.motion import to_target
+        d = self.codec.extract(frames)
+        y = to_target(d["m"].float())
+        return {"lip": self.read["lip"](y).cpu().numpy(), "eye": self.read["eye"](y).cpu().numpy(), "span": d["span"]}
+
+    def motion_stats(self, m, real=None) -> dict:
+        """Blinks and lip opening of the generated motion [n, 70]; against the real clip's when given."""
+        if self.read is None:
+            return {}
+        from sang.motion import to_target
+        from sang.naturalness import blink_events, ccc
+        y = to_target(m.float())
+        lip, eye = self.read["lip"](y).cpu().numpy(), self.read["eye"](y).cpu().numpy()
+        out = {"blinks_per_min": len(blink_events(eye)) * 60.0 * FPS / len(eye), "lip_std": float(lip.std()),
+               **{k: float(v) for k, v in self.talker.last.get("info", {}).items()}}
+        if real is not None:
+            s0, r = real["span"][0], real["lip"]
+            g = lip[s0:s0 + len(r)]
+            g0 = self.read["lip"](self.talker.last["y"]).cpu().numpy()[s0:s0 + len(r)]
+            r = r[:len(g)]
+            out.update(real_blinks_per_min=len(blink_events(real["eye"])) * 60.0 * FPS / len(real["eye"]),
+                       lip_ccc=ccc(g, r), lip_ccc0=ccc(g0, r), lip_corr=float(np.corrcoef(g, r)[0, 1]))
+        return out
 
     def gen_gt_motion(self, frames, wav):
         from sang.motion import from_target, paste_back, to_target
@@ -223,6 +269,7 @@ def run(args) -> None:
                 res, feats = ev.score(row, clip, out, gen, gt, frames[0])
                 if row == "sang":
                     res.update(ev.last_t)
+                    res.update(ev.last_stats)
                 d = out / "clips" / row
                 d.mkdir(parents=True, exist_ok=True)
                 if feats:
@@ -252,6 +299,9 @@ def summarise(out: Path, args) -> dict:
             m["FID"] = frechet(cat("incep_gt"), cat("incep_gen"))
             m["FVD"] = frechet(cat("i3d_gt"), cat("i3d_gen"))
         rows[row] = {"n_clips": len(js), "m": {k: v for k, v in m.items() if v is not None}}
+        mot = {k: mean(k) for k in MOTION_KEYS if mean(k) is not None}
+        if mot:
+            rows[row]["motion"] = mot
         tj = [j for j in js if "t_motion" in j]
         if tj:                                       # generation speed: median over clips (the first warms up)
             stages = sorted({k for j in tj for k in j if k.startswith("t_")})
@@ -265,6 +315,8 @@ def summarise(out: Path, args) -> dict:
     (out / "summary.md").write_text(md + "\n")
     print("\n" + md, flush=True)
     for row, r in rows.items():
+        if "motion" in r:
+            print(f"\n{row} motion, mean per clip: " + "  ".join(f"{k} {v:.3f}" for k, v in r["motion"].items()), flush=True)
         if "timing" in r:
             t = r["timing"]
             print(f"\n{row} generation, median per {args.seconds:g} s clip over {t['clips']} clips: "
@@ -290,6 +342,8 @@ def ours_rows(summaries: list[dict]) -> list[dict]:
             if row == "sang":
                 knobs = ([p["sampler"]] if p.get("sampler") else
                          [f"γ {p.get('cfg') or 2:g}"] + ([f"mouth γ {p['cfg_mouth']:g}"] if p.get("cfg_mouth") else []))
+                knobs += [f"rules {p['rules']}"] if p.get("rules", "none") != "none" else []
+                knobs += [f"lip oracle {p['lip_oracle']}"] if p.get("lip_oracle") else []
                 label = f"SANG-M ({s['name']}: {', '.join(knobs)})"
             elif row in seen:                                # real / ceiling rows: once is enough
                 continue
@@ -334,6 +388,12 @@ def main() -> None:
     ap.add_argument("--sampler", default=None, help="sampler spec, e.g. 'g=2,mouth=1.25,avg=4'; overrides --cfg/--cfg-mouth/--steps")
     ap.add_argument("--ema", default=None, help="extra EMA decay saved by training with ema_extra (e.g. 0.999); default = the main EMA")
     ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide checkpoint (for ag / ag_mouth in --sampler)")
+    ap.add_argument("--rules", default="none", choices=["none", "lips", "blinks", "both"],
+                    help="rule constraints at sampling (sang/naturalness.py): bilabial closures, blinks at pauses")
+    ap.add_argument("--lip-oracle", default=None, choices=["level", "range"],
+                    help="speaker-style oracle: move SANG's lip opening to the REAL clip's median (level) or "
+                         "robust range (range) before rendering; timing untouched. An upper bound, not a method")
+    ap.add_argument("--style-q", type=float, default=5.0, help="--lip-oracle range: the q / 100-q percentiles")
     ap.add_argument("--held", default="camera", choices=["camera", "head"])
     ap.add_argument("--fast", action="store_true", help="every speed option below (sang.pipeline.Opts.fast)")
     ap.add_argument("--cfg-batch", action="store_true", help="CFG pair of each Euler step as one batch")

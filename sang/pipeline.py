@@ -8,6 +8,9 @@ Options (all off = the original path, stage for stage):
   gpu_paste    paste-back with grid_sample inside the face's bounding box (sang.fastpath.GpuPaster)
   reuse_crop   detect the face in the source photo once (the original path detects it three times:
                source motion, renderer source state, paste-back)
+
+Talker(rules=...) switches on the rule constraints of sang/naturalness.py (lips | blinks | both;
+default none, as trained), and run(style=...) gives the clip a lip style (sang.naturalness.restyle_lip).
 """
 from dataclasses import dataclass
 
@@ -35,8 +38,11 @@ class Opts:
 
 class Talker:
     def __init__(self, ckpt: str, sampler: str | None, device: str = "cuda", codec=None, wavlm=None,
-                 ema: str | None = None, cfg_audio=None, steps: int | None = None, guide_ckpt: str | None = None):
-        """sampler: a spec ('g=2,mouth=1.25,avg=4'); without one, cfg_audio / steps (default: the run's)."""
+                 ema: str | None = None, cfg_audio=None, steps: int | None = None, guide_ckpt: str | None = None,
+                 rules: str = "none"):
+        """sampler: a spec ('g=2,mouth=1.25,avg=4'); without one, cfg_audio / steps (default: the run's).
+        rules: none | lips | blinks | both, the constraints of sang.naturalness.guided_generate; they read
+        openness.json and naturalness_stats.json from the run's motion cache."""
         from sang.codec import load_wavlm
         from sang.motion import MotionCodec
         from sang.motion_model import Norm, build, ema_weights, load_ema, parse_spec, sampler_kwargs
@@ -53,19 +59,38 @@ class Talker:
                          "steps": steps or self.cfg["sample_steps"]})
         self.codec = codec or MotionCodec(device=device)
         self.wavlm = wavlm or load_wavlm(self.cfg.get("audio_encoder", "wavlm-large"), device=device)
+        self.rule_mode, self.rules = rules, None
+        if rules != "none":
+            from sang.naturalness import Guide
+            from sang.paths import motion_cache
+            self.rules = Guide.load(motion_cache(self.cfg["cache_dir"]), device, phonemes=rules in ("lips", "both"))
+        self._read = self.rules.read if self.rules else None
+        self.last = {}                                       # the latest run: rule info, raw target before restyle
+
+    @property
+    def readouts(self) -> dict:
+        """The lip / eye openness readouts (openness.json in the run's motion cache)."""
+        if self._read is None:
+            from sang.naturalness import load_readouts
+            from sang.paths import motion_cache
+            self._read = load_readouts(motion_cache(self.cfg["cache_dir"]) / "openness.json")
+        return self._read
 
     @torch.no_grad()
     def run(self, src: np.ndarray, wav: torch.Tensor, n_frames: int, opts: Opts, seed: int = 0,
             held: str = "camera", stitch: bool = True, paste: bool = True, start: str = "null",
-            timer: Timer | None = None, sink=None, keep: bool = True):
+            timer: Timer | None = None, sink=None, keep: bool = True, style: dict | None = None,
+            restyle: str = "range"):
         """src [H,W,3] uint8, wav [N] 16 kHz -> (frames [n,H,W,3] or crops [n,512,512,3] uint8, motion [n,70],
         timer). Stages: source, audio, motion, render, paste. start='source': the first window continues
         from the photo's own motion after `prefix` frames of silence (the HDTF protocol's default).
         sink: called with each [b,H,W,3] uint8 batch of finished frames (e.g. AsyncWriter.write); with
         gpu_paste the batches stream out as they are rendered, so encoding overlaps rendering.
-        keep=False: do not also return the frames (frames is then None)."""
+        keep=False: do not also return the frames (frames is then None).
+        style: a lip style (sang.naturalness.lip_style) the motion is moved to before rendering, by
+        `restyle` (level | range); e.g. the real clip's own, as the speaker-style oracle."""
         from sang.motion import from_target, paste_back, smooth_placement, to_target
-        from sang.naturalness import guided_generate
+        from sang.naturalness import guided_generate, restyle_lip
         timer = timer or Timer()
         codec = self.codec
         with timer("source"):
@@ -81,9 +106,13 @@ class Talker:
             samp["cfg_batch"] = opts.cfg_batch
             first = (self.norm.target(to_target(m_src, ref=m_src if self.norm.place else None))
                      .unsqueeze(1).expand(1, lead, -1) if lead else None)
-            y, _ = guided_generate(self.model, audio, ref, n_frames, self.cfg, self.norm, wav, None, "none", seed,
-                                   start=first, sampler=samp)
-            m = from_target(smooth_placement(self.norm.untarget(y[0]), self.place["amp"], self.place["k"]),
+            y, info = guided_generate(self.model, audio, ref, n_frames, self.cfg, self.norm, wav, self.rules,
+                                      self.rule_mode, seed, start=first, sampler=samp)
+            z = y[0]
+            self.last = {"info": info, "y": self.norm.untarget(z)}
+            if style is not None:
+                z = restyle_lip(z, self.norm, self.readouts["lip"], style, restyle)
+            m = from_target(smooth_placement(self.norm.untarget(z), self.place["amp"], self.place["k"]),
                             m_src, held=held)
         fast = opts.render_batch > 1 or opts.half or opts.gpu_paste
         if fast and paste and opts.gpu_paste:                # streamed: render a batch, paste it, hand it on

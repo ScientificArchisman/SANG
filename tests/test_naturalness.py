@@ -1,6 +1,7 @@
 """Rule-based naturalness: readouts, event detectors, constraint projection in the sampler.
 
 CPU only; no LivePortrait, weights, phoneme model or data."""
+import json
 import sys
 from pathlib import Path
 
@@ -10,9 +11,9 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sang.motion import REGIONS, T_DIM
 from sang.motion_model import REF_DIM, MotionFlowTransformer, Norm, generate, project
-from sang.naturalness import (FPS, HOP, Readout, beat_alignment, bilabial_events, blink_bounds, blink_events,
-                              closure_bounds, closure_offset, energy_db, eye_ratio, fit_readout, is_bilabial,
-                              lip_ratio, pauses, schedule_blinks)
+from sang.naturalness import (FPS, HOP, Guide, Readout, beat_alignment, bilabial_events, blink_bounds, blink_events,
+                              ccc, closure_bounds, closure_offset, energy_db, eye_ratio, fit_readout, is_bilabial,
+                              lip_ratio, lip_style, pauses, restyle_lip, schedule_blinks)
 
 
 def _unzero(m):
@@ -139,3 +140,36 @@ def test_generate_with_bounds_satisfies_them_and_is_unchanged_without():
     y2 = generate(m, audio, ref, n, generator=torch.Generator().manual_seed(1), bounds=[(a, ub)], **kw)
     assert torch.all((y2 @ a)[0, [3, 17, 30]] <= -4.0 + 1e-4)
     assert not torch.allclose(y2, y0)
+
+
+def test_restyle_moves_level_and_range_but_not_timing():
+    g = torch.Generator().manual_seed(0)
+    for td in (T_DIM, T_DIM + 3):                              # 45 = with head placement
+        y = torch.randn(300, td, generator=g) * 2 + 1
+        norm = Norm(y.mean(0), y.std(0), torch.zeros(63), torch.ones(63))
+        w = torch.zeros(T_DIM); w[REGIONS["mouth"]] = torch.randn(18, generator=g)
+        ro = Readout(w, 0.3)
+        z = norm.target(y[:120])
+        lip = ro(norm.untarget(z)).numpy()
+        want = lip_style(0.5 * lip + 3.0)                       # another speaker: higher and narrower
+        for how in ("level", "range"):
+            z2 = restyle_lip(z, norm, ro, want, how)
+            lip2 = ro(norm.untarget(z2)).numpy()
+            got = lip_style(lip2)
+            assert abs(got["mid"] - want["mid"]) < 1e-3
+            if how == "range":
+                assert abs(got["lo"] - want["lo"]) < 1e-3 and abs(got["hi"] - want["hi"]) < 1e-3
+            assert np.corrcoef(lip, lip2)[0, 1] > 0.9999        # timing untouched
+            other = [i for i in range(td) if i not in REGIONS["mouth"]]
+            assert torch.equal(z2[:, other], z[:, other])       # only the mouth moves
+        assert abs(ccc(lip, lip) - 1) < 1e-9 and ccc(lip, lip + lip.std()) < 0.9    # a level offset costs CCC
+
+
+def test_guide_loads_without_the_phoneme_model(tmp_path):
+    w = torch.zeros(T_DIM)
+    (tmp_path / "openness.json").write_text(json.dumps({"lip": Readout(w, 0.1).to_dict(), "eye": Readout(w, 0.2).to_dict()}))
+    (tmp_path / "naturalness_stats_sync.json").write_text(json.dumps({"ibi_s": [2.0], "blink_frames": [4]}))
+    assert Guide.load(tmp_path, "cpu", phonemes=False).stats["blink_frames"] == [4]   # the only stats there
+    (tmp_path / "naturalness_stats.json").write_text(json.dumps({"ibi_s": [2.0], "blink_frames": [5], "eye_closed": 0.1}))
+    g = Guide.load(tmp_path, "cpu", phonemes=False)
+    assert g.phon is None and set(g.read) == {"lip", "eye"} and g.stats["blink_frames"] == [5]
