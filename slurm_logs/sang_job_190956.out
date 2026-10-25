@@ -1,0 +1,18 @@
+[job] 190956 on gpu08 | gpu: NVIDIA A100 80GB PCIe | cpus: 2 | env: avcodec | commit: 1823d51 | 2026-10-25 17:35:50
+[job] python -u scripts/style_probe.py --ckpt runs/d1_97h/last.pt --sync-offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets.json --sampler g=2,mouth=1.25,tau=0.5,avg=4,steps=6 --lang all
+2000 training clips (855 speakers), 300 val clips
+samples and features: 2000 train, 300 val, 607 s
+
+row       CCC level  CCC range   R2 mid   lambda   dims
+model         0.717      0.717      nan      nan      0
+const         0.717      0.721   -0.000      nan      0
+self          0.718      0.722   -0.018     0.01      4
+photo         0.716      0.720   -0.083     31.6    111
+audio         0.719      0.723    0.040      100   2056
+all           0.719      0.722   -0.018     31.6   2163
+oracle        0.768      0.778    1.000      nan      0
+
+gate 1, one-shot style predictable: all 0.722 vs const 0.721 (+0.015 needed) -> fail
+gate 2, free recalibration: max(const, self) 0.722 vs model 0.717 (+0.015 needed) -> fail
+
+wrote /beegfs/work/achakraborti/SANG/results/style_probe/d1_97h_step15000.json
