@@ -141,3 +141,19 @@ def test_rules_and_lip_style(monkeypatch, tiny_ckpt):
     lip = talker.readouts["lip"](to_target(m2.float())).numpy()
     assert abs(np.median(lip) - want["mid"]) < 1e-3
     assert torch.allclose(talker.readouts["lip"](talker.last["y"]), talker.readouts["lip"](to_target(m.float())), atol=1e-4)
+
+
+def test_region_swap_takes_the_given_columns(monkeypatch, tiny_ckpt):
+    from sang.motion import REGIONS, T_DIM, to_target
+    codec, _ = fake_codec(monkeypatch)
+    talker = Talker(tiny_ckpt, "g=2,steps=3", device="cpu", codec=codec, wavlm=FakeWavLM())
+    src = np.random.default_rng(0).integers(0, 256, (100, 120, 3), dtype=np.uint8)
+    wav, n = torch.randn(16000 * 3) * 0.1, 75
+    _, m0, _ = talker.run(src, wav, n, Opts(), start="source", paste=False)
+    y_sw = torch.randn(60, T_DIM) * 3
+    cols = REGIONS["rot"] + REGIONS["eyes"]
+    _, m1, _ = talker.run(src, wav, n, Opts(), start="source", paste=False, swap=(cols, y_sw, 20))
+    y0, y1 = to_target(m0.float()), to_target(m1.float())
+    assert torch.allclose(y1[20:75, cols], y_sw[:55, cols], atol=1e-3)          # clipped at the clip's end
+    rest = [c for c in range(T_DIM) if c not in cols]
+    assert torch.allclose(y1[:, rest], y0[:, rest], atol=1e-3) and torch.allclose(y1[:20], y0[:20], atol=1e-3)

@@ -420,23 +420,26 @@ def lip_style(lip, q: float = 5.0) -> dict:
     return {"lo": float(lo), "mid": float(mid), "hi": float(hi)}
 
 
+def lip_restyled(lip, style: dict, how: str = "range", q: float = 5.0):
+    """The lip trajectory moved to `style` (numpy or torch, same type out):
+      level  shifted so its median is style['mid']
+      range  its q / 100-q percentiles mapped onto style['lo'] / style['hi'] (level and amplitude)"""
+    have = lip_style(lip.detach().cpu().numpy() if torch.is_tensor(lip) else lip, q)
+    if how == "level":
+        return lip + (style["mid"] - have["mid"])
+    if how == "range":
+        return style["lo"] + (lip - have["lo"]) * (style["hi"] - style["lo"]) / max(have["hi"] - have["lo"], 1e-6)
+    raise ValueError(f"restyle: level | range, not {how!r}")
+
+
 def restyle_lip(z: torch.Tensor, norm, readout: Readout, style: dict, how: str = "range",
                 q: float = 5.0) -> torch.Tensor:
     """Give a generated clip the lip style `style` (lip_style of some target) by moving every frame's
-    mouth along the lip readout, the smallest move in normalised space (as motion_model.project):
-      level  shift the opening so its median is style['mid']
-      range  map its q / 100-q percentiles onto style['lo'] / style['hi'] (level and amplitude)
-    Timing is untouched: the lip correlation with any reference stays exactly the same.
-    With the REAL clip's style this is the speaker-style oracle: the most a per-speaker style
+    mouth along the lip readout, the smallest move in normalised space (as motion_model.project), so
+    the opening becomes lip_restyled(opening, style, how). Timing is untouched: the lip correlation
+    with any reference stays exactly the same. With the REAL clip's style this is the speaker-style oracle: the most a per-speaker style
     predictor could gain. z [n, t_dim] normalised -> the same shape."""
     a, c = readout.in_z(norm)
     a = a.to(z)
     lip = z @ a + c
-    have = lip_style(lip.cpu().numpy(), q)
-    if how == "level":
-        new = lip + (style["mid"] - have["mid"])
-    elif how == "range":
-        new = style["lo"] + (lip - have["lo"]) * (style["hi"] - style["lo"]) / max(have["hi"] - have["lo"], 1e-6)
-    else:
-        raise ValueError(f"restyle: level | range, not {how!r}")
-    return z + (new - lip).unsqueeze(-1) * a / (a @ a)
+    return z + (lip_restyled(lip, style, how, q) - lip).unsqueeze(-1) * a / (a @ a)

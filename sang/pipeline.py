@@ -10,7 +10,8 @@ Options (all off = the original path, stage for stage):
                source motion, renderer source state, paste-back)
 
 Talker(rules=...) switches on the rule constraints of sang/naturalness.py (lips | blinks | both;
-default none, as trained), and run(style=...) gives the clip a lip style (sang.naturalness.restyle_lip).
+default none, as trained), run(style=...) gives the clip a lip style (sang.naturalness.restyle_lip), and
+run(swap=...) replaces target columns with another motion's (the region-swap oracle of scripts/eval_hdtf.py).
 """
 from dataclasses import dataclass
 
@@ -80,7 +81,7 @@ class Talker:
     def run(self, src: np.ndarray, wav: torch.Tensor, n_frames: int, opts: Opts, seed: int = 0,
             held: str = "camera", stitch: bool = True, paste: bool = True, start: str = "null",
             timer: Timer | None = None, sink=None, keep: bool = True, style: dict | None = None,
-            restyle: str = "range"):
+            restyle: str = "range", swap: tuple | None = None):
         """src [H,W,3] uint8, wav [N] 16 kHz -> (frames [n,H,W,3] or crops [n,512,512,3] uint8, motion [n,70],
         timer). Stages: source, audio, motion, render, paste. start='source': the first window continues
         from the photo's own motion after `prefix` frames of silence (the HDTF protocol's default).
@@ -88,7 +89,9 @@ class Talker:
         gpu_paste the batches stream out as they are rendered, so encoding overlaps rendering.
         keep=False: do not also return the frames (frames is then None).
         style: a lip style (sang.naturalness.lip_style) the motion is moved to before rendering, by
-        `restyle` (level | range); e.g. the real clip's own, as the speaker-style oracle."""
+        `restyle` (level | range); e.g. the real clip's own, as the speaker-style oracle.
+        swap: (columns, raw target [T', 42], first frame): those columns of frames first..first+T'-1 are
+        taken from the given target, e.g. the real clip's head rotation (after any restyle)."""
         from sang.motion import from_target, paste_back, smooth_placement, to_target
         from sang.naturalness import guided_generate, restyle_lip
         timer = timer or Timer()
@@ -112,8 +115,12 @@ class Talker:
             self.last = {"info": info, "y": self.norm.untarget(z)}
             if style is not None:
                 z = restyle_lip(z, self.norm, self.readouts["lip"], style, restyle)
-            m = from_target(smooth_placement(self.norm.untarget(z), self.place["amp"], self.place["k"]),
-                            m_src, held=held)
+            y_raw = self.norm.untarget(z)
+            if swap is not None:
+                cols, y_sw, s0 = swap
+                k = min(len(y_sw), n_frames - s0)
+                y_raw[s0:s0 + k, cols] = y_sw[:k, cols].to(y_raw)
+            m = from_target(smooth_placement(y_raw, self.place["amp"], self.place["k"]), m_src, held=held)
         fast = opts.render_batch > 1 or opts.half or opts.gpu_paste
         if fast and paste and opts.gpu_paste:                # streamed: render a batch, paste it, hand it on
             with timer("render"):

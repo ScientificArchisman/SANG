@@ -10,6 +10,8 @@ LSE-D (plus PSNR / SSIM), and a merged table with the published numbers (sang/so
     # d1 with the blink rule; d1 with the speaker-style oracle (the real clip's own lip range)
     sbatch ... scripts/eval_hdtf.py ... --name d1_blinks --rows sang --rules blinks
     sbatch ... scripts/eval_hdtf.py ... --name d1_oracle --rows sang --lip-oracle range
+    # region swap: SANG with the real clip's head rotation (which part of the motion costs FVD / PSNR?)
+    sbatch ... scripts/eval_hdtf.py ... --name d1_real_rot --rows sang --real-regions rot
     # table only: merge any runs with the published numbers -> docs/hdtf_results.md
     python scripts/eval_hdtf.py --table results/hdtf/*/summary.json --write-doc docs/hdtf_results.md
 
@@ -38,8 +40,11 @@ Protocol (also written to <out>/protocol.json):
             these measure closeness to the real performance, not reconstruction quality
   motion    (sang row, with openness.json in the run's motion cache) blinks_per_min and lip_std of the
             generated motion; with --rules the constraint info (own_blinks, added_blinks); with
-            --lip-oracle also the real clip's (real_blinks_per_min) and lip_ccc / lip_corr against the
-            real lip trajectory after and before (lip_ccc0) the oracle
+            --lip-oracle / --real-regions also the real clip's (real_blinks_per_min) and lip_ccc / lip_corr
+            against the real lip trajectory after and before (lip_ccc0) the oracle or swap
+  swap      --real-regions rot brow eyes mouth: those target columns come from the clip's REAL motion
+            (extracted as for the ceiling row), the rest from SANG; all four = the real 42-d motion through
+            SANG's own pipeline (calibrates against the gt_motion ceiling). An attribution, not a method
 Resumable: per-clip results go to <out>/clips/<row>/<clip>.{json,npz}; a rerun skips them.
 """
 import argparse
@@ -129,8 +134,8 @@ class Evaluator:
             try:
                 self.read = self.talker.readouts
             except OSError as e:                             # no openness.json: generation unchanged, no motion stats
-                if args.lip_oracle:
-                    sys.exit(f"--lip-oracle needs the openness readouts: {e}")
+                if args.lip_oracle or args.real_regions:
+                    sys.exit(f"--lip-oracle / --real-regions need the openness readouts: {e}")
                 self.read = None
                 print(f"no openness readouts ({e}): no blink / lip stats", flush=True)
             self.opts = Opts.fast() if args.fast else Opts(cfg_batch=args.cfg_batch, render_batch=args.render_batch,
@@ -144,10 +149,14 @@ class Evaluator:
         times (source, audio, motion, render, paste; CUDA-synchronised) go into the clip's json."""
         from sang.naturalness import lip_style
         a, src = self.args, frames[0]
-        real = self.real_motion(frames) if a.lip_oracle else None
+        from sang.motion import REGIONS
+        real = self.real_motion(frames) if a.lip_oracle or a.real_regions else None
+        swap = None
+        if a.real_regions:
+            swap = (sorted(c for r in a.real_regions for c in REGIONS[r]), real["y"], real["span"][0])
         gen, m, timer = self.talker.run(src, wav, len(frames), self.opts, seed=a.seed, held=a.held, stitch=a.stitch,
                                         paste=a.paste_back, start=a.start, restyle=a.lip_oracle or "range",
-                                        style=lip_style(real["lip"], a.style_q) if real else None)
+                                        style=lip_style(real["lip"], a.style_q) if a.lip_oracle else None, swap=swap)
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
         self.last_stats = self.motion_stats(m, real)
         if not a.paste_back:
@@ -156,11 +165,13 @@ class Evaluator:
         return gen, frames
 
     def real_motion(self, frames) -> dict:
-        """The real clip's lip and eye openness (from its LivePortrait motion) and the frames they cover."""
+        """The real clip's 42-d target, lip and eye openness (from its LivePortrait motion), and the frames
+        they cover."""
         from sang.motion import to_target
         d = self.codec.extract(frames)
         y = to_target(d["m"].float())
-        return {"lip": self.read["lip"](y).cpu().numpy(), "eye": self.read["eye"](y).cpu().numpy(), "span": d["span"]}
+        return {"y": y, "lip": self.read["lip"](y).cpu().numpy(), "eye": self.read["eye"](y).cpu().numpy(),
+                "span": d["span"]}
 
     def motion_stats(self, m, real=None) -> dict:
         """Blinks and lip opening of the generated motion [n, 70]; against the real clip's when given."""
@@ -344,6 +355,7 @@ def ours_rows(summaries: list[dict]) -> list[dict]:
                          [f"γ {p.get('cfg') or 2:g}"] + ([f"mouth γ {p['cfg_mouth']:g}"] if p.get("cfg_mouth") else []))
                 knobs += [f"rules {p['rules']}"] if p.get("rules", "none") != "none" else []
                 knobs += [f"lip oracle {p['lip_oracle']}"] if p.get("lip_oracle") else []
+                knobs += [f"real {'+'.join(p['real_regions'])}"] if p.get("real_regions") else []
                 label = f"SANG-M ({s['name']}: {', '.join(knobs)})"
             elif row in seen:                                # real / ceiling rows: once is enough
                 continue
@@ -394,6 +406,8 @@ def main() -> None:
                     help="speaker-style oracle: move SANG's lip opening to the REAL clip's median (level) or "
                          "robust range (range) before rendering; timing untouched. An upper bound, not a method")
     ap.add_argument("--style-q", type=float, default=5.0, help="--lip-oracle range: the q / 100-q percentiles")
+    ap.add_argument("--real-regions", nargs="+", default=None, choices=["rot", "brow", "eyes", "mouth"],
+                    help="region swap: take these target regions from the clip's REAL motion, the rest from SANG")
     ap.add_argument("--held", default="camera", choices=["camera", "head"])
     ap.add_argument("--fast", action="store_true", help="every speed option below (sang.pipeline.Opts.fast)")
     ap.add_argument("--cfg-batch", action="store_true", help="CFG pair of each Euler step as one batch")

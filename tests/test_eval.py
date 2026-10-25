@@ -87,4 +87,6 @@ def test_tables():
     rule = {**summary, "name": "d1_oracle", "protocol": {"seconds": 10, "sampler": "g=2", "rules": "blinks",
                                                           "lip_oracle": "range"}}
     assert ev.ours_rows([rule])[-1]["method"] == "SANG-M (d1_oracle: g=2, rules blinks, lip oracle range)"
+    swap = {**summary, "name": "d1_real_rot", "protocol": {"seconds": 10, "sampler": "g=2", "real_regions": ["rot", "eyes"]}}
+    assert ev.ours_rows([swap])[-1]["method"] == "SANG-M (d1_real_rot: g=2, real rot+eyes)"
     assert "| KDTalker Tab. 1 | KDTalker |" in md and "9.756" in md
