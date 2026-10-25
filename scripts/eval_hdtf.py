@@ -40,11 +40,14 @@ Protocol (also written to <out>/protocol.json):
             these measure closeness to the real performance, not reconstruction quality
   motion    (sang row, with openness.json in the run's motion cache) blinks_per_min and lip_std of the
             generated motion; with --rules the constraint info (own_blinks, added_blinks); with
-            --lip-oracle / --real-regions also the real clip's (real_blinks_per_min) and lip_ccc / lip_corr
-            against the real lip trajectory after and before (lip_ccc0) the oracle or swap
+            --lip-oracle / --real-regions / --real-stats also the real clip's (real_blinks_per_min) and
+            lip_ccc / lip_corr against the real lip trajectory after and before (lip_ccc0) the oracle or
+            swap; head rotation std and mean |frame-to-frame change| in degrees (mean of the 3 axes):
+            rot_std0 / rot_vel0 as sampled, rot_std / rot_vel as rendered, real_rot_std / real_rot_vel
   swap      --real-regions rot brow eyes mouth: those target columns come from the clip's REAL motion
             (extracted as for the ceiling row), the rest from SANG; all four = the real 42-d motion through
-            SANG's own pipeline (calibrates against the gt_motion ceiling). An attribution, not a method
+            SANG's own pipeline (calibrates against the gt_motion ceiling). An attribution, not a method.
+            --swap-reverse plays the real path backwards (reversed_path): same dynamics, wrong path
 Resumable: per-clip results go to <out>/clips/<row>/<clip>.{json,npz}; a rerun skips them.
 """
 import argparse
@@ -67,7 +70,13 @@ from sang.sota_hdtf import METRICS, markdown_table
 SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "own_blinks", "added_blinks", "lip_std", "lip_corr",
-               "lip_ccc0", "lip_ccc")
+               "lip_ccc0", "lip_ccc", "rot_std0", "rot_std", "real_rot_std", "rot_vel0", "rot_vel", "real_rot_vel")
+
+
+def reversed_path(y: torch.Tensor) -> torch.Tensor:
+    """A trajectory played backwards, shifted so it still starts where the original does: the same
+    amplitude and speed, but a path that neither follows the take nor the audio."""
+    return y.flip(0) - y[-1:] + y[:1]
 
 
 # ---------------------------------------------------------------------- test set
@@ -134,8 +143,8 @@ class Evaluator:
             try:
                 self.read = self.talker.readouts
             except OSError as e:                             # no openness.json: generation unchanged, no motion stats
-                if args.lip_oracle or args.real_regions:
-                    sys.exit(f"--lip-oracle / --real-regions need the openness readouts: {e}")
+                if args.lip_oracle or args.real_regions or args.real_stats:
+                    sys.exit(f"--lip-oracle / --real-regions / --real-stats need the openness readouts: {e}")
                 self.read = None
                 print(f"no openness readouts ({e}): no blink / lip stats", flush=True)
             self.opts = Opts.fast() if args.fast else Opts(cfg_batch=args.cfg_batch, render_batch=args.render_batch,
@@ -150,10 +159,11 @@ class Evaluator:
         from sang.naturalness import lip_style
         a, src = self.args, frames[0]
         from sang.motion import REGIONS
-        real = self.real_motion(frames) if a.lip_oracle or a.real_regions else None
+        real = self.real_motion(frames) if a.lip_oracle or a.real_regions or a.real_stats else None
         swap = None
         if a.real_regions:
-            swap = (sorted(c for r in a.real_regions for c in REGIONS[r]), real["y"], real["span"][0])
+            y_sw = reversed_path(real["y"]) if a.swap_reverse else real["y"]
+            swap = (sorted(c for r in a.real_regions for c in REGIONS[r]), y_sw, real["span"][0])
         gen, m, timer = self.talker.run(src, wav, len(frames), self.opts, seed=a.seed, held=a.held, stitch=a.stitch,
                                         paste=a.paste_back, start=a.start, restyle=a.lip_oracle or "range",
                                         style=lip_style(real["lip"], a.style_q) if a.lip_oracle else None, swap=swap)
@@ -186,10 +196,15 @@ class Evaluator:
         if real is not None:
             s0, r = real["span"][0], real["lip"]
             g = lip[s0:s0 + len(r)]
-            g0 = self.read["lip"](self.talker.last["y"]).cpu().numpy()[s0:s0 + len(r)]
-            r = r[:len(g)]
+            k = len(g)
+            g0 = self.read["lip"](self.talker.last["y"]).cpu().numpy()[s0:s0 + k]
+            r = r[:k]
+            rot = lambda v: (float(v.std(0).mean()), float(np.abs(np.diff(v, axis=0)).mean()))
+            (s_0, v_0), (s_1, v_1), (s_r, v_r) = (rot(self.talker.last["y"][s0:s0 + k, :3].cpu().numpy()),
+                                                  rot(y[s0:s0 + k, :3].cpu().numpy()), rot(real["y"][:k, :3].numpy()))
             out.update(real_blinks_per_min=len(blink_events(real["eye"])) * 60.0 * FPS / len(real["eye"]),
-                       lip_ccc=ccc(g, r), lip_ccc0=ccc(g0, r), lip_corr=float(np.corrcoef(g, r)[0, 1]))
+                       lip_ccc=ccc(g, r), lip_ccc0=ccc(g0, r), lip_corr=float(np.corrcoef(g, r)[0, 1]),
+                       rot_std0=s_0, rot_std=s_1, real_rot_std=s_r, rot_vel0=v_0, rot_vel=v_1, real_rot_vel=v_r)
         return out
 
     def gen_gt_motion(self, frames, wav):
@@ -355,7 +370,8 @@ def ours_rows(summaries: list[dict]) -> list[dict]:
                          [f"γ {p.get('cfg') or 2:g}"] + ([f"mouth γ {p['cfg_mouth']:g}"] if p.get("cfg_mouth") else []))
                 knobs += [f"rules {p['rules']}"] if p.get("rules", "none") != "none" else []
                 knobs += [f"lip oracle {p['lip_oracle']}"] if p.get("lip_oracle") else []
-                knobs += [f"real {'+'.join(p['real_regions'])}"] if p.get("real_regions") else []
+                knobs += ([f"real {'+'.join(p['real_regions'])}" + (" reversed" if p.get("swap_reverse") else "")]
+                          if p.get("real_regions") else [])
                 label = f"SANG-M ({s['name']}: {', '.join(knobs)})"
             elif row in seen:                                # real / ceiling rows: once is enough
                 continue
@@ -408,6 +424,10 @@ def main() -> None:
     ap.add_argument("--style-q", type=float, default=5.0, help="--lip-oracle range: the q / 100-q percentiles")
     ap.add_argument("--real-regions", nargs="+", default=None, choices=["rot", "brow", "eyes", "mouth"],
                     help="region swap: take these target regions from the clip's REAL motion, the rest from SANG")
+    ap.add_argument("--swap-reverse", action="store_true",
+                    help="--real-regions: play the real path backwards from the same start (same dynamics, wrong path)")
+    ap.add_argument("--real-stats", action="store_true",
+                    help="also extract each clip's real motion for the lip / blink / head-rotation stats (~10 s a clip)")
     ap.add_argument("--held", default="camera", choices=["camera", "head"])
     ap.add_argument("--fast", action="store_true", help="every speed option below (sang.pipeline.Opts.fast)")
     ap.add_argument("--cfg-batch", action="store_true", help="CFG pair of each Euler step as one batch")

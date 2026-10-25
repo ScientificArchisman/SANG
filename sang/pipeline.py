@@ -50,6 +50,7 @@ class Talker:
         ck = torch.load(ckpt, map_location=device, weights_only=False)
         spec = parse_spec(sampler)
         self.place = {"amp": spec.get("pamp", 1.0), "k": int(spec.get("psmooth", 1))}   # render-time placement
+        self.ramp = spec.get("ramp", 1.0)                                                # render-time rotation
         self.cfg, self.step, self.dev = ck["cfg"], ck["step"], device
         self.model = build(self.cfg).to(device).eval()
         self.model.load_state_dict(ema_weights(ck, ema))
@@ -92,7 +93,7 @@ class Talker:
         `restyle` (level | range); e.g. the real clip's own, as the speaker-style oracle.
         swap: (columns, raw target [T', 42], first frame): those columns of frames first..first+T'-1 are
         taken from the given target, e.g. the real clip's head rotation (after any restyle)."""
-        from sang.motion import from_target, paste_back, smooth_placement, to_target
+        from sang.motion import REGIONS, from_target, paste_back, smooth_placement, to_target
         from sang.naturalness import guided_generate, restyle_lip
         timer = timer or Timer()
         codec = self.codec
@@ -116,6 +117,9 @@ class Talker:
             if style is not None:
                 z = restyle_lip(z, self.norm, self.readouts["lip"], style, restyle)
             y_raw = self.norm.untarget(z)
+            if self.ramp != 1.0:                             # rotation amplitude about the photo's pose
+                rot, r0 = REGIONS["rot"], to_target(m_src)[0, :3]
+                y_raw[:, rot] = r0 + self.ramp * (y_raw[:, rot] - r0)
             if swap is not None:
                 cols, y_sw, s0 = swap
                 k = min(len(y_sw), n_frames - s0)

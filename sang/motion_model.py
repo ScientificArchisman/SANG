@@ -525,6 +525,7 @@ SAMPLER_KEYS = {
     "avg": "average the mouth over this many samples",
     "pamp": "render time: scale the generated head placement (0 = hold the photo's, 1 = as generated)",
     "psmooth": "render time: centred moving mean of the head placement over this many frames",
+    "ramp": "render time (sang.pipeline): scale the head rotation about the photo's pose (1 = as generated)",
 }
 
 
@@ -546,7 +547,8 @@ def sampler_kwargs(spec: dict, cfg: dict, ag_model: MotionFlowTransformer | None
                    steps: int | None = None) -> dict:
     """A parsed spec -> keyword arguments for `generate` (and naturalness.guided_generate's `sampler`).
     Keys left out keep the run's defaults: cfg_audio, sample_steps, no autoguidance, uniform steps.
-    pamp / psmooth act at render time (sang.motion.smooth_placement), so they are not in the result."""
+    pamp / psmooth / ramp act at render time (sang.motion.smooth_placement, sang.pipeline), so they are
+    not in the result."""
     td = t_dim_of(cfg)
     kw = {"cfg_audio": guidance_vector(spec.get("g", cfg["cfg_audio"]), mouth=spec.get("mouth"),
                                        eyes=spec.get("eyes"), brow=spec.get("brow"), rot=spec.get("rot"),

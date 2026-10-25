@@ -89,4 +89,11 @@ def test_tables():
     assert ev.ours_rows([rule])[-1]["method"] == "SANG-M (d1_oracle: g=2, rules blinks, lip oracle range)"
     swap = {**summary, "name": "d1_real_rot", "protocol": {"seconds": 10, "sampler": "g=2", "real_regions": ["rot", "eyes"]}}
     assert ev.ours_rows([swap])[-1]["method"] == "SANG-M (d1_real_rot: g=2, real rot+eyes)"
+    swap["protocol"]["swap_reverse"] = True
+    assert ev.ours_rows([swap])[-1]["method"].endswith("real rot+eyes reversed)")
+    import torch
+    y = torch.cumsum(torch.randn(50, 3), 0)
+    r = ev.reversed_path(y)
+    assert torch.allclose(r[0], y[0]) and torch.allclose(r.std(0), y.std(0), atol=1e-4)
+    assert torch.allclose(r.diff(dim=0).abs().sort(0).values, y.diff(dim=0).abs().sort(0).values, atol=1e-4)
     assert "| KDTalker Tab. 1 | KDTalker |" in md and "9.756" in md

@@ -157,3 +157,18 @@ def test_region_swap_takes_the_given_columns(monkeypatch, tiny_ckpt):
     assert torch.allclose(y1[20:75, cols], y_sw[:55, cols], atol=1e-3)          # clipped at the clip's end
     rest = [c for c in range(T_DIM) if c not in cols]
     assert torch.allclose(y1[:, rest], y0[:, rest], atol=1e-3) and torch.allclose(y1[:20], y0[:20], atol=1e-3)
+
+
+def test_ramp_scales_the_rotation_about_the_photo(monkeypatch, tiny_ckpt):
+    from sang.motion import to_target
+    codec, _ = fake_codec(monkeypatch)
+    src = np.random.default_rng(0).integers(0, 256, (100, 120, 3), dtype=np.uint8)
+    wav, n = torch.randn(16000 * 3) * 0.1, 75
+    runs = {}
+    for amp in (1.0, 2.0):
+        t = Talker(tiny_ckpt, f"g=2,steps=3,ramp={amp:g}", device="cpu", codec=codec, wavlm=FakeWavLM())
+        _, m, _ = t.run(src, wav, n, Opts(), start="source", paste=False)
+        runs[amp] = to_target(m.float())
+    r0 = to_target(codec.source_motion(src)["m"])[0, :3]
+    assert torch.allclose(runs[2.0][:, :3] - r0, 2 * (runs[1.0][:, :3] - r0), atol=1e-3)
+    assert torch.allclose(runs[2.0][:, 3:], runs[1.0][:, 3:], atol=1e-3)         # expression untouched
