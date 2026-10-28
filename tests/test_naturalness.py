@@ -1,4 +1,4 @@
-"""Rule-based naturalness: readouts, event detectors, constraint projection in the sampler.
+"""Naturalness metrics: openness readouts, event detectors, concordance, typical frames.
 
 CPU only; no LivePortrait, weights, phoneme model or data."""
 import json
@@ -10,48 +10,39 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sang.motion import REGIONS, T_DIM
-from sang.motion_model import REF_DIM, MotionFlowTransformer, Norm, generate, project
-from sang.naturalness import (FPS, HOP, Guide, Readout, beat_alignment, bilabial_events, blink_bounds, blink_events,
-                              ccc, closure_bounds, closure_offset, energy_db, eye_ratio, fit_readout, is_bilabial,
-                              lip_ratio, lip_style, pauses, restyle_lip, schedule_blinks)
-
-
-def _unzero(m):
-    g = torch.Generator().manual_seed(0)
-    for mod in m.modules():
-        if isinstance(mod, torch.nn.Linear) and mod.weight.abs().sum() == 0:
-            mod.weight.data = torch.randn(mod.weight.shape, generator=g) * 0.2
-            mod.bias.data = torch.randn(mod.bias.shape, generator=g) * 0.2
+from sang.naturalness import (HOP, beat_alignment, bilabial_events, blink_events, ccc, closure_minima,
+                              closure_offset, energy_db, eye_ratio, fit_readout, is_bilabial, lip_ratio,
+                              load_readouts, pause_near, pauses)
 
 
 def test_landmark_ratios():
     lmk = np.zeros((203, 2))
-    lmk[48], lmk[66] = [0, 0], [10, 0]          # mouth 10 wide
-    lmk[90], lmk[102] = [5, -1], [5, 1]         # lips 2 apart
+    lmk[48], lmk[66] = [0, 0], [10, 0]
+    lmk[90], lmk[102] = [5, -1], [5, 1]
     for a, b, c, d in ((0, 12, 6, 18), (24, 36, 30, 42)):
         lmk[a], lmk[b], lmk[c], lmk[d] = [0, 0], [4, 0], [2, -0.5], [2, 0.5]
     assert abs(lip_ratio(lmk) - 0.2) < 1e-5 and abs(eye_ratio(lmk) - 0.25) < 1e-5
 
 
-def test_readout_recovers_a_linear_map_and_its_z_form():
+def test_readout_recovers_a_linear_map_and_round_trips(tmp_path):
     g = torch.Generator().manual_seed(0)
     Y = torch.randn(2000, T_DIM, generator=g) * 3 + 1
     cols = REGIONS["mouth"]
     w = torch.zeros(T_DIM); w[cols] = torch.randn(len(cols), generator=g)
     r = Y @ w + 0.5 + 0.01 * torch.randn(2000, generator=g)
     ro = fit_readout(Y, r, cols, np.arange(2000) // 20)
-    assert ro.r2 > 0.99 and torch.allclose(ro.w, w, rtol=0.03, atol=1e-3)   # ridge shrinks ~1%
-    norm = Norm(Y.mean(0), Y.std(0), torch.zeros(63), torch.ones(63))
-    a, c = ro.in_z(norm)
-    z = norm.target(Y[:5])
-    assert torch.allclose(z @ a + c, ro(Y[:5]), atol=1e-4)
+    assert ro.r2 > 0.99 and torch.allclose(ro.w, w, rtol=0.03, atol=1e-3)
+    assert torch.allclose(ro(torch.cat([Y[:5], torch.randn(5, 3)], 1)), ro(Y[:5]))
+    (tmp_path / "openness.json").write_text(json.dumps({"lip": ro.to_dict(), "eye": ro.to_dict()}))
+    back = load_readouts(tmp_path / "openness.json")["lip"]
+    assert torch.allclose(back(Y[:5]), ro(Y[:5]), atol=1e-5) and abs(back.r2 - ro.r2) < 1e-9
 
 
 def test_blink_detector_finds_dips_and_ignores_long_closures():
     eye = np.full(300, 0.3)
     for s in (40, 120, 200):
         eye[s:s + 5] = [0.2, 0.08, 0.05, 0.1, 0.22]
-    eye[250:280] = 0.05                          # 1.2 s closed: not a blink
+    eye[250:280] = 0.05
     ev = blink_events(eye)
     assert [b for _, b, _ in ev] == [42, 122, 202], ev
 
@@ -59,49 +50,26 @@ def test_blink_detector_finds_dips_and_ignores_long_closures():
 def test_pauses_and_energy():
     n = 50
     wav = torch.randn(n * HOP) * 0.3
-    wav[20 * HOP:30 * HOP] *= 1e-3               # 10 silent frames (-60 dB)
-    wav[40 * HOP:41 * HOP] *= 1e-3               # 1 silent frame: too short
+    wav[20 * HOP:30 * HOP] *= 1e-3
+    wav[40 * HOP:41 * HOP] *= 1e-3
     p = pauses(energy_db(wav, n))
     assert p[20:30].all() and not p[40] and p.sum() == 10
+    near = pause_near(p, reach=2)
+    assert near[18:32].all() and not near[17] and not near[32]
 
 
 def test_bilabial_tokens_and_events():
     assert is_bilabial("p") and is_bilabial("mʲ") and is_bilabial("b") and not is_bilabial("f")
     assert not is_bilabial("<pad>") and not is_bilabial("")
-    post = torch.zeros(100, 3); post[:, 0] = 1       # 2 s of ticks, token 1 = bilabial
-    post[20:24, 0], post[20:24, 1] = 0, 1            # ticks 20-23 -> centre 21.5 -> 0.4425 s -> frame 11
+    post = torch.zeros(100, 3); post[:, 0] = 1
+    post[20:24, 0], post[20:24, 1] = 0, 1
     assert bilabial_events(post, torch.tensor([1]), 50) == [11]
 
 
-def test_closure_offset_and_bounds():
+def test_closure_offset_and_minima():
     lip = np.full(60, 0.3); lip[22] = 0.0
     assert closure_offset(lip, [20]) == [2]
-    ub = closure_bounds([20, 58], 2, 60, 0.05, width=3)
-    assert np.isinf(ub[:21]).all() and (ub[21:24] == 0.05).all() and np.isinf(ub[24:59]).all()
-    assert ub[59] == 0.05                                  # 58+2 = 60 is off the end; its window edge is not
-
-
-def test_blink_bounds_shape():
-    ub = blink_bounds([(10, 5)], 30, 0.3, 0.05)
-    assert np.isinf(ub[:10]).all() and np.isinf(ub[15:]).all()
-    assert abs(ub[12] - 0.05) < 1e-9 and ub[10] > ub[11] > ub[12]
-
-
-def test_scheduler_respects_existing_blinks_and_snaps_to_pauses():
-    rng = np.random.default_rng(0)
-    n = 25 * 30
-    pause = np.zeros(n, bool); pause[::100] = True
-    add = schedule_blinks([], pause, n, [3.0], [5], rng)
-    starts = [s for s, _ in add]
-    assert 7 <= len(add) <= 11
-    assert all(b - a >= 8 for a, b in zip(starts, starts[1:]))
-    # the model already blinks every 2 s -> nothing to add for a 3 s interval
-    own = list(range(10, n, 50))
-    assert schedule_blinks(own, pause, n, [3.0], [5], np.random.default_rng(1)) == []
-    # snapping: due times land within 15 frames of a pause frame
-    pause2 = np.zeros(n, bool); pause2[::30] = True
-    for s, _ in schedule_blinks([], pause2, n, [3.0], [5], np.random.default_rng(2)):
-        assert s % 30 == 0
+    assert closure_minima(lip, [20, 40], offset=2).tolist() == [0.0, 0.3]
 
 
 def test_beat_alignment_perfect_and_chance():
@@ -111,65 +79,8 @@ def test_beat_alignment_perfect_and_chance():
     assert np.isnan(beat_alignment(np.array([], int), hb, 500)[0])
 
 
-def test_project_is_exact_and_minimal():
-    g = torch.Generator().manual_seed(0)
-    z = torch.randn(2, 8, T_DIM, generator=g)
-    a1 = torch.zeros(T_DIM); a1[REGIONS["mouth"]] = torch.randn(18, generator=g)
-    a2 = torch.zeros(T_DIM); a2[REGIONS["eyes"]] = torch.randn(15, generator=g)
-    ub1 = torch.full((2, 8), float("inf")); ub1[:, 3] = -5.0
-    ub2 = torch.full((2, 8), float("inf")); ub2[0, 5] = -2.0
-    p = project(z, [(a1, ub1), (a2, ub2)])
-    assert torch.all(p @ a1 <= ub1 + 1e-5) and torch.all(p @ a2 <= ub2 + 1e-5)
-    free = torch.ones(2, 8, dtype=torch.bool); free[:, 3] = False; free[0, 5] = False
-    assert torch.equal(p[free], z[free])                       # untouched where unconstrained
-    assert torch.allclose(project(p, [(a1, ub1), (a2, ub2)]), p)   # idempotent
+def test_ccc_scores_timing_level_and_amplitude():
+    x = np.sin(np.linspace(0, 12, 200))
+    assert abs(ccc(x, x) - 1) < 1e-9
+    assert ccc(x, x + x.std()) < 0.9 and ccc(x, 0.5 * x) < 0.9 and ccc(x, -x) < -0.99
 
-
-def test_generate_with_bounds_satisfies_them_and_is_unchanged_without():
-    torch.manual_seed(0)
-    m = MotionFlowTransformer(dim=32, depth=2, heads=2, audio_dim=16, max_frames=64).eval()
-    _unzero(m)
-    n = 40
-    audio, ref = torch.randn(1, 2 * n, 16), torch.randn(1, REF_DIM)
-    a = torch.zeros(T_DIM); a[REGIONS["mouth"]] = 1.0
-    ub = torch.full((1, n), float("inf")); ub[0, [3, 17, 30]] = -4.0     # windows of 16: all three windows
-    kw = dict(window=16, n_prefix=4, steps=5, cfg_audio=2.0)
-    y0 = generate(m, audio, ref, n, generator=torch.Generator().manual_seed(1), **kw)
-    y1 = generate(m, audio, ref, n, generator=torch.Generator().manual_seed(1), bounds=[], **kw)
-    assert torch.allclose(y0, y1)
-    y2 = generate(m, audio, ref, n, generator=torch.Generator().manual_seed(1), bounds=[(a, ub)], **kw)
-    assert torch.all((y2 @ a)[0, [3, 17, 30]] <= -4.0 + 1e-4)
-    assert not torch.allclose(y2, y0)
-
-
-def test_restyle_moves_level_and_range_but_not_timing():
-    g = torch.Generator().manual_seed(0)
-    for td in (T_DIM, T_DIM + 3):                              # 45 = with head placement
-        y = torch.randn(300, td, generator=g) * 2 + 1
-        norm = Norm(y.mean(0), y.std(0), torch.zeros(63), torch.ones(63))
-        w = torch.zeros(T_DIM); w[REGIONS["mouth"]] = torch.randn(18, generator=g)
-        ro = Readout(w, 0.3)
-        z = norm.target(y[:120])
-        lip = ro(norm.untarget(z)).numpy()
-        want = lip_style(0.5 * lip + 3.0)                       # another speaker: higher and narrower
-        for how in ("level", "range"):
-            z2 = restyle_lip(z, norm, ro, want, how)
-            lip2 = ro(norm.untarget(z2)).numpy()
-            got = lip_style(lip2)
-            assert abs(got["mid"] - want["mid"]) < 1e-3
-            if how == "range":
-                assert abs(got["lo"] - want["lo"]) < 1e-3 and abs(got["hi"] - want["hi"]) < 1e-3
-            assert np.corrcoef(lip, lip2)[0, 1] > 0.9999        # timing untouched
-            other = [i for i in range(td) if i not in REGIONS["mouth"]]
-            assert torch.equal(z2[:, other], z[:, other])       # only the mouth moves
-        assert abs(ccc(lip, lip) - 1) < 1e-9 and ccc(lip, lip + lip.std()) < 0.9    # a level offset costs CCC
-
-
-def test_guide_loads_without_the_phoneme_model(tmp_path):
-    w = torch.zeros(T_DIM)
-    (tmp_path / "openness.json").write_text(json.dumps({"lip": Readout(w, 0.1).to_dict(), "eye": Readout(w, 0.2).to_dict()}))
-    (tmp_path / "naturalness_stats_sync.json").write_text(json.dumps({"ibi_s": [2.0], "blink_frames": [4]}))
-    assert Guide.load(tmp_path, "cpu", phonemes=False).stats["blink_frames"] == [4]   # the only stats there
-    (tmp_path / "naturalness_stats.json").write_text(json.dumps({"ibi_s": [2.0], "blink_frames": [5], "eye_closed": 0.1}))
-    g = Guide.load(tmp_path, "cpu", phonemes=False)
-    assert g.phon is None and set(g.read) == {"lip", "eye"} and g.stats["blink_frames"] == [5]

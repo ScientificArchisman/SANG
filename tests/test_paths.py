@@ -17,8 +17,9 @@ def test_index_paths_follow_the_cache_and_missing_cache_falls_back(tmp_path, mon
     (new / "index_000.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
     got = paths.load_index(new)
     assert [r["path"] for r in got] == [str(new / "vidA" / "c0.pt"), str(new / "vidB" / "c3.pt")]
-    assert [r["clip"] for r in got] == [r["clip"] for r in rows]                       # source clips untouched
+    assert [r["clip"] for r in got] == [r["clip"] for r in rows]
 
     monkeypatch.setattr(paths, "MOTION_CACHE", new)
-    assert paths.motion_cache("cache/motion_lp_gone") == new                           # old checkpoint configs
+    assert paths.motion_cache("cache/motion_lp_gone") == new
     assert paths.motion_cache(str(new)) == new and paths.motion_cache(None) == new
+

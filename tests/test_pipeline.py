@@ -1,5 +1,5 @@
-"""sang.pipeline.Talker end to end on CPU: a tiny trained SANG, the real MotionCodec
-render code with a stand-in LivePortrait (tests/test_fastpath.py), a stand-in WavLM."""
+"""sang.pipeline.Talker end to end on CPU: tiny trained SANG runs (42-d, GFT, motion latent), the real MotionCodec
+render code with a stand-in LivePortrait (tests/test_render.py), a stand-in WavLM."""
 import json
 import subprocess
 import sys
@@ -15,14 +15,14 @@ sys.path.insert(0, str(REPO / "tests"))
 
 pytest.importorskip("cv2")
 
-from sang.fastpath import Timer
-from sang.motion import M_DIM, MotionCodec, rotation_matrix
-from sang.pipeline import Opts, Talker
-from test_fastpath import FakeLP
+from sang.latent import fit_pca
+from sang.motion import M_DIM, MotionCodec, rotation_matrix, to_target
+from sang.pipeline import Talker
+from test_render import FakeLP
 
 
 class FakeWavLM:
-    def encode(self, wav):                                   # [1, 1, N] 16 kHz -> [1, 2 * frames, 1024]
+    def encode(self, wav):
         n = wav.shape[-1] // 320
         g = torch.Generator().manual_seed(int(n))
         return torch.randn(1, n, 1024, generator=g)
@@ -67,9 +67,8 @@ def fake_codec(monkeypatch, H=100, W=120, S=32):
 
 
 @pytest.fixture(scope="module")
-def tiny_ckpt(tmp_path_factory):
-    tmp = tmp_path_factory.mktemp("pipe")
-    cache = tmp / "cache"
+def tiny_cache(tmp_path_factory):
+    cache = tmp_path_factory.mktemp("pipe") / "cache"
     rows, g = [], torch.Generator().manual_seed(0)
     for s in range(6):
         for c in range(2):
@@ -82,93 +81,68 @@ def tiny_ckpt(tmp_path_factory):
                         "audio": torch.randn(2 * T, 1024, generator=g).half(), "n": T}, p)
             rows.append({"clip": f"/x/spk{s}/c{c}.mp4", "path": str(p), "n": T})
     (cache / "index_000.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
-    over = [f"cache_dir={cache}", f"out_dir={tmp / 'run'}", "dim=32", "layers=1", "heads=2", "max_steps=3",
-            "warmup_steps=1", "eval_every=3", "log_every=1", "batch_size=2", "workers=0", "eval_batches=1",
-            "sample_steps=2", "val_frac=0.3", "windows_per_clip=2"]
+    lat = fit_pca(torch.randn(500, 69) * torch.linspace(2, 0.1, 69), K=69)
+    torch.save(lat.pack(), cache / "pca.pt")
+    return cache
+
+
+def train(cache, name, *extra):
+    over = [f"cache_dir={cache}", f"out_dir={cache.parent / name}", "sync_offsets=", "dim=32", "layers=1", "heads=2",
+            "max_steps=3", "warmup_steps=1", "eval_every=3", "log_every=1", "batch_size=2", "workers=0",
+            "eval_batches=1", "sample_steps=2", "val_frac=0.3", "windows_per_clip=2", *extra]
     log = subprocess.run([sys.executable, str(REPO / "scripts" / "train_motion.py"), *over],
                          capture_output=True, encoding="utf-8", cwd=REPO)
     assert log.returncode == 0, log.stderr[-2000:]
-    return str(tmp / "run" / "last.pt")
+    return str(cache.parent / name / "last.pt"), log.stdout
 
 
-def test_fast_pipeline_matches_the_original_and_streams(monkeypatch, tiny_ckpt):
+@pytest.fixture(scope="module")
+def tiny_ckpt(tiny_cache):
+    return train(tiny_cache, "run")[0]
+
+
+SRC = np.random.default_rng(0).integers(0, 256, (100, 120, 3), dtype=np.uint8)
+WAV, N = torch.randn(16000 * 3) * 0.1, 75
+
+
+def test_talker_detects_the_face_once_pastes_and_times_every_stage(monkeypatch, tiny_ckpt):
     codec, calls = fake_codec(monkeypatch)
     talker = Talker(tiny_ckpt, "g=2,mouth=1.25,tau=0.5,avg=2,steps=3", device="cpu", codec=codec, wavlm=FakeWavLM())
-    src = np.random.default_rng(0).integers(0, 256, (100, 120, 3), dtype=np.uint8)
-    wav = torch.randn(16000 * 3) * 0.1
-    n = 75
-    calls["detect"] = 0
-    slow, m_slow, t_slow = talker.run(src, wav, n, Opts(), start="source")
-    assert calls["detect"] == 3                              # the original path finds the face three times
-    calls["detect"] = 0
-    got = []
-    fast, m_fast, t_fast = talker.run(src, wav, n, Opts(cfg_batch=True, render_batch=8, half=True, gpu_paste=True,
-                                                        reuse_crop=True), start="source", sink=got.append)
-    assert calls["detect"] == 1                              # once
-    assert slow.shape == fast.shape == (n, 100, 120, 3)
-    assert (m_slow - m_fast).abs().max() < 1e-4              # same motion up to float rounding
-    assert np.abs(slow.astype(int) - fast.astype(int)).max() <= 3
-    assert sum(len(b) for b in got) == n and len(got) == -(-n // 8)   # streamed in render batches
-    assert set(t_fast.t) == {"source", "audio", "motion", "render", "paste"}
-    none, _, _ = talker.run(src, wav, n, Opts.fast(), keep=False, sink=lambda b: None)
-    assert none is None
-
-
-def test_rules_and_lip_style(monkeypatch, tiny_ckpt):
-    """rules='blinks' loads the Guide from the run's motion cache (no phoneme model) and reports what it
-    added; style moves the lip opening to the given median before rendering."""
-    from sang.motion import REGIONS, T_DIM, to_target
-    from sang.naturalness import Readout, lip_style
-    cache = Path(tiny_ckpt).parents[1] / "cache"
-    g = torch.Generator().manual_seed(3)
-    w_lip, w_eye = torch.zeros(T_DIM), torch.zeros(T_DIM)
-    w_lip[REGIONS["mouth"]] = torch.randn(18, generator=g)
-    w_eye[REGIONS["eyes"]] = torch.randn(len(REGIONS["eyes"]), generator=g)
-    (cache / "openness.json").write_text(json.dumps({"lip": Readout(w_lip, 0.2).to_dict(),
-                                                     "eye": Readout(w_eye, 0.3).to_dict()}))
-    (cache / "naturalness_stats.json").write_text(json.dumps(
-        {"closure_offset": 0, "tau_close": 0.1, "ibi_s": [0.6, 0.8], "blink_frames": [4], "eye_closed": -5.0}))
-    codec, _ = fake_codec(monkeypatch)
-    src = np.random.default_rng(0).integers(0, 256, (100, 120, 3), dtype=np.uint8)
-    wav, n = torch.randn(16000 * 3) * 0.1, 75
-    talker = Talker(tiny_ckpt, "g=2,steps=3", device="cpu", codec=codec, wavlm=FakeWavLM(), rules="blinks")
-    assert talker.rules.phon is None
-    _, m, _ = talker.run(src, wav, n, Opts(), start="source", paste=False)
-    info = talker.last["info"]
-    assert info["added_blinks"] > 0 and "own_blinks" in info
-    want = lip_style(np.linspace(1.0, 2.0, 50))
-    _, m2, _ = talker.run(src, wav, n, Opts(), start="source", paste=False, style=want, restyle="level")
-    lip = talker.readouts["lip"](to_target(m2.float())).numpy()
-    assert abs(np.median(lip) - want["mid"]) < 1e-3
-    assert torch.allclose(talker.readouts["lip"](talker.last["y"]), talker.readouts["lip"](to_target(m.float())), atol=1e-4)
-
-
-def test_region_swap_takes_the_given_columns(monkeypatch, tiny_ckpt):
-    from sang.motion import REGIONS, T_DIM, to_target
-    codec, _ = fake_codec(monkeypatch)
-    talker = Talker(tiny_ckpt, "g=2,steps=3", device="cpu", codec=codec, wavlm=FakeWavLM())
-    src = np.random.default_rng(0).integers(0, 256, (100, 120, 3), dtype=np.uint8)
-    wav, n = torch.randn(16000 * 3) * 0.1, 75
-    _, m0, _ = talker.run(src, wav, n, Opts(), start="source", paste=False)
-    y_sw = torch.randn(60, T_DIM) * 3
-    cols = REGIONS["rot"] + REGIONS["eyes"]
-    _, m1, _ = talker.run(src, wav, n, Opts(), start="source", paste=False, swap=(cols, y_sw, 20))
-    y0, y1 = to_target(m0.float()), to_target(m1.float())
-    assert torch.allclose(y1[20:75, cols], y_sw[:55, cols], atol=1e-3)          # clipped at the clip's end
-    rest = [c for c in range(T_DIM) if c not in cols]
-    assert torch.allclose(y1[:, rest], y0[:, rest], atol=1e-3) and torch.allclose(y1[:20], y0[:20], atol=1e-3)
+    frames, m, timer = talker.run(SRC, WAV, N, start="source", batch=8)
+    assert calls["detect"] == 1
+    assert frames.shape == (N, 100, 120, 3) and frames.dtype == np.uint8 and m.shape == (N, M_DIM)
+    assert set(timer.t) == {"source", "audio", "motion", "render", "paste"}
+    crops, m2, _ = talker.run(SRC, WAV, N, start="source", paste=False, batch=4)
+    assert crops.shape == (N, 32, 32, 3) and torch.allclose(m, m2)
 
 
 def test_ramp_scales_the_rotation_about_the_photo(monkeypatch, tiny_ckpt):
-    from sang.motion import to_target
     codec, _ = fake_codec(monkeypatch)
-    src = np.random.default_rng(0).integers(0, 256, (100, 120, 3), dtype=np.uint8)
-    wav, n = torch.randn(16000 * 3) * 0.1, 75
     runs = {}
     for amp in (1.0, 2.0):
         t = Talker(tiny_ckpt, f"g=2,steps=3,ramp={amp:g}", device="cpu", codec=codec, wavlm=FakeWavLM())
-        _, m, _ = t.run(src, wav, n, Opts(), start="source", paste=False)
+        _, m, _ = t.run(SRC, WAV, N, start="source", paste=False)
         runs[amp] = to_target(m.float())
-    r0 = to_target(codec.source_motion(src)["m"])[0, :3]
+        assert torch.allclose(to_target(t.sampled.float()), runs[1.0], atol=1e-3)
+    r0 = to_target(codec.source_motion(SRC)["m"])[0, :3]
     assert torch.allclose(runs[2.0][:, :3] - r0, 2 * (runs[1.0][:, :3] - r0), atol=1e-3)
-    assert torch.allclose(runs[2.0][:, 3:], runs[1.0][:, 3:], atol=1e-3)         # expression untouched
+    assert torch.allclose(runs[2.0][:, 3:], runs[1.0][:, 3:], atol=1e-3)
+
+
+def test_gft_and_latent_runs_train_and_talk(monkeypatch, tiny_cache):
+    gft, log = train(tiny_cache, "gft", "gft=true")
+    assert "GFT" in log and "EVAL step 3" in log
+    lat, log = train(tiny_cache, "lat", f"latent={tiny_cache / 'pca.pt'}", "latent_k=16", "gft=true")
+    assert "target 16-d" in log and "std_r_place" in log
+    codec, _ = fake_codec(monkeypatch)
+    for ckpt in (gft, lat):
+        t = Talker(ckpt, "g=2,steps=3", device="cpu", codec=codec, wavlm=FakeWavLM())
+        frames, m, _ = t.run(SRC, WAV, N, start="source")
+        assert frames.shape == (N, 100, 120, 3) and torch.isfinite(m).all()
+    ck = torch.load(lat, map_location="cpu", weights_only=False)
+    assert ck["latent"]["K"] == 69 and ck["cfg"]["latent_k"] == 16
+    with pytest.raises(ValueError):
+        Talker(lat, "g=2,ramp=1.5", device="cpu", codec=codec, wavlm=FakeWavLM()).run(SRC, WAV, N)
+    with pytest.raises(ValueError):
+        Talker(lat, "mouth=1.25", device="cpu", codec=codec, wavlm=FakeWavLM())
+

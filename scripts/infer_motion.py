@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
-"""Source image + speech -> talking-head mp4, through the trained motion model and frozen renderer.
+"""Source image + speech -> talking-head mp4 (512x512 face crop), through sang.pipeline.Talker.
 
-    python scripts/infer_motion.py --ckpt runs/motion_bidir/best.pt \
-        --image face.jpg --audio speech.wav --out out.mp4
-
-Also the unit the HDTF evaluation runs per clip (first frame as source, the clip's own audio,
-KDTalker's protocol), after which sang/bench.py scores CSIM / LSE / FID on the written mp4s.
+    python scripts/infer_motion.py --ckpt runs/d1_97h/last.pt --image face.jpg --audio speech.wav --out out.mp4 \
+        --sampler g=2,mouth=1.25,tau=0.5,avg=4,steps=6
 
 Voice cloning (sang/voice.py): --voice voices/<name> (a bank from scripts/enroll_voice.py) or
 --voice <folder or file of the person's audio> (enrolled into voices/<folder name>/ on the fly and
-kept, so the next run reuses it). The face is still driven by the ORIGINAL --audio; only the audio
-track muxed into the mp4 is converted (kNN-VC keeps the timing, so the lips stay aligned). The
-converted track is also written next to the mp4 as <out>.voice.wav.
+kept). The face is still driven by the ORIGINAL --audio; only the audio track muxed into the mp4 is
+converted (kNN-VC keeps the timing, so the lips stay aligned), and also written as <out>.voice.wav.
 """
 import argparse
 import sys
@@ -22,27 +18,15 @@ import torch
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.bench import write_mp4
-from sang.motion import MotionCodec, from_target, smooth_placement, to_target
-from sang.motion_model import Norm, build, ema_weights, guidance_vector, load_ema, parse_spec, sampler_kwargs, t_dim_of
-from sang.naturalness import Guide, guided_generate
-from sang.paths import motion_cache
-from sang.voice import load_knnvc
-
-SR, FPS = 16000, 25
+from sang.codec import load_wav
+from sang.pipeline import FPS, SR, Talker
 
 
 def load_image(path: str) -> np.ndarray:
     from PIL import Image
     return np.asarray(Image.open(path).convert("RGB"))
-
-
-def load_audio(path: str) -> torch.Tensor:
-    """Any container decord can read (wav, m4a, mp4) -> [1, 1, N] at 16 kHz mono."""
-    from decord import AudioReader
-    return torch.from_numpy(AudioReader(path, sample_rate=SR, mono=True)[:].asnumpy()).float()[None]
 
 
 def main() -> None:
@@ -51,88 +35,35 @@ def main() -> None:
     ap.add_argument("--image", required=True)
     ap.add_argument("--audio", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--steps", type=int, default=None, help="NFE; default = the run's sample_steps")
-    ap.add_argument("--cfg", type=float, default=None, help="audio guidance; default = the run's cfg_audio")
-    ap.add_argument("--cfg-mouth", type=float, default=None,
-                    help="audio guidance on the 18 mouth coordinates only (per-region guidance); default = --cfg")
-    ap.add_argument("--cfg-rescale", type=float, default=0.0,
-                    help="CFG-rescale blend (0 = off, 0.7 = Lin et al.): keeps guidance timing, restores amplitude")
-    ap.add_argument("--sampler", default=None,
-                    help="sampler spec, e.g. 'g=2,mouth=1.25,avg=4' (sang.motion_model.SAMPLER_KEYS); overrides "
-                         "--cfg/--cfg-mouth/--cfg-rescale/--steps")
-    ap.add_argument("--ema", default=None, help="extra EMA decay saved by training with ema_extra (e.g. 0.999); default = the main EMA")
-    ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide checkpoint (for ag / ag_mouth in --sampler)")
-    ap.add_argument("--no-lip-norm", action="store_true", help="skip LivePortrait's flag_normalize_lip")
-    ap.add_argument("--stitch", action=argparse.BooleanOptionalAction, default=True,
-                    help="LivePortrait's stitching module (default ON; --no-stitch to disable): keeps the background "
-                         "still (generated demos 2.41x -> 0.56x real background motion) at ~no cost on the 42-d "
-                         "target; see reports/SANG background warping fix.md")
-    ap.add_argument("--raw", action="store_true", help="use the training weights instead of the EMA")
+    ap.add_argument("--sampler", default=None, help="sampler spec (sang.motion_model.SAMPLER_KEYS); default: the run's")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--guide", default="none", choices=["none", "lips", "blinks", "both"],
-                    help="rule constraints at sampling (sang/naturalness.py)")
-    ap.add_argument("--start", default="null", choices=["null", "source"],
-                    help="first window: 'null' = the dropped-prefix configuration training used; "
-                         "'source' = continue from the source photo's own motion after 0.4 s of silence")
-    ap.add_argument("--held", default="camera", choices=["camera", "head"],
-                    help="how the 8 non-driven keypoints follow the pose: camera = upstream LivePortrait convention (default); head = rotate them with the head (SANG before 2026-09-29; suspected background-warp cause)")
+    ap.add_argument("--start", default="source", choices=["null", "source"],
+                    help="first window: 'source' = continue from the photo's own motion after 0.4 s of silence; "
+                         "'null' = the dropped-prefix start training uses")
+    ap.add_argument("--stitch", action=argparse.BooleanOptionalAction, default=True,
+                    help="LivePortrait's stitching module: keeps the background still")
     ap.add_argument("--voice", default=None,
                     help="speak in this person's voice: a voice bank dir (voices/<name>) or their audio files")
     ap.add_argument("--voice-k", type=int, default=None, help="kNN-VC k; default grows with the bank size")
-    ap.add_argument("--fast", action="store_true",
-                    help="render 16 frames per call in FP16 (sang.motion.MotionCodec.render_iter; gate B in "
-                         "scripts/latency.py); the CFG pair is always one batch")
     args = ap.parse_args()
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    ck = torch.load(args.ckpt, map_location=dev, weights_only=False)
-    cfg = ck["cfg"]
-    model = build(cfg).to(dev).eval()
-    model.load_state_dict(ck["model"] if args.raw else ema_weights(ck, args.ema))
-    norm = Norm(**ck["norm"]).to(dev)
-    gamma = guidance_vector(cfg["cfg_audio"] if args.cfg is None else args.cfg, mouth=args.cfg_mouth, t_dim=t_dim_of(cfg))
-    spec = parse_spec(args.sampler)
-    samp = sampler_kwargs(parse_spec(args.sampler), cfg, load_ema(args.guide_ckpt, dev, norm) if args.guide_ckpt else None,
-                          steps=args.steps) if args.sampler else None
-
-    from sang.codec import load_wavlm
-    codec = MotionCodec(device=dev)
-    wavlm = load_wavlm(cfg.get("audio_encoder", "wavlm-large"), device=dev)
-
-    src = load_image(args.image)
-    sm = codec.source_motion(src, normalize_lip=not args.no_lip_norm)
-    m_src, kp_src = sm["m"].to(dev), sm["kp"].to(dev)
-    ref = norm.ref(kp_src, to_target(m_src))                          # [1, REF_DIM]
-
-    wav = load_audio(args.audio)
-    n_frames = int(wav.shape[-1] / SR * FPS)
-    start, lead = None, 0
-    if args.start == "source":                                       # the photo, still and silent, for P frames
-        lead = cfg["prefix"]
-        start = norm.target(to_target(m_src, ref=m_src if norm.place else None)).unsqueeze(1).expand(1, lead, -1)
-    with torch.no_grad():
-        audio = wavlm.encode(torch.nn.functional.pad(wav, (lead * SR // FPS, 0)).to(dev)).float()   # [1, ~2(lead+n), D]
-    guide = Guide.load(motion_cache(cfg["cache_dir"]), dev) if args.guide != "none" else None
-    y, info = guided_generate(model, audio, ref, n_frames, cfg, norm, wav.flatten(), guide, args.guide,
-                              args.seed, steps=args.steps, cfg_audio=gamma, start=start, cfg_rescale=args.cfg_rescale,
-                              sampler=samp)
-    if info:
-        print(f"constraints: {info}")
-    y_raw = smooth_placement(norm.untarget(y[0]), spec.get("pamp", 1.0), int(spec.get("psmooth", 1)))
-    m = from_target(y_raw, m_src, held=args.held)                   # [n, 70], source scale/t/shape
-    frames = codec.render(src, m.cpu(), relative=False, stitch=args.stitch,
-                          **({"batch": 16, "half": True} if args.fast else {}))
+    talker = Talker(args.ckpt, args.sampler, dev)
+    wav = load_wav(args.audio)
+    n = int(len(wav) / SR * FPS)
+    frames, _, _ = talker.run(load_image(args.image), wav, n, seed=args.seed, stitch=args.stitch, paste=False,
+                              start=args.start)
     track = Path(args.audio)
     if args.voice:
-        from sang.voice import SpeakerEncoder, convert, save_wav, voice_bank
+        from sang.voice import SpeakerEncoder, convert, load_knnvc, save_wav, voice_bank
         knnvc = load_knnvc(dev)
-        enrolling = not (Path(args.voice) / "bank.pt").exists()
-        bank = voice_bank(args.voice, knnvc, SpeakerEncoder(dev) if enrolling else None)
-        track = save_wav(convert(wav.flatten(), bank, knnvc, k=args.voice_k), Path(args.out).with_suffix(".voice.wav"))
+        bank = voice_bank(args.voice, knnvc, None if (Path(args.voice) / "bank.pt").exists() else SpeakerEncoder(dev))
+        track = save_wav(convert(wav, bank, knnvc, k=args.voice_k), Path(args.out).with_suffix(".voice.wav"))
         print(f"voice: {bank.dir.name}, bank {bank.seconds:.0f} s -> {track}")
     write_mp4(frames, Path(args.out), fps=FPS, audio=track)
-    print(f"wrote {args.out}: {len(frames)} frames, {n_frames / FPS:.1f} s")
+    print(f"wrote {args.out}: {len(frames)} frames, {n / FPS:.1f} s")
 
 
 if __name__ == "__main__":
     main()
+

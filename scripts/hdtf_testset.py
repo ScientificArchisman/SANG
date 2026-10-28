@@ -109,11 +109,6 @@ def write_csv(rows: list[dict], path: Path) -> None:
             w.writerow({k: r.get(k, "") for k in FIELDS})
 
 
-def read_csv(path) -> list[dict]:
-    with open(path, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data", required=True, help="HDTF root from scripts/download_hdtf.py")
@@ -146,3 +141,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

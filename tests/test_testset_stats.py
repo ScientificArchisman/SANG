@@ -31,12 +31,12 @@ def _probe(bad=(), short=(), silent=()):
 def test_selection_is_deterministic_one_per_video_and_skips_bad_clips():
     stems = ["A_0", "A_1", "B_0", "B_1", "C_0", "D_0", "D_2", "E_0"]
     rows = ts.select(stems, _probe(), 10, 250)
-    assert [r["video"] for r in rows] == ts.video_order({"A", "B", "C", "D", "E"})       # md5 order
-    assert all(r["clip"].endswith("_0") for r in rows)                                  # lowest clip index
+    assert [r["video"] for r in rows] == ts.video_order({"A", "B", "C", "D", "E"})
+    assert all(r["clip"].endswith("_0") for r in rows)
     assert [r["clip"] for r in ts.select(list(reversed(stems)), _probe(), 10, 250)] == [r["clip"] for r in rows]
     rows2 = ts.select(stems, _probe(short={"A_0"}, silent={"C_0"}, bad={"E_0"}), 10, 250)
     got = {r["video"]: r["clip"] for r in rows2}
-    assert got["A"] == "A_1" and "C" not in got and "E" not in got                      # next clip, or skip video
+    assert got["A"] == "A_1" and "C" not in got and "E" not in got
     assert [r["rank"] for r in rows2] == list(range(1, len(rows2) + 1))
     assert len(ts.select(stems, _probe(), 2, 250)) == 2
 
@@ -53,7 +53,9 @@ def test_subsets_and_csv_round_trip(tmp_path):
     for r in rows:
         r["crop_rel"] = f"crops512/{r['clip']}.mp4"
     ts.write_csv(rows, tmp_path / "t.csv")
-    back = ts.read_csv(tmp_path / "t.csv")
+    import csv
+    with open(tmp_path / "t.csv", newline="", encoding="utf-8") as f:
+        back = list(csv.DictReader(f))
     assert [b["clip"] for b in back] == [r["clip"] for r in rows] and back[0]["frames"] == "400"
 
 
@@ -85,7 +87,7 @@ def test_ditto_mux_finds_our_ffmpeg_first(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
     link = dh.ffmpeg_on_path(tmp_path / "_bin")
     assert shutil.which("ffmpeg") == link and Path(link).resolve() == fake.resolve()
-    assert dh.ffmpeg_on_path(tmp_path / "_bin") == link                                  # rerun replaces the link
+    assert dh.ffmpeg_on_path(tmp_path / "_bin") == link
 
 
 def test_talkvid_metadata_matches_our_clip_names_and_feeds_the_language_tables():
@@ -99,7 +101,7 @@ def test_talkvid_metadata_matches_our_clip_names_and_feeds_the_language_tables()
                 "info": {"Person ID": "99", "Language": "Chinese", "Video Link": "https://www.youtube.com/watch?v=zzz"}}]
     lk = talkvid.build_lookup(entries)
     assert talkvid.match(lk, "-04ZSRBGcsk", "-04ZSRBGcsk_NA_1150.624_1155.846")["language"] == "English"
-    assert talkvid.match(lk, "-04ZSRBGcsk", "-04ZSRBGcsk_NA_1150.900_1155.846") is None        # start too far off
+    assert talkvid.match(lk, "-04ZSRBGcsk", "-04ZSRBGcsk_NA_1150.900_1155.846") is None
     assert talkvid.match(lk, "nope", "nope_NA_1.0_2.0") is None and talkvid.clip_times("no_times") is None
 
     rows = [{"clip": "/t/-04ZSRBGcsk/-04ZSRBGcsk_NA_1150.624_1155.846.mp4", "path": "/c/-04ZSRBGcsk/a.pt", "n": 300},
@@ -122,9 +124,10 @@ def test_data_stats_split_summary():
     s = ds.split_stats(rows, langs, None)
     assert s["clips"] == 5 and s["videos"] == 3 and s["frames"] == 1225 and s["hours"] == round(1225 / 25 / 3600, 2)
     assert s["language"]["clips"] == {"en": 2, "zh": 2, "unk": 1}
-    assert s["language"]["videos"] == {"en": 1, "zh": 1, "unk": 1}                     # majority per video
+    assert s["language"]["videos"] == {"en": 1, "zh": 1, "unk": 1}
     assert {b["bin"]: b["count"] for b in s["clips_per_video"]["hist"]}["3-5"] == 1
     assert s["clip_seconds"]["max"] == 20.0
     assert [b["bin"] for b in ds.bin_counts([1], [(0, 0), (1, 1), (3, 10 ** 9)])] == ["0", "1", ">2"]
-    h = ds.seconds_hist([3.0, 5.0, 9.96, 10.0, 10.0, 20.0], ds.SECONDS_BINS)                # each clip counted once
+    h = ds.seconds_hist([3.0, 5.0, 9.96, 10.0, 10.0, 20.0], ds.SECONDS_BINS)
     assert [b["count"] for b in h] == [1, 2, 2, 0, 1] and sum(b["count"] for b in h) == 6
+

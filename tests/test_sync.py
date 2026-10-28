@@ -1,7 +1,6 @@
 """Audio-video offset correction (sang/sync.py, scripts/sync_offsets.py, the training loader).
 
 CPU only; no SyncNet, video or GPU."""
-import importlib.util
 import json
 import subprocess
 import sys
@@ -11,7 +10,6 @@ import torch
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from sang.diagnose import shift_frames
 from sang.sync import TICK, SyncOffsets, clip_key, merge, pick_clips, shift_ticks, shift_wav
 
 
@@ -24,13 +22,13 @@ def test_feature_and_waveform_shifts_agree():
     feat[10] = 1.0
     wav = torch.zeros(40 * TICK)
     wav[10 * TICK + 5] = 1.0
-    for s, want in ((-4, 6), (3, 13)):              # SyncNet -2 frames (audio late) -> pull forward 4 ticks
+    for s, want in ((-4, 6), (3, 13)):
         assert int(shift_ticks(feat, s)[:, 0].argmax()) == want
         assert int(shift_wav(wav, s).argmax()) == want * TICK + 5
     a = torch.arange(10.0)[:, None]
-    assert torch.equal(shift_ticks(a, -2), shift_frames(a, -1, 2))           # one convention across modules
-    assert shift_ticks(a, 2)[:, 0].tolist()[:3] == [0, 0, 0]                  # edge-padded
-    assert shift_wav(torch.ones(100), 1, tick=40)[:40].sum() == 0              # zero-padded
+    assert shift_ticks(a, -2)[:, 0].tolist() == [2, 3, 4, 5, 6, 7, 8, 9, 9, 9]
+    assert shift_ticks(a, 2)[:, 0].tolist()[:3] == [0, 0, 0]
+    assert shift_wav(torch.ones(100), 1, tick=40)[:40].sum() == 0
     assert shift_wav(torch.ones(100), 9, tick=40).sum() == 0 and torch.equal(shift_ticks(a, 0), a)
 
 
@@ -38,10 +36,10 @@ def test_merge_rules():
     rows = ([_row("A", f"a{i}") for i in range(4)] + [_row("B", f"b{i}") for i in range(3)]
             + [_row("C", f"c{i}") for i in range(3)] + [_row("D", f"d{i}") for i in range(3)] + [_row("E", "e0")])
     m = lambda v, c, off, conf: {"key": f"{v}/{c}", "video": v, "offset": off, "dist": 7.0, "conf": conf}
-    measured = [m("A", "a0", -2, 7.0), m("A", "a3", -2, 6.0),                 # consistent, audio 2 frames late
-                m("B", "b0", 0, 8.0), m("B", "b2", -1, 7.0),                  # mean -0.5 -> 1 tick
-                m("C", "c0", -15, 0.4), m("C", "c1", -1, 1.0),                # no sync / low confidence
-                m("D", "d0", 0, 7.0), m("D", "d1", -4, 7.0)]                  # clips disagree
+    measured = [m("A", "a0", -2, 7.0), m("A", "a3", -2, 6.0),
+                m("B", "b0", 0, 8.0), m("B", "b2", -1, 7.0),
+                m("C", "c0", -15, 0.4), m("C", "c1", -1, 1.0),
+                m("D", "d0", 0, 7.0), m("D", "d1", -4, 7.0)]
     res = merge(measured, rows)
     c = res["clips"]
     assert all(c[f"A/a{i}"]["keep"] and c[f"A/a{i}"]["shift_ticks"] == -4 for i in range(4))
@@ -52,7 +50,7 @@ def test_merge_rules():
     assert c["E/e0"]["why"] == "not measured"
     meta = res["meta"]
     assert meta["kept"] == 9 and meta["clips"] == 14 and meta["videos_inconsistent"] == 1 and meta["videos_usable"] == 3
-    assert abs(meta["frac_kept_abs_ge2"] - 5 / 9) < 1e-9                      # A x4 and d1
+    assert abs(meta["frac_kept_abs_ge2"] - 5 / 9) < 1e-9
     nan = merge([m("A", "a0", float("nan"), float("nan"))], rows[:1])["clips"]["A/a0"]
     assert not nan["keep"] and nan["why"] == "no sync"
 
@@ -74,9 +72,7 @@ def test_offsets_file_filter_and_shift():
 
 
 def test_training_loader_moves_the_audio(tmp_path):
-    spec = importlib.util.spec_from_file_location("tm", REPO / "scripts" / "train_motion.py")
-    tm = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(tm)
+    from sang.data import MotionWindows
     from sang.motion_model import Norm
     T = 80
     m = torch.zeros(T, 70)
@@ -87,10 +83,10 @@ def test_training_loader_moves_the_audio(tmp_path):
     torch.save({"m": m.half(), "kp": torch.zeros(T, 63).half(), "audio": audio.half(), "n": T}, p)
     row = {"clip": "/x/A/a0.mp4", "path": str(p), "n": T}
     norm = Norm(torch.zeros(42), torch.ones(42), torch.zeros(63), torch.ones(63))
-    plain = tm.MotionWindows([row], 64, 10, norm, 1, fixed=True, preload=False)
-    moved = tm.MotionWindows([row], 64, 10, norm, 1, fixed=True, preload=False, shifts={"A/a0": -4})
+    plain = MotionWindows([row], 64, 10, norm, 1, fixed=True, preload=False)
+    moved = MotionWindows([row], 64, 10, norm, 1, fixed=True, preload=False, shifts={"A/a0": -4})
     a0, a1 = plain[0]["audio"].float(), moved[0]["audio"].float()
-    assert torch.equal(a1[:-4], a0[4:])                                       # audio pulled forward 2 frames
+    assert torch.equal(a1[:-4], a0[4:])
 
 
 def test_merge_cli(tmp_path):
@@ -106,3 +102,4 @@ def test_merge_cli(tmp_path):
     assert "2 kept / 3" in out
     c = json.loads((cache / "sync_offsets.json").read_text())["clips"]
     assert c["A/a1"]["shift_ticks"] == -4 and c["A/a1"]["source"] == "video" and not c["B/b0"]["keep"]
+

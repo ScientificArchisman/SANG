@@ -7,7 +7,6 @@ diffusion over LivePortrait motion -> LivePortrait renderer, i.e. the closest pu
 SANG. (github.com/megagonlabs/ditto is an unrelated entity-matching model.)
 
 Runs in Ditto's own conda env (bash_scripts/install_ditto.sh), on a GPU node:
-
     SANG_ENV=ditto sbatch --time=08:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/ditto_hdtf.py \\
         --data /beegfs/work/$USER/HDTF --list configs/hdtf_test.csv
     # then score it (avcodec env, like every other row):
@@ -101,7 +100,7 @@ def main() -> None:
         if not p.exists():
             sys.exit(f"missing {p}: run bash_scripts/install_ditto.sh on the login node")
     sys.path.insert(0, str(root))
-    from inference import run                        # Ditto's own offline entry point
+    from inference import run
     from stream_pipeline_offline import StreamSDK
 
     import cv2
@@ -135,7 +134,7 @@ def main() -> None:
             try:
                 run(sdk, str(wav), str(src), str(dst), {"setup_kwargs": {"sampling_timesteps": args.steps}})
             except Exception:
-                sdk = StreamSDK(str(cfg_pkl), str(model_dir))     # a fresh pipeline, once, then retry
+                sdk = StreamSDK(str(cfg_pkl), str(model_dir))
                 run(sdk, str(wav), str(src), str(dst), {"setup_kwargs": {"sampling_timesteps": args.steps}})
             secs = time.time() - t1
             tmp_video = Path(str(dst) + ".tmp.mp4")
@@ -150,7 +149,7 @@ def main() -> None:
         except Exception as e:
             print(f"[{i}/{len(todo)}] SKIP {clip.stem}: {type(e).__name__}: {e}", flush=True)
         finally:
-            if dst.exists():                                  # keep the silent render if the mux failed
+            if dst.exists():
                 Path(str(dst) + ".tmp.mp4").unlink(missing_ok=True)
     if timings:
         fps = [v["fps"] for v in timings.values()]
@@ -160,3 +159,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -38,7 +38,6 @@ Report:
 """
 import argparse
 import glob
-import importlib.util
 import json
 import os
 import random
@@ -55,6 +54,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from sang.data import split_by_speaker
 from sang.paths import DATA_ROOT, MOTION_CACHE, TALKVID_CLIPS, load_index
 from sang.talkvid import clip_times, video_id
 
@@ -63,13 +63,6 @@ LENGTH_BINS = [(0, 5), (5, 10), (10, 15), (15, 20), (20, 30), (30, 10 ** 9)]
 SIDE_BINS = [(0, 720, "< 720p"), (720, 1080, "720p"), (1080, 1440, "1080p"), (1440, 2160, "1440p"), (2160, 10 ** 9, "4K")]
 LABELS = {"language": "Language", "gender": "Gender", "ethnicity": "Ethnicity", "age": "Age Group",
           "category": "Video Category"}
-
-
-def load_train_module():
-    spec = importlib.util.spec_from_file_location("tm", REPO / "scripts" / "train_motion.py")
-    tm = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(tm)
-    return tm
 
 
 def num(x) -> float:
@@ -297,7 +290,6 @@ def main() -> None:
         ap.error("--target-hours needs --select <list.json>")
     rep = {}
 
-    # 1. TalkVid as published ------------------------------------------------------------------------
     t0 = time.time()
     entries = json.loads(Path(args.meta).read_text())
     recs = records(entries)
@@ -325,7 +317,6 @@ def main() -> None:
         rep["talkvid"][k] = rows
         print_table(f"  by {k}", rows)
 
-    # 2. What we have ---------------------------------------------------------------------------------
     clips = scan_clips(Path(args.clips))
     match_clips(clips, recs)
     have = [c for c in clips if c["rec"] is not None]
@@ -334,7 +325,7 @@ def main() -> None:
     disk_h = sum(c["dur"] or 0 for c in clips) / 3600
     gb = sum(c["bytes"] for c in clips) / 1e9
     rows = load_index(Path(args.cache)) if any(Path(args.cache).glob("index_*.jsonl")) else []
-    cached, cached_end, cached_chunks = Counter(), {}, Counter()   # per clip, over its chunks (cache_motion --chunks)
+    cached, cached_end, cached_chunks = Counter(), {}, Counter()
     for r in rows:
         k = (Path(r["clip"]).parent.name, Path(r["clip"]).stem)
         cached[k] += r["n"] / FPS
@@ -369,11 +360,10 @@ def main() -> None:
         rep["ours"]["summary"] = summary(mine)
         print(f"  matched clips: {fmt_q(rep['ours']['summary']['clip_seconds'], 's')}")
 
-    # 3. Coverage by language -------------------------------------------------------------------------
     all_l = {r["label"]: r for r in breakdown(recs, lambda r: r["language"])}
     our_l = {r["label"]: r for r in breakdown(mine, lambda r: r["language"])}
     rep["coverage"] = []
-    print(f"\n3. COVERAGE by language (our matched clips on disk / TalkVid)")
+    print("\n3. COVERAGE by language (our matched clips on disk / TalkVid)")
     print(f"  {'language':<16}{'TalkVid h':>11}{'ours h':>9}{'%':>7}{'persons':>17}")
     for lang, r in list(all_l.items())[:16]:
         u = our_l.get(lang, {"hours": 0.0, "persons": 0})
@@ -384,10 +374,8 @@ def main() -> None:
     tot_ours = sum(r["dur"] for r in mine) / 3600
     print(f"  {'all':<16}{s['hours']:>11.1f}{tot_ours:>9.2f}{100 * tot_ours / s['hours']:>7.1f}")
 
-    # 4. The split and what can be added --------------------------------------------------------------
     cfg = yaml.safe_load(Path(args.config).read_text())
-    tm = load_train_module()
-    split = lambda vids: tm.split_by_speaker([{"path": f"/x/{v}/c.pt"} for v in vids], cfg["val_frac"], cfg["seed"])
+    split = lambda vids: split_by_speaker([{"path": f"/x/{v}/c.pt"} for v in vids], cfg["val_frac"], cfg["seed"])
     tr, va = split(sorted({r["vid"] for r in recs} | {c["vid"] for c in clips}))
     val_vids = {Path(r["path"]).parent.name for r in va}
     person_of_clip = {(c["vid"], c["stem"]): recs[c["rec"]]["person"] for c in have}
@@ -397,7 +385,7 @@ def main() -> None:
     eligible = [j for j, r in enumerate(recs)
                 if not r.get("have") and r["vid"] not in val_vids and r["person"] not in val_persons
                 and (args.known_persons or r["person"] not in known)
-                and r["dur"] >= args.min_seconds and r["start"] >= 0.001   # TalkVid's downloader drops start 0
+                and r["dur"] >= args.min_seconds and r["start"] >= 0.001
                 and (langs is None or r["language"] in langs)]
     pool = [recs[j] for j in eligible]
     rep["split"] = {"val_frac": cfg["val_frac"], "seed": cfg["seed"], "val_videos_ours": len(val_vids & {c["vid"] for c in clips}),
@@ -411,7 +399,6 @@ def main() -> None:
               f"{p['videos']:,} videos, {p['persons']:,} persons")
         print_table("  pool by language", breakdown(pool, lambda r: r["language"], top=10))
 
-    # 5. Why downloaded clips are not cached ------------------------------------------------------------
     queued, kept = read_names(args.queued), read_names(args.filtered)
     rejected = {}
     if Path(args.filter_report).exists():
@@ -465,8 +452,7 @@ def main() -> None:
         out.write_text("\n".join(sorted(c["path"] for c in usable)) + "\n")
         print(f"  wrote {out} ({len(usable):,} clips)")
 
-    # 5b. Long clips: what cache_motion.py --chunks K would add --------------------------------------
-    long_ = []                                            # cached train-side clips with more left than one shot
+    long_ = []
     for k, end in cached_end.items():
         c = on_disk.get(k)
         if c is None or c["dur"] is None or c["vid"] in val_vids:
@@ -492,7 +478,6 @@ def main() -> None:
         out.write_text("\n".join(sorted(c["path"] for c, _, _ in long_)) + "\n")
         print(f"  wrote {out} ({len(long_):,} clips; run cache_motion.py --chunks K on it, chunk 0 is skipped)")
 
-    # 6. Download list --------------------------------------------------------------------------------
     if args.target_hours:
         missing = args.target_hours - cached_h
         need = max(0.0, missing) * args.overshoot
@@ -530,3 +515,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

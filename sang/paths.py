@@ -38,3 +38,4 @@ def load_index(cache_dir: Path) -> list[dict]:
         p = Path(r["path"])
         r["path"] = str(cache_dir / p.parent.name / p.name)
     return rows
+

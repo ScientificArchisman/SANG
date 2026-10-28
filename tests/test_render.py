@@ -1,4 +1,4 @@
-"""Phase C speed track (sang/fastpath.py, MotionCodec.render_iter). CPU only: the renderer's networks are
+"""Rendering and paste-back (MotionCodec.render, sang.pipeline.GpuPaster). CPU only: the renderer's networks are
 replaced by small deterministic stand-ins with LivePortrait's call signatures."""
 import sys
 from pathlib import Path
@@ -12,26 +12,35 @@ sys.path.insert(0, str(REPO))
 
 cv2 = pytest.importorskip("cv2")
 
-from sang import fastpath
-from sang.motion import M_DIM, paste_back
+from sang.motion import M_DIM, as3x3
+from sang.pipeline import GpuPaster, Timer, crop_mask
 
 
-def test_gpu_paste_matches_cpu_paste_back():
+def cv2_paste(frames, M_c2o, background, mask):
+    """LivePortrait's own paste-back: warp each crop over the full frame with cv2, then blend with the mask."""
+    H, W = background.shape[:2]
+    M = as3x3(M_c2o)[:2]
+    m = cv2.warpAffine(mask.astype(np.float32), M, (W, H))[..., None]
+    return np.stack([np.clip(m * cv2.warpAffine(f, M, (W, H), flags=cv2.INTER_LINEAR).astype(np.float32)
+                             + (1.0 - m) * background.astype(np.float32), 0, 255).astype(np.uint8) for f in frames])
+
+
+def test_gpu_paste_matches_cv2_paste_back():
     rng = np.random.default_rng(0)
     S, H, W = 64, 120, 160
     crops = rng.integers(0, 256, (3, S, S, 3), dtype=np.uint8)
     bg = rng.integers(0, 256, (H, W, 3), dtype=np.uint8)
     ang = np.deg2rad(7)
     M = np.array([[1.3 * np.cos(ang), -1.3 * np.sin(ang), 30.5], [1.3 * np.sin(ang), 1.3 * np.cos(ang), 12.25], [0, 0, 1]])
-    mask = fastpath.crop_mask(S)
-    ref = paste_back(crops, M, bg, mask=mask)
-    got = fastpath.GpuPaster(M, bg, S, device="cpu", mask=mask)(torch.from_numpy(crops))
+    mask = crop_mask(S)
+    ref = cv2_paste(crops, M, bg, mask)
+    got = GpuPaster(M, bg, S, device="cpu", mask=mask)(torch.from_numpy(crops))
     d = np.abs(ref.astype(int) - got.astype(int))
-    assert d.max() <= 3 and d.mean() < 0.05                  # cv2 interpolates in 1/32-px fixed point
+    assert d.max() <= 3 and d.mean() < 0.05
     psnr = 10 * np.log10(255 ** 2 / max(((ref.astype(float) - got) ** 2).mean(), 1e-12))
     assert psnr > 50
-    far = np.array([[1, 0, 1000.0], [0, 1, 1000.0], [0, 0, 1]])  # crop entirely outside: the background
-    assert (fastpath.GpuPaster(far, bg, S, device="cpu")(torch.from_numpy(crops)) == bg).all()
+    far = np.array([[1, 0, 1000.0], [0, 1, 1000.0], [0, 0, 1]])
+    assert (GpuPaster(far, bg, S, device="cpu")(torch.from_numpy(crops)) == bg).all()
 
 
 class FakeLP:
@@ -49,14 +58,6 @@ class FakeLP:
     def spade_generator(self, feature):
         img = torch.sigmoid(feature[:, :3].repeat_interleave(8, 2).repeat_interleave(8, 3))
         return img
-
-    def warp_decode(self, f_s, x_s, x_d):
-        return {"out": self.spade_generator(self.warping_module(f_s, kp_source=x_s, kp_driving=x_d)["out"])}
-
-    @staticmethod
-    def parse_output(out):
-        out = np.transpose(out.data.cpu().numpy(), [0, 2, 3, 1])
-        return np.clip(np.clip(out, 0, 1) * 255, 0, 255).astype(np.uint8)
 
 
 def fake_codec(monkeypatch):
@@ -82,30 +83,30 @@ def fake_codec(monkeypatch):
 
 
 @pytest.mark.parametrize("relative", [False, True])
-def test_batched_render_matches_the_per_frame_loop(monkeypatch, relative):
+def test_render_does_not_depend_on_the_batch_size(monkeypatch, relative):
     codec, state, m = fake_codec(monkeypatch)
-    slow = codec.render(None, m, relative=relative, stitch=True, state=state)
-    for batch in (2, 4, 16):
-        fast = codec.render(None, m, relative=relative, stitch=True, state=state, batch=batch)
-        assert fast.shape == slow.shape and np.abs(fast.astype(int) - slow.astype(int)).max() <= 1
+    one = codec.render(None, m, relative=relative, stitch=True, state=state, batch=1)
+    for batch in (4, 16):
+        assert np.array_equal(codec.render(None, m, relative=relative, stitch=True, state=state, batch=batch), one)
     gpu = codec.render(None, m, relative=relative, stitch=True, state=state, batch=4, out="torch")
-    assert isinstance(gpu, torch.Tensor) and gpu.dtype == torch.uint8 and gpu.shape == slow.shape
+    assert isinstance(gpu, torch.Tensor) and gpu.dtype == torch.uint8 and gpu.shape == one.shape
 
 
-def test_async_writer_writes_a_playable_video(tmp_path):
-    rng = np.random.default_rng(1)
-    w = fastpath.AsyncWriter(tmp_path / "a.mp4", fps=25)
-    for _ in range(3):
-        w.write(rng.integers(0, 256, (5, 64, 64, 3), dtype=np.uint8))
-    out = w.close()
-    import imageio_ffmpeg
-    assert out.exists() and imageio_ffmpeg.count_frames_and_secs(str(out))[0] == 15
+def test_relative_driving_starts_at_the_source_pose(monkeypatch):
+    codec, state, m = fake_codec(monkeypatch)
+    x = codec.driving_keypoints(state, m, relative=True)
+    from sang.motion import vec_to_kp_info
+    s = state["info"]
+    want = s["scale"] * (state["x_c"] @ state["R_s"] + s["exp"]) + s["t"] * torch.tensor([1.0, 1.0, 0.0])
+    assert torch.allclose(x[:1], want, atol=1e-5)
+    assert vec_to_kp_info(m)["exp"].shape == (10, 21, 3)
 
 
 def test_timer_adds_up():
-    t = fastpath.Timer(cuda=False)
+    t = Timer(cuda=False)
     with t("a"):
         pass
     with t("a"):
         pass
     assert set(t.t) == {"a"} and t.t["a"] >= 0
+

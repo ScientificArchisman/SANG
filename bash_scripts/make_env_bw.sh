@@ -1,7 +1,4 @@
 #!/bin/bash
-# One-time: a training env whose PyTorch runs on the RTX PRO 6000 Blackwell cards (sm_120) as well as
-# the A100s. Training imports only torch, numpy and pyyaml; LivePortrait, the cache and inference stay
-# in avcodec. Run on the LOGIN node (needs internet, no GPU):  bash bash_scripts/make_env_bw.sh
 set -euo pipefail
 source "$HOME/miniconda3/etc/profile.d/conda.sh"
 conda env list | grep -qE "^sang_bw\s" || conda create -y -n sang_bw python=3.10

@@ -9,8 +9,6 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=slurm_logs/%x_%j.out
 #SBATCH --error=slurm_logs/%x_%j.err
-# CPU-only. Runs scripts/filter_clips.py on a manifest in N parallel shards, then merges.
-# Usage: sbatch bash_scripts/filter_clips.sh data/clips_all.txt data/clips_filtered_all.txt [extra filter args]
 set -euo pipefail
 source "${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/bash_scripts/env.sh"
 IN=${1:-data/clips_all.txt}; OUT=${2:-data/clips_filtered_all.txt}; shift 2 || true

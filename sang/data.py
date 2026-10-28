@@ -1,266 +1,164 @@
-"""Clip -> aligned (video latent, audio features[, mel]) windows.
-
-Caching is split into a CPU side (decode, face crop, audio slice, mel) that is safe to run in a
-recycled worker process, and a GPU side that batches a clip's windows into one VAE and one WavLM
-call. decord's VideoReader leaks ~14 MB per clip and mediapipe ~1.4 MB per detection, which grew
-job 162800 to 118 GB RSS during cache build; workers with a bounded task count make that moot.
-"""
+"""The motion cache as training and evaluation read it: the speaker split, target normalisation and windows."""
+import hashlib
+import random
+import time
 from pathlib import Path
 
-import numpy as np
 import torch
-from decord import AudioReader, VideoReader
+import yaml
+from torch.utils.data import Dataset
 
-from sang.video import (crop_resize, decode_frames, encode, encode_latent, face_box, frames_to_input,
-                        open_video, to_uint8_frames)
+from sang.motion import T_DIM, placement, to_target, wide
+from sang.motion_model import Norm
+from sang.naturalness import typical_frames
+from sang.sync import clip_key, shift_ticks
 
-SR = 16000
-MEL_VERSION = 3  # 1: mel cut from packed-from-t=0 starts (misaligned once windows were spread)
-                 # 2: log-power torchaudio mel on the WavLM window
-                 # 3: Wav2Lip mel, cut SYNC_MEL_OFFSET after the WavLM window (see both below)
-# stable_syncnet.pt calls a window "in sync" when its mel starts 60 ms AFTER the video's container
-# time: on 28 ground-truth windows the loss is 0.66 at offset 0 and 0.45 at +60 ms, a smooth V on
-# either side (probe, 2026-09-10). decord agrees with ffmpeg to 1 ms on both streams, so the offset
-# is the checkpoint's convention, not ours; only the SyncNet mel moves, WavLM stays on container
-# time. Left at 0 the loss sat on its ground-truth floor (0.60) and pulled the lips 60 ms early.
-SYNC_MEL_OFFSET = int(0.060 * SR)  # samples
+TPF = 2
 
 
-def audio_samples(frames: int, fps: float, sr: int) -> int:
-    """Samples spanned by `frames` frames at `fps`. N frames span N-1 intervals, so 17 @ 25 fps
-    is 0.64 s; using frames/fps stretches the audio 6% against the video."""
-    return round((frames - 1) / fps * sr)
+def load_cfg(config: str, overrides: list[str]) -> dict:
+    """A yaml config with key=value overrides parsed as YAML ('1e-4' as a float)."""
+    cfg = yaml.safe_load(Path(config).read_text())
+    for o in overrides:
+        k, v = o.split("=", 1)
+        val = yaml.safe_load(v)
+        if isinstance(val, str):
+            try:
+                val = float(val)
+            except ValueError:
+                pass
+        cfg[k] = val
+    return cfg
 
 
-def window_starts(n_frames: int, span: int, nwin: int) -> list[int]:
-    """Window start frames spread over the whole clip. Packing them from t=0 used only the first
-    nwin*span frames, so a 130 s clip contributed as much as a 6 s one."""
-    last = n_frames - span
-    return [round(w * last / (nwin - 1)) for w in range(nwin)] if nwin > 1 else [0]
+def split_by_speaker(rows: list[dict], val_frac: float, seed: int):
+    """Speaker-disjoint split, decided per speaker by a hash of its name.
+
+    The speaker is the clip's parent directory, so val measures unseen identities. Hashing (rather
+    than shuffling the speakers present) keeps every speaker on the same side as the cache grows,
+    so every run validates on the same people. `seed` salts the hash."""
+    def is_val(spk: str) -> bool:
+        return int(hashlib.md5(f"{seed}:{spk}".encode()).hexdigest(), 16) % 10_000 < val_frac * 10_000
+
+    val = {Path(r["path"]).parent.name for r in rows if is_val(Path(r["path"]).parent.name)}
+    return ([r for r in rows if Path(r["path"]).parent.name not in val],
+            [r for r in rows if Path(r["path"]).parent.name in val])
 
 
-_MEL_FB: dict[tuple, torch.Tensor] = {}
+def val_clips(rows: list[dict], min_frames: int) -> list[str]:
+    """One clip per val speaker (the first by name that starts at frame 0 and is long enough), for demos."""
+    seen, out = set(), []
+    for r in sorted(rows, key=lambda r: r["clip"]):
+        spk = Path(r["path"]).parent.name
+        if spk not in seen and r["n"] >= min_frames and r.get("start", 0) == 0:
+            seen.add(spk)
+            out.append(r["clip"])
+    return out
 
 
-def mel_spectrogram(wav: torch.Tensor, sr: int = SR, n_mels: int = 80) -> torch.Tensor:
-    """[1, N] waveform -> [1, n_mels, T] mel in the Wav2Lip/LatentSync format stable_syncnet.pt was
-    trained on: preemphasis 0.97, n_fft 800, hop 200 (12.5 ms), 55-7600 Hz slaney filterbank,
-    20*log10 magnitude minus a 20 dB reference, normalised to [-4, 4] (Wav2Lip audio.py with its
-    hparams). 0.64 s -> 52 steps, the width the audio encoder reduces to 1. The previous natural-log
-    power mel spanned [-10, 9] and cost ~0.06 of in/out-of-sync separation on ground truth."""
-    import torchaudio
-    n_fft = 800
-    key = (sr, n_mels, n_fft)
-    if key not in _MEL_FB:
-        _MEL_FB[key] = torchaudio.functional.melscale_fbanks(
-            n_fft // 2 + 1, 55.0, 7600.0, n_mels, sr, norm="slaney", mel_scale="slaney").T
-    wav = wav.float()
-    y = torch.cat([wav[:, :1], wav[:, 1:] - 0.97 * wav[:, :-1]], dim=1)
-    spec = torch.stft(y, n_fft, hop_length=200, win_length=n_fft, window=torch.hann_window(n_fft),
-                      center=True, pad_mode="constant", return_complex=True).abs()   # [1, F, T]
-    db = 20.0 * torch.log10(torch.matmul(_MEL_FB[key], spec).clamp_min(1e-5)) - 20.0
-    return ((db + 100.0) / 100.0 * 8.0 - 4.0).clamp(-4.0, 4.0)
+def fit_norm(rows: list[dict], n_clips: int = 500, seed: int = 0) -> Norm:
+    pick = random.Random(seed).sample(rows, min(n_clips, len(rows)))
+    ys, kps = [], []
+    for r in pick:
+        d = torch.load(r["path"], map_location="cpu", weights_only=True)
+        ys.append(to_target(d["m"].float()))
+        kps.append(d["kp"].float())
+    return Norm.fit(torch.cat(ys), torch.cat(kps))
 
 
-def _clip_geometry(vr, frames: int, fps: float, max_windows: int):
-    native = vr.get_avg_fps()
-    stride = native / fps
-    span = int(round((frames - 1) * stride)) + 1
-    nwin = min(max_windows, len(vr) // span)
-    if nwin < 1:
-        raise ValueError(f"{len(vr)} frames < {span}")
-    return native, stride, span, window_starts(len(vr), span, nwin)
+def fit_place_norm(rows: list[dict], base: Norm, n_clips: int = 500, seed: int = 0, floor: float = 1e-3) -> Norm:
+    """`base` (the 42-d Norm, kept as it is) + statistics of the 3 head-placement columns: each frame's
+    placement relative to a random frame of its clip, as training draws the reference."""
+    rng = random.Random(seed)
+    ps = []
+    for r in rng.sample(rows, min(n_clips, len(rows))):
+        p = placement(torch.load(r["path"], map_location="cpu", weights_only=True)["m"].float())
+        ps.append(p - p[rng.randrange(len(p))])
+    ps = torch.cat(ps)
+    return Norm(torch.cat([base.t_mean, ps.mean(0)]), torch.cat([base.t_std, ps.std(0).clamp_min(floor)]),
+                base.kp_mean, base.kp_std)
 
 
-def _audio_window(wav: torch.Tensor, start_frame: int, native: float, n: int, offset: int = 0) -> torch.Tensor:
-    """`n` samples from the container time of `start_frame`, shifted `offset` samples (zero-padded)."""
-    a0 = int(start_frame / native * SR) + offset
-    win = wav[:, a0:a0 + n]
-    if win.shape[-1] < n:
-        win = torch.nn.functional.pad(win, (0, n - win.shape[-1]))
-    return win
-
-
-def clip_cpu_windows(path, frames: int = 17, res: int = 128, fps: float = 25, max_windows: int = 8,
-                     face_crop: bool = False, with_mel: bool = False) -> list[dict]:
-    """CPU side of caching for one clip. Each window: pixels [T,res,res,3] uint8, wav [1,n] float32,
-    start frame, face_found (if face_crop), mel [80,T] fp16 (if with_mel). The mel is cut from the
-    same waveform as WavLM, from the same start plus SYNC_MEL_OFFSET (SyncNet's sync convention)."""
-    vr = open_video(path)
-    native, stride, span, starts = _clip_geometry(vr, frames, fps, max_windows)
-    n = audio_samples(frames, fps, SR)
-    wav = torch.from_numpy(AudioReader(str(Path(path).with_suffix(".m4a")), sample_rate=SR, mono=True)[:].asnumpy())
+def wide_deltas(rows: list[dict], n_clips: int, seed: int = 0) -> torch.Tensor:
+    """sang.motion.wide of every frame minus that of a random frame of the same clip: [N, 69], the deltas a
+    motion latent (sang.latent) is fitted on, drawn as training draws reference frames."""
+    g = torch.Generator().manual_seed(seed)
     out = []
-    for s in starts:
-        fr = vr.get_batch([s + int(round(i * stride)) for i in range(frames)]).asnumpy()
-        box = face_box(fr) if face_crop else None
-        win = _audio_window(wav, s, native, n)
-        d = {"pixels": to_uint8_frames(crop_resize(fr, res, box=box)), "wav": win.numpy(), "start": s}
-        if face_crop:
-            d["face_found"] = box is not None
-        if with_mel:
-            d["mel"] = mel_spectrogram(_audio_window(wav, s, native, n, SYNC_MEL_OFFSET))[0].half()
-        out.append(d)
-    return out
+    for r in random.Random(seed).sample(rows, min(n_clips, len(rows))):
+        w = wide(torch.load(r["path"], map_location="cpu", weights_only=True)["m"].float())
+        out.append(w - w[torch.randint(len(w), (len(w),), generator=g)])
+    return torch.cat(out)
 
 
-def clip_mels(path, frames: int = 17, fps: float = 25, max_windows: int = 8) -> list[torch.Tensor]:
-    """Mels only, for repairing entries cached before MEL_VERSION (same starts as clip_cpu_windows)."""
-    vr = open_video(path)
-    native, _, _, starts = _clip_geometry(vr, frames, fps, max_windows)
-    n = audio_samples(frames, fps, SR)
-    wav = torch.from_numpy(AudioReader(str(Path(path).with_suffix(".m4a")), sample_rate=SR, mono=True)[:].asnumpy())
-    return [mel_spectrogram(_audio_window(wav, s, native, n, SYNC_MEL_OFFSET))[0].half() for s in starts]
+class MotionWindows(Dataset):
+    """Random windows of P prefix + L target frames. The reference is a random frame of the same
+    clip (Ditto's choice), which at inference becomes the source image. ref_frame='median': a random
+    one of the clip's TYPICAL frames instead (lip opening in the middle `ref_band` of the clip by rank,
+    sang.naturalness.typical_frames).
 
+    Targets: the normalised 42-d target; with a 45-d Norm (head placement) also the frames' placement
+    relative to the window's reference frame; with wide=True the raw sang.motion.wide vector minus the
+    reference frame's (69-d deltas for a motion latent, which the training loop encodes on the GPU).
 
-def cpu_task(job) -> tuple:
-    """Pool entry point: ("windows", path, kw) | ("mels", path, kw) -> (path, result | None, err)."""
-    kind, path, kw = job
-    try:
-        fn = clip_cpu_windows if kind == "windows" else clip_mels
-        return path, fn(path, **kw), None
-    except Exception as e:  # a bad clip must not take the pool down
-        return path, None, f"{type(e).__name__}: {e}"
+    preload=True reads every clip once at start-up and keeps it in RAM (~2 MB per 20 s clip): reading
+    one .pt per SAMPLE from BeeGFS capped the first run at ~1.4 it/s."""
 
+    def __init__(self, rows, L: int, P: int, norm: Norm, per_clip: int, fixed: bool = False,
+                 preload: bool = True, threads: int = 16, shifts: dict | None = None,
+                 ref_frame: str = "random", lip=None, ref_band: float = 0.2, wide: bool = False):
+        if ref_frame not in ("random", "median"):
+            raise ValueError(f"ref_frame must be 'random' or 'median', got {ref_frame!r}")
+        if ref_frame == "median" and lip is None:
+            raise ValueError("ref_frame='median' needs the lip-opening readout (openness.json)")
+        self.ref_frame, self.lip, self.ref_band, self.wide = ref_frame, lip, ref_band, wide
+        self.rows = [r for r in rows if r["n"] >= L + P]
+        self.L, self.P, self.norm, self.per_clip = L, P, norm, per_clip
+        self.place = norm.place and not wide
+        self.shifts = shifts or {}
+        self.fixed = fixed
+        if not self.rows:
+            raise ValueError(f"no clip has {L + P} frames")
+        self.mem = None
+        if preload:
+            from concurrent.futures import ThreadPoolExecutor
+            t0 = time.time()
+            with ThreadPoolExecutor(threads) as ex:
+                self.mem = list(ex.map(self._load, self.rows))
+            gb = sum(m[2].numel() * m[2].element_size() for m in self.mem) / 1e9
+            print(f"  preloaded {len(self.mem)} clips in {time.time() - t0:.0f} s, audio {gb:.1f} GB", flush=True)
 
-def pooled(tasks, fn, workers: int, tasks_per_worker: int = 100, timeout: float = 900.0,
-           chunk: int | None = None):
-    """Map `fn` over `tasks` in spawn workers, yielding (index, value, err) in submission order.
+    def _load(self, r):
+        d = torch.load(r["path"], map_location="cpu", weights_only=True)
+        m = d["m"].float()
+        y_raw = to_target(m)
+        y = wide(m) if self.wide else self.norm.target(y_raw)
+        ref = self.norm.ref(d["kp"].float(), y_raw)
+        audio = shift_ticks(d["audio"], self.shifts.get(clip_key(r), 0))
+        cands = (torch.from_numpy(typical_frames(self.lip(y_raw).numpy(), self.ref_band))
+                 if self.ref_frame == "median" else None)
+        place = placement(m) if self.place else None
+        return y, ref, audio.half().contiguous(), cands, place
 
-    Replaces multiprocessing.Pool(maxtasksperchild=...), which cannot survive a worker
-    casualty: its _handle_results thread returns silently on a truncated result frame
-    (`except (OSError, EOFError): return`, no traceback), after which the parent blocks
-    forever in IMapIterator.next() while _handle_workers spins at 100% CPU. Job 162848 sat
-    like that for 7h45m after a single recycle, with the GPU idle and nothing in the log.
-    ProcessPoolExecutor reports a dead worker as BrokenProcessPool instead, and every wait
-    here is bounded by `timeout`, so a casualty costs seconds rather than the allocation.
+    def _frames(self, y_all, p_all, sl: slice, k: int) -> torch.Tensor:
+        """Target rows `sl` relative to reference frame k where the target is relative."""
+        if self.wide:
+            return y_all[sl] - y_all[k]
+        if p_all is None:
+            return y_all[sl]
+        zp = (p_all[sl] - p_all[k] - self.norm.t_mean[T_DIM:]) / self.norm.t_std[T_DIM:]
+        return torch.cat([y_all[sl], zp], -1)
 
-    `err` is a message (and `value` None) for a task that raised, crashed its worker, or
-    overran `timeout` -- the caller skips that clip and keeps going.
+    def __len__(self):
+        return len(self.rows) * self.per_clip
 
-    Worker lifetime stays bounded -- decord and mediapipe leak ~26 MB per clip between them --
-    by retiring the whole executor every workers*tasks_per_worker tasks; ProcessPoolExecutor
-    only grew max_tasks_per_child in 3.11 and this runs on 3.10. At most `chunk` futures are
-    outstanding, so workers cannot run ahead of the GPU consumer and park ~27 MB each.
-    """
-    import collections
-    import concurrent.futures as cf
-    import multiprocessing as mp
-    from concurrent.futures.process import BrokenProcessPool
-
-    workers = max(1, int(workers))
-    chunk = chunk or 4 * workers
-    generation = max(1, int(tasks_per_worker)) * workers
-    ctx = mp.get_context("spawn")
-    i, n = 0, len(tasks)
-    while i < n:
-        stop = min(n, i + generation)
-        ex = cf.ProcessPoolExecutor(max_workers=workers, mp_context=ctx)
-        broke = False
-        try:
-            pending, nxt = collections.deque(), i
-            while i < stop and not broke:
-                while nxt < stop and len(pending) < chunk:
-                    pending.append((nxt, ex.submit(fn, tasks[nxt])))
-                    nxt += 1
-                idx, fut = pending.popleft()
-                try:
-                    value, err = fut.result(timeout=timeout), None
-                except (BrokenProcessPool, cf.TimeoutError) as e:
-                    # Either a worker died or this task is wedged; the executor is no longer
-                    # trustworthy. Retire it and resubmit the rest of the generation below.
-                    value, err, broke = None, f"{type(e).__name__}: {e}", True
-                except Exception as e:  # the task itself raised -- the pool is still good
-                    value, err = None, f"{type(e).__name__}: {e}"
-                yield idx, value, err
-                i = idx + 1
-        finally:
-            if broke:  # a wedged worker would outlive the executor still holding its RSS
-                for proc in list((getattr(ex, "_processes", None) or {}).values()):
-                    proc.kill()
-            # At a clean boundary the workers are idle, so waiting is immediate and keeps the
-            # retiring generation from overlapping the next one in memory. Never wait on a
-            # broken pool: that is the hang this function exists to avoid.
-            ex.shutdown(wait=not broke, cancel_futures=True)
-
-
-@torch.no_grad()
-def encode_windows(vidtok, audio_enc, wins: list[dict], continuous: bool = False,
-                   face_cond: bool = False) -> list[dict]:
-    """GPU side: one VAE call and one WavLM call for all of a clip's windows."""
-    dev = next(vidtok.parameters()).device
-    vid = torch.cat([frames_to_input(w["pixels"]) for w in wins], 0).to(dev)     # [W,3,T,res,res]
-    lat = (encode_latent if continuous else encode)(vidtok, vid)
-    aud = audio_enc.encode(torch.from_numpy(np.stack([w["wav"] for w in wins])).to(dev))  # [W,Ta,D]
-    out = []
-    for i, w in enumerate(wins):
-        d = {"video": lat[i:i + 1].cpu(), "audio": aud[i:i + 1].cpu(), "start": w["start"]}
-        for k in ("face_found", "mel"):
-            if k in w:
-                d[k] = w[k]
-        if face_cond:
-            d["struct"] = struct_grid(vidtok, vid[i:i + 1]).cpu()
-        out.append(d)
-    return out
-
-
-@torch.no_grad()
-def clip_windows(path, vidtok, audio_enc, frames: int = 17, res: int = 128, fps: float = 25,
-                 max_windows: int = 8, face_cond: bool = False, continuous: bool = False,
-                 face_crop: bool = False, with_mel: bool = False) -> list[dict]:
-    """Single-process convenience: CPU side then GPU side for one clip."""
-    wins = clip_cpu_windows(path, frames, res, fps, max_windows, face_crop, with_mel)
-    return encode_windows(vidtok, audio_enc, wins, continuous, face_cond)
-
-
-@torch.no_grad()
-def clip_tokens(path, vidtok, audio_enc, frames: int = 17, res: int = 128, start=None,
-                fps: float = 25, face_cond: bool = False, face_crop: bool = False) -> dict:
-    """One TalkVid clip -> aligned dict(video idx [1,Tv,h,w], audio codes [1,K,Ta], ref [1,3,res,res], native fps).
-
-    Frames are resampled to `fps` and the audio window is a fixed `frames/fps` seconds, so Ta is
-    constant across clips (clean batching). With `face_cond`, also returns a VidTok-encoded face-mesh
-    structure grid `struct [1,Tv,h,w]` on the exact same crop."""
-    dev = next(vidtok.parameters()).device
-    fr, native, start = decode_frames(str(path), frames, start, fps=fps)
-    video = crop_resize(fr, res, box=face_box(fr) if face_crop else None).to(dev)
-
-    sr = audio_enc.sample_rate
-    n = audio_samples(frames, fps, sr)
-    a0 = int(start / native * sr)
-    wav = torch.from_numpy(AudioReader(str(Path(path).with_suffix(".m4a")), sample_rate=sr, mono=True)[:].asnumpy())
-    win = wav[:, a0:a0 + n]
-    if win.shape[-1] < n:
-        win = torch.nn.functional.pad(win, (0, n - win.shape[-1]))
-    audio = audio_enc.encode(win[None].to(dev))
-
-    out = {"video": encode(vidtok, video), "audio": audio, "ref": video[:, :, 0], "fps": native, "pixels": video}
-    if face_cond:
-        out["struct"] = struct_grid(vidtok, video)
-    return out
-
-
-@torch.no_grad()
-def struct_grid(vidtok, video: torch.Tensor) -> torch.Tensor:
-    """Clip [1,3,T,res,res] in [-1,1] -> VidTok-encoded face-mesh structure grid [1,Tv,h,w] on the same crop."""
-    from sang import face  
-
-    if not hasattr(vidtok, "regularization"):
-        raise RuntimeError("struct conditioning encodes the mesh with VidTok; not available on the Wan VAE track")
-    dev = next(vidtok.parameters()).device
-    struct_img = face.render_structure(to_uint8_frames(video))
-    return encode(vidtok, frames_to_input(struct_img).to(dev))
-
-
-@torch.no_grad()
-def video_struct_windows(path, vidtok, frames: int = 17, res: int = 128, fps: float = 25,
-                         max_windows: int = 64) -> list[torch.Tensor]:
-    """Driving video -> per-window face-mesh structure grids [1,Tv,h,w] (identity-free; for reenactment)."""
-    dev = next(vidtok.parameters()).device
-    vr = open_video(path)
-    _, stride, _, starts = _clip_geometry(vr, frames, fps, max_windows)
-    arr = vr.get_batch([s + int(round(i * stride)) for s in starts for i in range(frames)]).asnumpy()
-    fr = arr.reshape(nwin, frames, *arr.shape[1:])
-    return [struct_grid(vidtok, crop_resize(fr[w], res).to(dev)) for w in range(nwin)]
-
+    def __getitem__(self, i):
+        j = i % len(self.rows)
+        y_all, ref_all, audio, cands, p_all = self.mem[j] if self.mem is not None else self._load(self.rows[j])
+        n, span = y_all.shape[0], self.L + self.P
+        rng = random.Random(i) if self.fixed else random
+        s = rng.randint(0, n - span)
+        k = int(cands[rng.randrange(len(cands))]) if cands is not None else rng.randint(0, n - 1)
+        y = self._frames(y_all, p_all, slice(s, s + span), k)
+        return {"prefix": y[: self.P], "target": y[self.P:], "ref": ref_all[k],
+                "audio": audio[TPF * s: TPF * (s + span)]}
 

@@ -3,7 +3,6 @@
 
 Run only after scripts/motion_ceiling.py has passed. One file per clip, laid out as
 <out>/<speaker>/<clip>.pt so the speaker-disjoint split works on the cache alone:
-
     m      [T, 70]    fp16   raw LivePortrait motion (the 42-d target is derived at load time,
                              so 42 vs 70 stays an ablation, not a re-cache)
     kp     [T, 63]    fp16   canonical keypoints x_c, the identity condition
@@ -11,7 +10,6 @@ Run only after scripts/motion_ceiling.py has passed. One file per clip, laid out
     n      int               frames
 
 Sharded, resumable, one bad clip never kills the job:
-
     sbatch --array=0-7 bash_scripts/job.sh scripts/cache_motion.py --nshards 8
     (each task reads SLURM_ARRAY_TASK_ID as its shard)
 
@@ -30,7 +28,6 @@ import sys
 import time
 from pathlib import Path
 
-import numpy as np
 import torch
 
 REPO = Path(__file__).resolve().parents[1]
@@ -42,18 +39,6 @@ from sang.paths import MOTION_CACHE
 from sang.talkvid import clip_times
 
 SR, FPS, TPF = 16000, 25, 2
-
-
-def load_audio(clip: str, start_frame: int, n_frames: int) -> torch.Tensor:
-    """16 kHz mono for exactly frames [start, start + n) -> [1, 1, N]."""
-    from decord import AudioReader
-    wav = torch.from_numpy(AudioReader(str(Path(clip).with_suffix(".m4a")), sample_rate=SR,
-                                       mono=True)[:].asnumpy()).float()
-    a0, need = start_frame * SR // FPS, n_frames * SR // FPS
-    wav = wav[:, a0:a0 + need]
-    if wav.shape[1] < need:
-        wav = torch.nn.functional.pad(wav, (0, need - wav.shape[1]))
-    return wav.unsqueeze(0)
 
 
 def chunk_stem(stem: str, k: int) -> str:
@@ -88,8 +73,8 @@ def segments(clip: str, prev: dict, chunks: int, max_frames: int, min_frames: in
             frames = decode(clip, max_frames, start=offset)
         except ValueError:
             if offset == 0:
-                raise                                       # the clip itself is too short
-            return                                          # < 8 frames left: the clip is done
+                raise
+            return
         d = extract(frames)
         a, b = d["span"]
         if b - a < min_frames:
@@ -121,7 +106,7 @@ def main() -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     index = out / f"index_{args.tag + '_' if args.tag else ''}{args.shard:03d}.jsonl"
-    prev_of = {}                                          # (video, file) -> {chunk: row}, from every index
+    prev_of = {}
     for f in sorted(out.glob("index_*.jsonl")):
         for l in f.read_text().splitlines():
             if l.strip():
@@ -132,13 +117,13 @@ def main() -> None:
           f"(up to {args.chunks} chunk{'s' if args.chunks > 1 else ''} of {args.max_frames} frames) -> {index.name}",
           flush=True)
 
-    from sang.codec import load_wavlm
+    from sang.codec import load_wav, load_wavlm
     codec = MotionCodec(device="cuda")
     wavlm = load_wavlm(args.audio_encoder, device="cuda")
 
-    ok = fail = seen = 0                                 # chunks cached, clips failed, clips processed
+    ok = fail = seen = 0
     t0 = time.time()
-    tm = {}                                               # seconds per stage, summed over clips
+    tm = {}
     def lap(key, since):
         tm[key] = tm.get(key, 0.0) + time.perf_counter() - since
         return time.perf_counter()
@@ -149,7 +134,7 @@ def main() -> None:
         lap("decode", t)
         return frames
 
-    extract = lambda frames: codec.extract(frames, timings=tm)    # fixed box, truncated at a shot cut
+    extract = lambda frames: codec.extract(frames, timings=tm)
     with index.open("a") as log:
         for i, clip in enumerate(mine):
             prev = prev_of.get(clip_id(clip), {})
@@ -162,10 +147,10 @@ def main() -> None:
                     t = time.perf_counter()
                     n = int(d["m"].shape[0])
                     with torch.no_grad():
-                        a = wavlm.encode(load_audio(clip, start, n).cuda())[0].float().cpu()   # [~2n, D]
+                        a = wavlm.encode(load_wav(Path(clip).with_suffix(".m4a"), start, n)[None, None].cuda())[0].float().cpu()
                     t = lap("audio", t)
                     a = a[: TPF * n]
-                    if a.shape[0] < TPF * n:                     # conv edge: pad the last tick(s)
+                    if a.shape[0] < TPF * n:
                         a = torch.cat([a, a[-1:].expand(TPF * n - a.shape[0], -1)])
                     dst = out / Path(clip).parent.name / f"{chunk_stem(Path(clip).stem, k)}.pt"
                     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -194,3 +179,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

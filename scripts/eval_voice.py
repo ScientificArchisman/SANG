@@ -76,11 +76,9 @@ def main() -> None:
     ap.add_argument("--out", default=str(REPO / "results/voice_eval"))
     args = ap.parse_args()
 
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("tm", REPO / "scripts" / "train_motion.py")
-    tm = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(tm)
-    _, val = tm.split_by_speaker(tm.load_index(Path(args.cache)), args.val_frac, args.seed)
+    from sang.data import split_by_speaker
+    from sang.paths import load_index
+    _, val = split_by_speaker(load_index(Path(args.cache)), args.val_frac, args.seed)
     by_spk = defaultdict(list)
     for r in sorted(val, key=lambda r: r["clip"]):
         by_spk[Path(r["path"]).parent.name].append(r["clip"])
@@ -104,7 +102,6 @@ def main() -> None:
         try:
             held = load_wav(Path(clips[0]).with_suffix(".m4a"))
             e_held = sv.embed([held])[0]
-            # enrolment, exactly as scripts/enroll_voice.py: VAD -> chunks -> speaker filter -> layer-6 frames
             pieces = []
             for c in clips[1:]:
                 w = load_wav(Path(c).with_suffix(".m4a"))
@@ -172,3 +169,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

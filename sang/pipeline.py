@@ -1,104 +1,136 @@
-"""Source photo + speech -> frames, with stage timings: the unit scripts/eval_hdtf.py and
-scripts/latency.py both run, so the benchmark measures exactly what the evaluation scores.
+"""Source photo + speech -> frames, with stage timings: the one generation path that scripts/eval_hdtf.py,
+infer_motion.py and demo_motion.py all run, so a demo is exactly what the benchmark scores.
 
-Options (all off = the original path, stage for stage):
-  cfg_batch    the CFG pair of each Euler step as one batch (sang.motion_model.sample)
-  render_batch frames per renderer call (MotionCodec.render_iter); 1 = the per-frame loop
-  half         FP16 autocast around the warping module and decoder
-  gpu_paste    paste-back with grid_sample inside the face's bounding box (sang.fastpath.GpuPaster)
-  reuse_crop   detect the face in the source photo once (the original path detects it three times:
-               source motion, renderer source state, paste-back)
+Stages: source (face crop and the photo's motion, detected once), audio (WavLM), motion (the flow model and
+the map back to 70-d motion, sang.latent.Space), render (LivePortrait, `batch` frames per call, FP16 with
+`half`) and paste (back into the photo with LivePortrait's feathered crop mask, GpuPaster).
 
-Talker(rules=...) switches on the rule constraints of sang/naturalness.py (lips | blinks | both;
-default none, as trained), run(style=...) gives the clip a lip style (sang.naturalness.restyle_lip), and
-run(swap=...) replaces target columns with another motion's (the region-swap oracle of scripts/eval_hdtf.py).
+GpuPaster is LivePortrait's paste-back (cv2.warpAffine of the crop over the full frame, then a float blend)
+done with grid_sample inside the bounding box of the crop's footprint; outside it the output IS the
+background. cv2.warpAffine maps output pixel (x, y) to crop pixel M^-1 (x, y) with pixel centres at integers,
+which is grid_sample's align_corners=True after scaling by 2 / (S - 1). cv2 interpolates in fixed point
+(1/32 px) and rounds the warped crop to uint8; the warped crop is rounded here too, so outputs differ from
+cv2 by at most a grey level or so (tests/test_fastpath.py).
 """
-from dataclasses import dataclass
+import time
+from contextlib import contextmanager
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
-from sang.fastpath import GpuPaster, Timer
+from sang.motion import LP, as3x3
 
 SR, FPS = 16000, 25
 HOP = SR // FPS
 
 
-@dataclass
-class Opts:
-    cfg_batch: bool = False
-    render_batch: int = 1
-    half: bool = False
-    gpu_paste: bool = False
-    reuse_crop: bool = False
+class Timer:
+    """Wall-clock per stage; synchronises CUDA at stage boundaries only (profile mode)."""
 
-    @classmethod
-    def fast(cls) -> "Opts":
-        return cls(cfg_batch=True, render_batch=16, half=True, gpu_paste=True, reuse_crop=True)
+    def __init__(self, cuda: bool = True):
+        self.cuda = cuda and torch.cuda.is_available()
+        self.t: dict[str, float] = {}
+
+    @contextmanager
+    def __call__(self, name: str):
+        if self.cuda:
+            torch.cuda.synchronize()
+        t = time.perf_counter()
+        yield
+        if self.cuda:
+            torch.cuda.synchronize()
+        self.t[name] = self.t.get(name, 0.0) + time.perf_counter() - t
+
+
+def crop_mask(S: int) -> np.ndarray:
+    """LivePortrait's feathered crop mask at S x S (LP's mask_template.png), else a 16-px linear feather."""
+    import cv2
+    tpl = LP / "src" / "utils" / "resources" / "mask_template.png"
+    if tpl.exists():
+        return cv2.resize(cv2.imread(str(tpl), cv2.IMREAD_GRAYSCALE), (S, S)).astype(np.float32) / 255.0
+    r = np.minimum(np.arange(S), np.arange(S)[::-1]).astype(np.float32)
+    return np.clip(np.minimum(r[:, None], r[None, :]) / 16.0, 0, 1)
+
+
+class GpuPaster:
+    """Paste rendered crops [b, S, S, 3] (uint8, GPU) into `background` with M_c2o (crop -> original)."""
+
+    def __init__(self, M_c2o: np.ndarray, background: np.ndarray, S: int, device: str = "cuda",
+                 mask: np.ndarray | None = None):
+        H, W = background.shape[:2]
+        M = as3x3(M_c2o)
+        corners = M @ np.array([[0, 0, 1], [S - 1, 0, 1], [0, S - 1, 1], [S - 1, S - 1, 1]], np.float64).T
+        x0, y0 = np.floor(corners[:2].min(1)).astype(int) - 1
+        x1, y1 = np.ceil(corners[:2].max(1)).astype(int) + 2
+        self.x0, self.y0 = max(0, x0), max(0, y0)
+        self.x1, self.y1 = min(W, x1), min(H, y1)
+        self.bg_full = background
+        self.empty = self.x1 <= self.x0 or self.y1 <= self.y0
+        if self.empty:
+            return
+        ys, xs = np.mgrid[self.y0:self.y1, self.x0:self.x1].astype(np.float64)
+        Minv = np.linalg.inv(M)
+        sx = Minv[0, 0] * xs + Minv[0, 1] * ys + Minv[0, 2]
+        sy = Minv[1, 0] * xs + Minv[1, 1] * ys + Minv[1, 2]
+        g = np.stack([sx / (S - 1) * 2 - 1, sy / (S - 1) * 2 - 1], -1).astype(np.float32)
+        self.grid = torch.from_numpy(g)[None].to(device)
+        m = torch.from_numpy(crop_mask(S) if mask is None else mask.astype(np.float32))[None, None].to(device)
+        self.mask = F.grid_sample(m, self.grid, mode="bilinear", padding_mode="zeros", align_corners=True)
+        self.bg = torch.from_numpy(np.ascontiguousarray(background[self.y0:self.y1, self.x0:self.x1])).to(device)
+        self.bg = self.bg.permute(2, 0, 1)[None].float()
+        self.device = device
+
+    @torch.no_grad()
+    def __call__(self, crops: torch.Tensor) -> np.ndarray:
+        """[b, S, S, 3] uint8 (any device) -> [b, H, W, 3] uint8 numpy."""
+        b = len(crops)
+        out = np.repeat(self.bg_full[None], b, 0)
+        if self.empty:
+            return out
+        f = crops.to(self.device).permute(0, 3, 1, 2).float()
+        w = F.grid_sample(f, self.grid.expand(b, -1, -1, -1), mode="bilinear", padding_mode="zeros",
+                          align_corners=True).round()
+        roi = (self.mask * w + (1.0 - self.mask) * self.bg).clamp(0, 255).to(torch.uint8)
+        out[:, self.y0:self.y1, self.x0:self.x1] = roi.permute(0, 2, 3, 1).cpu().numpy()
+        return out
 
 
 class Talker:
-    def __init__(self, ckpt: str, sampler: str | None, device: str = "cuda", codec=None, wavlm=None,
-                 ema: str | None = None, cfg_audio=None, steps: int | None = None, guide_ckpt: str | None = None,
-                 rules: str = "none"):
-        """sampler: a spec ('g=2,mouth=1.25,avg=4'); without one, cfg_audio / steps (default: the run's).
-        rules: none | lips | blinks | both, the constraints of sang.naturalness.guided_generate; they read
-        openness.json and naturalness_stats.json from the run's motion cache."""
+    def __init__(self, ckpt: str, sampler: str | None = None, device: str = "cuda", codec=None, wavlm=None):
+        """sampler: a spec such as 'g=2,mouth=1.25,avg=4' (sang.motion_model.SAMPLER_KEYS); without one, the
+        run's cfg_audio and sample_steps."""
         from sang.codec import load_wavlm
+        from sang.latent import Space
         from sang.motion import MotionCodec
-        from sang.motion_model import Norm, build, ema_weights, load_ema, parse_spec, sampler_kwargs
+        from sang.motion_model import RENDER_KEYS, Norm, build, parse_spec, sampler_kwargs
         ck = torch.load(ckpt, map_location=device, weights_only=False)
         spec = parse_spec(sampler)
-        self.place = {"amp": spec.get("pamp", 1.0), "k": int(spec.get("psmooth", 1))}   # render-time placement
-        self.ramp = spec.get("ramp", 1.0)                                                # render-time rotation
         self.cfg, self.step, self.dev = ck["cfg"], ck["step"], device
         self.model = build(self.cfg).to(device).eval()
-        self.model.load_state_dict(ema_weights(ck, ema))
+        self.model.load_state_dict(ck["ema"])
         self.norm = Norm(**ck["norm"]).to(device)
-        guide = load_ema(guide_ckpt, device, self.norm) if guide_ckpt else None
-        self.sampler = (sampler_kwargs(spec, self.cfg, guide, steps=steps) if sampler else
-                        {"cfg_audio": self.cfg["cfg_audio"] if cfg_audio is None else cfg_audio,
-                         "steps": steps or self.cfg["sample_steps"]})
+        self.space = Space.of(ck, self.norm, device)
+        self.render_kw = {k: spec[k] for k in RENDER_KEYS if k in spec}
+        self.sampler = sampler_kwargs(spec, self.cfg)
         self.codec = codec or MotionCodec(device=device)
         self.wavlm = wavlm or load_wavlm(self.cfg.get("audio_encoder", "wavlm-large"), device=device)
-        self.rule_mode, self.rules = rules, None
-        if rules != "none":
-            from sang.naturalness import Guide
-            from sang.paths import motion_cache
-            self.rules = Guide.load(motion_cache(self.cfg["cache_dir"]), device, phonemes=rules in ("lips", "both"))
-        self._read = self.rules.read if self.rules else None
-        self.last = {}                                       # the latest run: rule info, raw target before restyle
-
-    @property
-    def readouts(self) -> dict:
-        """The lip / eye openness readouts (openness.json in the run's motion cache)."""
-        if self._read is None:
-            from sang.naturalness import load_readouts
-            from sang.paths import motion_cache
-            self._read = load_readouts(motion_cache(self.cfg["cache_dir"]) / "openness.json")
-        return self._read
+        self.sampled = None
 
     @torch.no_grad()
-    def run(self, src: np.ndarray, wav: torch.Tensor, n_frames: int, opts: Opts, seed: int = 0,
-            held: str = "camera", stitch: bool = True, paste: bool = True, start: str = "null",
-            timer: Timer | None = None, sink=None, keep: bool = True, style: dict | None = None,
-            restyle: str = "range", swap: tuple | None = None):
-        """src [H,W,3] uint8, wav [N] 16 kHz -> (frames [n,H,W,3] or crops [n,512,512,3] uint8, motion [n,70],
-        timer). Stages: source, audio, motion, render, paste. start='source': the first window continues
-        from the photo's own motion after `prefix` frames of silence (the HDTF protocol's default).
-        sink: called with each [b,H,W,3] uint8 batch of finished frames (e.g. AsyncWriter.write); with
-        gpu_paste the batches stream out as they are rendered, so encoding overlaps rendering.
-        keep=False: do not also return the frames (frames is then None).
-        style: a lip style (sang.naturalness.lip_style) the motion is moved to before rendering, by
-        `restyle` (level | range); e.g. the real clip's own, as the speaker-style oracle.
-        swap: (columns, raw target [T', 42], first frame): those columns of frames first..first+T'-1 are
-        taken from the given target, e.g. the real clip's head rotation (after any restyle)."""
-        from sang.motion import REGIONS, from_target, paste_back, smooth_placement, to_target
-        from sang.naturalness import guided_generate, restyle_lip
+    def run(self, src: np.ndarray, wav: torch.Tensor, n_frames: int, seed: int = 0, held: str = "camera",
+            stitch: bool = True, paste: bool = True, start: str = "null", batch: int = 16, half: bool = True,
+            timer: Timer | None = None):
+        """src [H,W,3] uint8, wav [N] 16 kHz -> (frames [n,H,W,3] or, with paste=False, crops [n,512,512,3] uint8,
+        motion [n,70], timer). start='source': the first window continues from the photo's own motion after
+        `prefix` frames of silence (the HDTF protocol's default); 'null': the dropped-prefix start training uses.
+        self.sampled keeps the motion before the render-time controls (ramp, pamp, psmooth)."""
+        from sang.motion import to_target
+        from sang.motion_model import generate
         timer = timer or Timer()
         codec = self.codec
         with timer("source"):
-            crop = codec.crop_image(np.ascontiguousarray(src)) if opts.reuse_crop else None
+            crop = codec.crop_image(np.ascontiguousarray(src))
             sm = codec.source_motion(src, crop=crop)
             m_src = sm["m"].to(self.dev)
             ref = self.norm.ref(sm["kp"].to(self.dev), to_target(m_src))
@@ -106,66 +138,25 @@ class Talker:
         with timer("audio"):
             audio = self.wavlm.encode(torch.nn.functional.pad(wav, (lead * HOP, 0))[None, None].to(self.dev)).float()
         with timer("motion"):
-            samp = dict(self.sampler)
-            samp["cfg_batch"] = opts.cfg_batch
-            first = (self.norm.target(to_target(m_src, ref=m_src if self.norm.place else None))
-                     .unsqueeze(1).expand(1, lead, -1) if lead else None)
-            y, info = guided_generate(self.model, audio, ref, n_frames, self.cfg, self.norm, wav, self.rules,
-                                      self.rule_mode, seed, start=first, sampler=samp)
-            z = y[0]
-            self.last = {"info": info, "y": self.norm.untarget(z)}
-            if style is not None:
-                z = restyle_lip(z, self.norm, self.readouts["lip"], style, restyle)
-            y_raw = self.norm.untarget(z)
-            if self.ramp != 1.0:                             # rotation amplitude about the photo's pose
-                rot, r0 = REGIONS["rot"], to_target(m_src)[0, :3]
-                y_raw[:, rot] = r0 + self.ramp * (y_raw[:, rot] - r0)
-            if swap is not None:
-                cols, y_sw, s0 = swap
-                k = min(len(y_sw), n_frames - s0)
-                y_raw[s0:s0 + k, cols] = y_sw[:k, cols].to(y_raw)
-            m = from_target(smooth_placement(y_raw, self.place["amp"], self.place["k"]), m_src, held=held)
-        fast = opts.render_batch > 1 or opts.half or opts.gpu_paste
-        if fast and paste and opts.gpu_paste:                # streamed: render a batch, paste it, hand it on
-            with timer("render"):
-                state = codec.source_state(crop["img_crop_256x256"] if crop is not None else src,
-                                           precropped=crop is not None)
-            with timer("paste"):
-                M = crop["M_c2o"] if crop is not None else codec.crop_image(src)["M_c2o"]
-            it = codec.render_iter(state, m.cpu(), relative=False, stitch=stitch, batch=max(1, opts.render_batch),
-                                   half=opts.half)
-            paster, kept = None, []
-            while True:
-                with timer("render"):
-                    b = next(it, None)
-                if b is None:
-                    break
-                with timer("paste"):
-                    paster = paster or GpuPaster(M, src, b.shape[1], device=self.dev)
-                    f = paster(b)
-                if sink is not None:
-                    sink(f)
-                if keep:
-                    kept.append(f)
-            return (np.concatenate(kept) if keep else None), m, timer
+            first = self.space.encode(m_src, m_src, self.model.t_dim).unsqueeze(1).expand(1, lead, -1) if lead else None
+            g = torch.Generator(device=self.dev).manual_seed(seed)
+            z = generate(self.model, audio, ref, n_frames, window=self.cfg["frames"], n_prefix=self.cfg["prefix"],
+                         generator=g, start=first, **self.sampler)[0]
+            self.sampled = self.space.decode(z, m_src, held=held)
+            m = self.space.decode(z, m_src, held=held, **self.render_kw) if self.render_kw else self.sampled
         with timer("render"):
-            state = None
-            if crop is not None:
-                state = codec.source_state(crop["img_crop_256x256"], precropped=True)
-                state["M_c2o"] = crop["M_c2o"]
-            crops = codec.render(src, m.cpu(), relative=False, stitch=stitch, state=state,
-                                 batch=max(1, opts.render_batch), half=opts.half,
-                                 out="torch" if opts.gpu_paste else "numpy") if fast else \
-                codec.render(src, m.cpu(), relative=False, stitch=stitch, state=state)
-        if not paste:
-            return (crops.cpu().numpy() if torch.is_tensor(crops) else crops), m, timer
-        with timer("paste"):
-            M = crop["M_c2o"] if crop is not None else codec.crop_image(src)["M_c2o"]
-            if opts.gpu_paste:
-                c = crops if torch.is_tensor(crops) else torch.from_numpy(crops)
-                frames = GpuPaster(M, src, c.shape[1], device=self.dev)(c)
-            else:
-                frames = paste_back(crops.cpu().numpy() if torch.is_tensor(crops) else crops, M, src)
-        if sink is not None:
-            sink(frames)
-        return (frames if keep else None), m, timer
+            state = codec.source_state(crop["img_crop_256x256"], precropped=True)
+            it = codec.render_iter(state, m.cpu(), relative=False, stitch=stitch, batch=batch, half=half)
+        out, paster = [], None
+        while True:
+            with timer("render"):
+                b = next(it, None)
+            if b is None:
+                break
+            if paste:
+                with timer("paste"):
+                    paster = paster or GpuPaster(crop["M_c2o"], src, b.shape[1], device=self.dev)
+                    b = paster(b)
+            out.append(b.cpu().numpy() if torch.is_tensor(b) else b)
+        return np.concatenate(out), m, timer
+

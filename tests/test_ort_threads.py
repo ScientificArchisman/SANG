@@ -28,7 +28,7 @@ def fake_ort():
         def get_providers(self):
             return self.providers
 
-    class Pickable(InferenceSession):                         # insightface's PickableInferenceSession
+    class Pickable(InferenceSession):
         def __init__(self, path, **kw):
             super().__init__(path, **kw)
 
@@ -43,11 +43,11 @@ def test_sessions_get_an_explicit_thread_count(monkeypatch):
         a = ort.Pickable("det.onnx", providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
         b = ort.InferenceSession("lmk.onnx", providers=["CUDAExecutionProvider"])
         own = ort.SessionOptions()
-        c = ort.InferenceSession("x.onnx", own)                # explicit options are left alone
+        c = ort.InferenceSession("x.onnx", own)
     assert a.opts.intra_op_num_threads == b.opts.intra_op_num_threads == 6
     assert a.opts.inter_op_num_threads == 1 and a.providers[0] == "CUDAExecutionProvider"
     assert c.opts is own and own.intra_op_num_threads == 0
-    assert ort.InferenceSession("y.onnx").opts is None       # restored on exit
+    assert ort.InferenceSession("y.onnx").opts is None
 
 
 def test_report_flags_face_models_on_the_cpu(monkeypatch):
@@ -86,11 +86,12 @@ def test_decode_clip_serves_short_requests(monkeypatch):
     video = type(sys)("sang.video")
     video.open_video = lambda path: Reader(int(path.split(":")[0]), float(path.split(":")[1]))
     monkeypatch.setitem(sys.modules, "sang.video", video)
-    assert motion.decode_clip("2226:25", 1).shape == (1, 2, 2, 3)          # job 2026-10-16 crashed here
-    f = motion.decode_clip("600:50", 10, start=100)                          # 50 fps -> every second frame
+    assert motion.decode_clip("2226:25", 1).shape == (1, 2, 2, 3)
+    f = motion.decode_clip("600:50", 10, start=100)
     assert f[:, 0, 0, 0].tolist() == list(range(200, 220, 2))
     assert len(motion.decode_clip("600:25", 500, start=550)) == 50
     with pytest.raises(ValueError, match="too short"):
         motion.decode_clip("600:25", 500, start=595)
     with pytest.raises(ValueError, match="too short"):
         motion.decode_clip("5:25", 500)
+

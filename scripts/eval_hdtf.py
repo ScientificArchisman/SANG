@@ -2,16 +2,12 @@
 """HDTF evaluation with the metrics SOTA talking-head papers report: FID, FVD-16, CSIM, LSE-C,
 LSE-D (plus PSNR / SSIM), and a merged table with the published numbers (sang/sota_hdtf.py).
 
-    # evaluate (GPU job; ~2-3 min per clip, so give it time)
-    sbatch --time=12:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/eval_hdtf.py \\
-        --ckpt runs/motion_12k_anneal/best.pt --data /beegfs/work/$USER/HDTF --name g2
-    # a second setting, SANG row only (real and ceiling rows are shared with the first run)
-    sbatch ... scripts/eval_hdtf.py --ckpt ... --data ... --name m125 --cfg-mouth 1.25 --rows sang
-    # d1 with the blink rule; d1 with the speaker-style oracle (the real clip's own lip range)
-    sbatch ... scripts/eval_hdtf.py ... --name d1_blinks --rows sang --rules blinks
-    sbatch ... scripts/eval_hdtf.py ... --name d1_oracle --rows sang --lip-oracle range
-    # region swap: SANG with the real clip's head rotation (which part of the motion costs FVD / PSNR?)
-    sbatch ... scripts/eval_hdtf.py ... --name d1_real_rot --rows sang --real-regions rot
+    # evaluate (GPU job; ~1 h for 75 clips)
+    sbatch --time=16:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/eval_hdtf.py \\
+        --ckpt runs/d1_97h/last.pt --data /beegfs/work/$USER/HDTF --list configs/hdtf_test.csv \\
+        --rows sang --sampler g=2,mouth=1.25,tau=0.5,avg=4,steps=6 --name d1
+    # the renderer ceiling when the real motion is squeezed through k codes of a motion latent
+    sbatch ... scripts/eval_hdtf.py ... --rows gt_motion --gt-latent runs/latent/ae.pt --gt-k 16 --name lat_ae_k16
     # table only: merge any runs with the published numbers -> docs/hdtf_results.md
     python scripts/eval_hdtf.py --table results/hdtf/*/summary.json --write-doc docs/hdtf_results.md
 
@@ -23,9 +19,10 @@ Protocol (also written to <out>/protocol.json):
             every run scores the same clips. SANG never trained on HDTF (TalkVid only).
   per clip  first --seconds (default 10 s); source = frame 0; driving audio = the clip's own audio.
   rows      real       the ground-truth clip itself (LSE and CSIM only: the ceiling of each metric)
-            gt_motion  the clip's real LivePortrait motion, reduced to SANG's 42-d target and
-                       re-rendered from frame 0 through the same renderer and paste-back
-                       (the renderer ceiling: what perfect audio-to-motion would score)
+            gt_motion  the clip's real LivePortrait motion, reduced to SANG's 42-d target (--gt-target 45 / 70:
+                       with the real head placement / everything; --gt-latent: through the first --gt-k codes
+                       of a motion latent) and re-rendered from frame 0 through the same renderer and
+                       paste-back (the renderer ceiling: what perfect audio-to-motion would score)
             sang       SANG-M generated from audio, rendered with stitching, pasted back into
                        frame 0 with LivePortrait's crop mask so the output is in the GT's frame
             ditto      Ditto (antgroup/ditto-talkinghead, ACM MM 2025) re-run on the same clips by
@@ -39,15 +36,10 @@ Protocol (also written to <out>/protocol.json):
             PSNR / SSIM vs the ground-truth frames: audio-driven output is a different take, so
             these measure closeness to the real performance, not reconstruction quality
   motion    (sang row, with openness.json in the run's motion cache) blinks_per_min and lip_std of the
-            generated motion; with --rules the constraint info (own_blinks, added_blinks); with
-            --lip-oracle / --real-regions / --real-stats also the real clip's (real_blinks_per_min) and
-            lip_ccc / lip_corr against the real lip trajectory after and before (lip_ccc0) the oracle or
-            swap; head rotation std and mean |frame-to-frame change| in degrees (mean of the 3 axes):
-            rot_std0 / rot_vel0 as sampled, rot_std / rot_vel as rendered, real_rot_std / real_rot_vel
-  swap      --real-regions rot brow eyes mouth: those target columns come from the clip's REAL motion
-            (extracted as for the ceiling row), the rest from SANG; all four = the real 42-d motion through
-            SANG's own pipeline (calibrates against the gt_motion ceiling). An attribution, not a method.
-            --swap-reverse plays the real path backwards (reversed_path): same dynamics, wrong path
+            generated motion; with --real-stats also the real clip's (real_blinks_per_min), lip_ccc / lip_corr
+            against the real lip trajectory, and head rotation std and mean |frame-to-frame change| in degrees
+            (mean of the 3 axes): rot_std0 / rot_vel0 as sampled, rot_std / rot_vel as rendered (after the
+            sampler's render-time keys, e.g. ramp), real_rot_std / real_rot_vel
 Resumable: per-clip results go to <out>/clips/<row>/<clip>.{json,npz}; a rerun skips them.
 """
 import argparse
@@ -65,21 +57,15 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "third_party"))
 
-from sang.sota_hdtf import METRICS, markdown_table
+from sang.codec import load_wav
+from sang.sota_hdtf import markdown_table
 
 SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
-MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "own_blinks", "added_blinks", "lip_std", "lip_corr",
-               "lip_ccc0", "lip_ccc", "rot_std0", "rot_std", "real_rot_std", "rot_vel0", "rot_vel", "real_rot_vel")
+MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std0", "rot_std",
+               "real_rot_std", "rot_vel0", "rot_vel", "real_rot_vel")
 
 
-def reversed_path(y: torch.Tensor) -> torch.Tensor:
-    """A trajectory played backwards, shifted so it still starts where the original does: the same
-    amplitude and speed, but a path that neither follows the take nor the audio."""
-    return y.flip(0) - y[-1:] + y[:1]
-
-
-# ---------------------------------------------------------------------- test set
 def read_list(path: str, data: Path, crops: Path) -> list[Path]:
     """Clips from scripts/hdtf_testset.py's CSV (crop_rel under --data; md5 checked) or a plain
     file of clip names."""
@@ -115,58 +101,39 @@ def test_list(crops: Path, n: int) -> list[Path]:
     return [min(by_video[v])[1] for v in order][:n]
 
 
-def load_wav(path: Path, n_frames: int) -> torch.Tensor:
-    from decord import AudioReader
-    w = torch.from_numpy(AudioReader(str(path), sample_rate=SR, mono=True)[:].asnumpy()).float()[0]
-    w = w[: n_frames * HOP]
-    return torch.nn.functional.pad(w, (0, max(0, n_frames * HOP - w.numel())))
-
-
-# ---------------------------------------------------------------------- the evaluator
 class Evaluator:
     def __init__(self, args):
         from sang.bench import ArcFace, I3DFeats, InceptionFeats
-        from sang.codec import load_wavlm
         from sang.motion import MotionCodec
-        from sang.motion_model import Norm, build, ema_weights, guidance_vector, load_ema, parse_spec, sampler_kwargs
         self.args, self.dev = args, "cuda"
         self.codec = MotionCodec(device=self.dev)
         self.arc = ArcFace(device=self.dev)
         self.incep, self.i3d = InceptionFeats(self.dev), I3DFeats(self.dev)
         self.last_t, self.last_stats, self.read = {}, {}, None
         if "sang" in args.rows:
-            from sang.pipeline import Opts, Talker
-            cfg = torch.load(args.ckpt, map_location="cpu", weights_only=False)["cfg"]
-            gamma = guidance_vector(cfg["cfg_audio"] if args.cfg is None else args.cfg, mouth=args.cfg_mouth)
-            self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec, ema=args.ema, cfg_audio=gamma,
-                                 steps=args.steps, guide_ckpt=args.guide_ckpt, rules=args.rules)
+            from sang.naturalness import load_readouts
+            from sang.paths import motion_cache
+            from sang.pipeline import Talker
+            self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec)
             try:
-                self.read = self.talker.readouts
-            except OSError as e:                             # no openness.json: generation unchanged, no motion stats
-                if args.lip_oracle or args.real_regions or args.real_stats:
-                    sys.exit(f"--lip-oracle / --real-regions / --real-stats need the openness readouts: {e}")
-                self.read = None
+                self.read = load_readouts(motion_cache(self.talker.cfg["cache_dir"]) / "openness.json")
+            except OSError as e:
+                if args.real_stats:
+                    sys.exit(f"--real-stats needs the openness readouts: {e}")
                 print(f"no openness readouts ({e}): no blink / lip stats", flush=True)
-            self.opts = Opts.fast() if args.fast else Opts(cfg_batch=args.cfg_batch, render_batch=args.render_batch,
-                                                           half=args.half, gpu_paste=args.gpu_paste,
-                                                           reuse_crop=args.reuse_crop)
-            print(f"SANG {args.ckpt} (step {self.talker.step}); pipeline {self.opts}", flush=True)
+            print(f"SANG {args.ckpt} (step {self.talker.step}), sampler {self.talker.sampler}", flush=True)
+        if args.gt_latent:
+            from sang.latent import MotionLatent, Space
+            self.gt_space = Space(None, MotionLatent.unpack(torch.load(args.gt_latent, map_location="cpu",
+                                                                       weights_only=False)).to(self.dev))
 
-    # -- generators: each returns (output frames, matching ground-truth frames)
     def gen_sang(self, frames, wav):
-        """sang.pipeline.Talker: with every option off this is the original path, stage for stage; the stage
-        times (source, audio, motion, render, paste; CUDA-synchronised) go into the clip's json."""
-        from sang.naturalness import lip_style
+        """sang.pipeline.Talker; the stage times (source, audio, motion, render, paste; CUDA-synchronised) go into
+        the clip's json."""
         a, src = self.args, frames[0]
-        from sang.motion import REGIONS
-        real = self.real_motion(frames) if a.lip_oracle or a.real_regions or a.real_stats else None
-        swap = None
-        if a.real_regions:
-            y_sw = reversed_path(real["y"]) if a.swap_reverse else real["y"]
-            swap = (sorted(c for r in a.real_regions for c in REGIONS[r]), y_sw, real["span"][0])
-        gen, m, timer = self.talker.run(src, wav, len(frames), self.opts, seed=a.seed, held=a.held, stitch=a.stitch,
-                                        paste=a.paste_back, start=a.start, restyle=a.lip_oracle or "range",
-                                        style=lip_style(real["lip"], a.style_q) if a.lip_oracle else None, swap=swap)
+        real = self.real_motion(frames) if a.real_stats else None
+        gen, m, timer = self.talker.run(src, wav, len(frames), seed=a.seed, held=a.held, stitch=a.stitch,
+                                        paste=a.paste_back, start=a.start)
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
         self.last_stats = self.motion_stats(m, real)
         if not a.paste_back:
@@ -191,38 +158,40 @@ class Evaluator:
         from sang.naturalness import blink_events, ccc
         y = to_target(m.float())
         lip, eye = self.read["lip"](y).cpu().numpy(), self.read["eye"](y).cpu().numpy()
-        out = {"blinks_per_min": len(blink_events(eye)) * 60.0 * FPS / len(eye), "lip_std": float(lip.std()),
-               **{k: float(v) for k, v in self.talker.last.get("info", {}).items()}}
+        out = {"blinks_per_min": len(blink_events(eye)) * 60.0 * FPS / len(eye), "lip_std": float(lip.std())}
         if real is not None:
             s0, r = real["span"][0], real["lip"]
             g = lip[s0:s0 + len(r)]
             k = len(g)
-            g0 = self.read["lip"](self.talker.last["y"]).cpu().numpy()[s0:s0 + k]
             r = r[:k]
             rot = lambda v: (float(v.std(0).mean()), float(np.abs(np.diff(v, axis=0)).mean()))
-            (s_0, v_0), (s_1, v_1), (s_r, v_r) = (rot(self.talker.last["y"][s0:s0 + k, :3].cpu().numpy()),
+            y0 = to_target(self.talker.sampled.float())
+            (s_0, v_0), (s_1, v_1), (s_r, v_r) = (rot(y0[s0:s0 + k, :3].cpu().numpy()),
                                                   rot(y[s0:s0 + k, :3].cpu().numpy()), rot(real["y"][:k, :3].numpy()))
             out.update(real_blinks_per_min=len(blink_events(real["eye"])) * 60.0 * FPS / len(real["eye"]),
-                       lip_ccc=ccc(g, r), lip_ccc0=ccc(g0, r), lip_corr=float(np.corrcoef(g, r)[0, 1]),
+                       lip_ccc=ccc(g, r), lip_corr=float(np.corrcoef(g, r)[0, 1]),
                        rot_std0=s_0, rot_std=s_1, real_rot_std=s_r, rot_vel0=v_0, rot_vel=v_1, real_rot_vel=v_r)
         return out
 
     def gen_gt_motion(self, frames, wav):
-        from sang.motion import from_target, paste_back, to_target
+        from sang.motion import from_target, to_target
+        from sang.pipeline import GpuPaster
         a = self.args
-        d = self.codec.extract(frames)                      # fixed box; truncated at a shot cut
-        m = d["m"].float()
-        if a.gt_target in (42, 45):                         # 45: SANG's target with the real head placement
+        d = self.codec.extract(frames)
+        m = d["m"].float().to(self.dev)
+        if a.gt_latent:
+            m = self.gt_space.decode(self.gt_space.encode(m, m[:1], a.gt_k), m[:1])
+        elif a.gt_target in (42, 45):
             m = from_target(to_target(m, ref=m[:1] if a.gt_target == 45 else None), m[:1], held=a.held)
         state = self.codec.source_state(d["crops"][0], precropped=True)
-        crops = self.codec.render(None, m, relative=False, stitch=a.stitch, state=state)
+        crops = self.codec.render(None, m.cpu(), relative=False, stitch=a.stitch, state=state, out="torch")
         s0 = d["span"][0]
         gt = frames[s0:s0 + len(crops)]
         if not a.paste_back:
-            return crops, self.codec.crop_with_box(gt, np.array(self.codec._box(self.codec.landmarks(gt[0]))), size=crops.shape[1])[0]
-        return paste_back(crops, d["M_c2o"], gt[0]), gt
+            box = np.array(self.codec._box(self.codec.landmarks(gt[0])))
+            return crops.cpu().numpy(), self.codec.crop_with_box(gt, box, size=crops.shape[1])[0]
+        return GpuPaster(d["M_c2o"], gt[0], crops.shape[1], device=self.dev)(crops), gt
 
-    # -- metrics for one row of one clip
     def score(self, row: str, clip: Path, out_dir: Path, gen, gt, src):
         from sang.bench import csim, lse, psnr, ssim, write_mp4
         a = self.args
@@ -240,10 +209,10 @@ class Evaluator:
             vid.parent.mkdir(parents=True, exist_ok=True)
             tmp_wav = vid.with_suffix(".wav")
             from sang.voice import save_wav
-            save_wav(load_wav(clip, n), tmp_wav)
+            save_wav(load_wav(clip, 0, n), tmp_wav)
             write_mp4(gen, vid, fps=FPS, audio=tmp_wav)
             tmp_wav.unlink(missing_ok=True)
-            try:                                             # a SyncNet failure must not cost the clip its other metrics
+            try:
                 res["lse_offset"], res["lse_d"], res["lse_c"] = lse(vid)
             except Exception as e:
                 print(f"  [lse] {clip.stem} {row}: {type(e).__name__}: {e}", flush=True)
@@ -278,7 +247,7 @@ def run(args) -> None:
             continue
         try:
             frames = decode_clip(str(clip), int(args.seconds * FPS))
-            wav = load_wav(clip, len(frames))
+            wav = load_wav(clip, 0, len(frames))
             for row in todo:
                 if row == "real":
                     gen, gt = frames, frames
@@ -303,7 +272,7 @@ def run(args) -> None:
                 (d / f"{clip.stem}.json").write_text(json.dumps(res))
                 msg = "  ".join(f"{k} {v:.3f}" for k, v in res.items() if isinstance(v, float))
                 print(f"[{i}/{len(clips)}] {clip.stem:<28} {row:<9} {msg}", flush=True)
-        except Exception as e:                               # one bad clip never kills the run
+        except Exception as e:
             print(f"[{i}/{len(clips)}] SKIP {clip.stem}: {type(e).__name__}: {e}", flush=True)
     print(f"clips done in {time.time() - t0:.0f} s", flush=True)
     summarise(out, args)
@@ -329,7 +298,7 @@ def summarise(out: Path, args) -> dict:
         if mot:
             rows[row]["motion"] = mot
         tj = [j for j in js if "t_motion" in j]
-        if tj:                                       # generation speed: median over clips (the first warms up)
+        if tj:
             stages = sorted({k for j in tj for k in j if k.startswith("t_")})
             tot = [sum(j[k] for k in stages if k in j) for j in tj]
             rows[row]["timing"] = {"clips": len(tj), **{k: float(np.median([j[k] for j in tj if k in j])) for k in stages},
@@ -366,16 +335,14 @@ def ours_rows(summaries: list[dict]) -> list[dict]:
                 continue
             label, fam = LABELS[row]
             if row == "sang":
-                knobs = ([p["sampler"]] if p.get("sampler") else
-                         [f"γ {p.get('cfg') or 2:g}"] + ([f"mouth γ {p['cfg_mouth']:g}"] if p.get("cfg_mouth") else []))
-                knobs += [f"rules {p['rules']}"] if p.get("rules", "none") != "none" else []
-                knobs += [f"lip oracle {p['lip_oracle']}"] if p.get("lip_oracle") else []
-                knobs += ([f"real {'+'.join(p['real_regions'])}" + (" reversed" if p.get("swap_reverse") else "")]
-                          if p.get("real_regions") else [])
-                label = f"SANG-M ({s['name']}: {', '.join(knobs)})"
-            elif row in seen:                                # real / ceiling rows: once is enough
+                label = f"SANG-M ({s['name']}: {p.get('sampler') or 'run defaults'})"
+            elif row == "gt_motion" and p.get("gt_latent"):
+                label += f" through {p.get('gt_k')} codes of {Path(p['gt_latent']).name}"
+            elif row == "gt_motion" and p.get("gt_target", 42) != 42:
+                label += f", {p['gt_target']}-d"
+            if row != "sang" and label in seen:
                 continue
-            seen.add(row)
+            seen.add(label)
             out.append({"source": f"Ours (n={s['rows'][row]['n_clips']}, {p.get('seconds', '?'):g} s)", "method": label,
                         "family": fam, "params": {"sang": "53.4 M +LP", "ditto": "n/r +LP"}.get(row),
                         "m": s["rows"][row]["m"]})
@@ -398,7 +365,7 @@ def table(paths: list[str], write_doc: str | None) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--ckpt", default=str(REPO / "runs/motion_12k_anneal/best.pt"))
+    ap.add_argument("--ckpt", default=str(REPO / "runs/d1_97h/last.pt"))
     ap.add_argument("--data", help="HDTF root from scripts/download_hdtf.py (contains crops512/)")
     ap.add_argument("--name", default="sang", help="run name -> results/hdtf/<name>")
     ap.add_argument("--out", default=None)
@@ -410,33 +377,15 @@ def main() -> None:
     ap.add_argument("--rows", nargs="+", default=["real", "gt_motion", "sang"], choices=ROWS,
                     help="ditto needs --ditto-dir from scripts/ditto_hdtf.py, so it is opt-in")
     ap.add_argument("--start", default="source", choices=["null", "source"])
-    ap.add_argument("--cfg", type=float, default=None, help="audio guidance (default: the run's, 2.0)")
-    ap.add_argument("--cfg-mouth", type=float, default=None, help="audio guidance on the mouth only")
-    ap.add_argument("--steps", type=int, default=None)
-    ap.add_argument("--sampler", default=None, help="sampler spec, e.g. 'g=2,mouth=1.25,avg=4'; overrides --cfg/--cfg-mouth/--steps")
-    ap.add_argument("--ema", default=None, help="extra EMA decay saved by training with ema_extra (e.g. 0.999); default = the main EMA")
-    ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide checkpoint (for ag / ag_mouth in --sampler)")
-    ap.add_argument("--rules", default="none", choices=["none", "lips", "blinks", "both"],
-                    help="rule constraints at sampling (sang/naturalness.py): bilabial closures, blinks at pauses")
-    ap.add_argument("--lip-oracle", default=None, choices=["level", "range"],
-                    help="speaker-style oracle: move SANG's lip opening to the REAL clip's median (level) or "
-                         "robust range (range) before rendering; timing untouched. An upper bound, not a method")
-    ap.add_argument("--style-q", type=float, default=5.0, help="--lip-oracle range: the q / 100-q percentiles")
-    ap.add_argument("--real-regions", nargs="+", default=None, choices=["rot", "brow", "eyes", "mouth"],
-                    help="region swap: take these target regions from the clip's REAL motion, the rest from SANG")
-    ap.add_argument("--swap-reverse", action="store_true",
-                    help="--real-regions: play the real path backwards from the same start (same dynamics, wrong path)")
+    ap.add_argument("--sampler", default=None, help="sampler spec, e.g. 'g=2,mouth=1.25,tau=0.5,avg=4,steps=6' "
+                                                    "(sang.motion_model.SAMPLER_KEYS); default: the run's guidance and steps")
     ap.add_argument("--real-stats", action="store_true",
                     help="also extract each clip's real motion for the lip / blink / head-rotation stats (~10 s a clip)")
     ap.add_argument("--held", default="camera", choices=["camera", "head"])
-    ap.add_argument("--fast", action="store_true", help="every speed option below (sang.pipeline.Opts.fast)")
-    ap.add_argument("--cfg-batch", action="store_true", help="CFG pair of each Euler step as one batch")
-    ap.add_argument("--render-batch", type=int, default=1, help="frames per renderer call (1 = per-frame loop)")
-    ap.add_argument("--half", action="store_true", help="FP16 warping module and decoder")
-    ap.add_argument("--gpu-paste", action="store_true", help="paste-back on the GPU inside the face's box")
-    ap.add_argument("--reuse-crop", action="store_true", help="detect the source face once, not three times")
     ap.add_argument("--gt-target", type=int, default=42, choices=[42, 45, 70],
-                    help="ceiling row: SANG's 42-d target, 45 = with the real head placement (C4), or full 70-d")
+                    help="ceiling row: SANG's 42-d target, 45 = with the real head placement, or full 70-d")
+    ap.add_argument("--gt-latent", default=None, help="ceiling row through a motion latent (scripts/fit_latent.py)")
+    ap.add_argument("--gt-k", type=int, default=None, help="--gt-latent: codes kept")
     ap.add_argument("--stitch", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--paste-back", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--lse", action=argparse.BooleanOptionalAction, default=True)
@@ -450,8 +399,11 @@ def main() -> None:
         return table(args.table, args.write_doc)
     if not args.data:
         sys.exit("--data is required (the --out folder of scripts/download_hdtf.py)")
+    if args.gt_latent and not args.gt_k:
+        sys.exit("--gt-latent needs --gt-k")
     run(args)
 
 
 if __name__ == "__main__":
     main()
+

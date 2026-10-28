@@ -11,7 +11,7 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import sang.voice as V
-from sang.voice import (FRAME_S, SR, VoiceBank, auto_k, cer, chunks, fit_length, knn_features, match_level,
+from sang.voice import (SR, VoiceBank, auto_k, cer, chunks, fit_length, knn_features, match_level,
                         rms_db, save_wav, speech_segments, tier)
 
 
@@ -35,7 +35,7 @@ def test_fit_length_and_level():
 def test_speech_segments_bridge_and_drop():
     w = torch.cat([_silence(1), _speech(2), _silence(0.1), _speech(1), _silence(1), _speech(0.2), _silence(1)])
     segs = speech_segments(w)
-    assert len(segs) == 1, segs                          # 0.1 s gap bridged, 0.2 s blip dropped
+    assert len(segs) == 1, segs
     a, b = segs[0]
     assert abs(a / SR - 1.0) < 0.05 and abs(b / SR - 4.1) < 0.05
 
@@ -43,10 +43,10 @@ def test_speech_segments_bridge_and_drop():
 def test_chunks_merge_short_tail():
     w = _speech(7.0)
     cs = chunks(w, [(0, w.numel())], chunk_s=3.0)
-    assert [round(c.numel() / SR, 1) for c in cs] == [3.0, 4.0]          # 1 s tail < half a chunk -> merged
+    assert [round(c.numel() / SR, 1) for c in cs] == [3.0, 4.0]
     w = _speech(7.5)
     cs = chunks(w, [(0, w.numel())], chunk_s=3.0)
-    assert [round(c.numel() / SR, 1) for c in cs] == [3.0, 3.0, 1.5]     # 1.5 s = half: kept
+    assert [round(c.numel() / SR, 1) for c in cs] == [3.0, 3.0, 1.5]
     assert sum(c.numel() for c in chunks(w, [(0, SR), (2 * SR, w.numel())], chunk_s=2.0)) == w.numel() - SR
 
 
@@ -57,8 +57,8 @@ def test_knn_matches_brute_force_and_is_block_invariant():
     want = bank[sim.topk(4, dim=-1).indices].mean(1)
     assert torch.allclose(knn_features(q, bank, 4), want, atol=1e-5)
     assert torch.allclose(knn_features(q, bank, 4, block=7), want, atol=1e-5)
-    assert knn_features(q, bank[:2], 4).shape == (50, 16)                # k clamps to the bank size
-    exact = knn_features(bank[:5], bank, 1)                              # a bank frame's nearest is itself
+    assert knn_features(q, bank[:2], 4).shape == (50, 16)
+    exact = knn_features(bank[:5], bank, 1)
     assert torch.allclose(exact, bank[:5], atol=1e-5)
 
 
@@ -102,22 +102,22 @@ class _FakeSV:
 
 
 def test_bank_enrol_filters_other_speaker_dedupes_and_grows(tmp_path, monkeypatch):
-    audio = {"a1.wav": torch.cat([_speech(6, 0.3, 1), _silence(1)]),        # speaker A
-             "mixed.wav": torch.cat([_speech(6, 0.3, 2), _silence(1), _speech(3, 0.02, 3)]),  # A then B
+    audio = {"a1.wav": torch.cat([_speech(6, 0.3, 1), _silence(1)]),
+             "mixed.wav": torch.cat([_speech(6, 0.3, 2), _silence(1), _speech(3, 0.02, 3)]),
              "a2.wav": _speech(9, 0.3, 4)}
     for name in audio:
-        (tmp_path / name).write_bytes(b"x" * (len(name) + 1))              # real files: bank keys use stat()
+        (tmp_path / name).write_bytes(b"x" * (len(name) + 1))
     monkeypatch.setattr(V, "load_wav", lambda p, sr=SR: audio[Path(p).name])
     bank = VoiceBank(tmp_path / "bank")
     r = bank.enroll([tmp_path / "a1.wav", tmp_path / "mixed.wav"], _FakeKnn(), _FakeSV(), min_cos=0.5, log=lambda m: None)
-    assert abs(r["added_s"] - 12.0) < 0.2, r                             # B's 3 s dropped
+    assert abs(r["added_s"] - 12.0) < 0.2, r
     assert abs(bank.seconds - 12.0) < 0.2
-    again = VoiceBank(tmp_path / "bank")                                  # reload from disk
+    again = VoiceBank(tmp_path / "bank")
     assert again.feats.shape == bank.feats.shape and again.centroid is not None
     r = again.enroll([tmp_path / "a1.wav"], _FakeKnn(), _FakeSV(), log=lambda m: None)
-    assert r["added_s"] == 0.0                                            # already enrolled
+    assert r["added_s"] == 0.0
     r = again.enroll([tmp_path / "a2.wav"], _FakeKnn(), _FakeSV(), min_cos=0.5, log=lambda m: None)
-    assert abs(again.seconds - 21.0) < 0.3                                # the bank grows with more audio
+    assert abs(again.seconds - 21.0) < 0.3
     summary = (tmp_path / "bank" / "bank.json").read_text()
     assert '"minutes"' in summary and "kept_s" in summary
 
@@ -125,10 +125,11 @@ def test_bank_enrol_filters_other_speaker_dedupes_and_grows(tmp_path, monkeypatc
 def test_convert_keeps_length_and_level(monkeypatch):
     class Knn(_FakeKnn):
         def vocode(self, c):
-            return torch.randn(1, c.shape[1] * 320 - 80) * 0.05               # a few samples short, other level
+            return torch.randn(1, c.shape[1] * 320 - 80) * 0.05
     bank = VoiceBank("/nonexistent/bank")
     bank.feats = torch.randn(500, 1024).half()
     src = _speech(3.013, 0.2)
     y = V.convert(src, bank, Knn())
     assert y.numel() == src.numel()
     assert abs(rms_db(y[: -SR // 10]) - rms_db(src)) < 1.0
+

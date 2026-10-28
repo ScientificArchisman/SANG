@@ -2,7 +2,6 @@
 
 The FACE is still driven by the ORIGINAL driving audio (the model never sees converted speech, so
 nothing retrains and lip sync is what it was). Only the output audio track is converted:
-
     driving wav ─► kNN-VC's WavLM-Large, layer 6 (one vector per 20 ms)
                 ─► each frame replaced by the mean of its k nearest frames (cosine) in the target's bank
                 ─► prematched HiFi-GAN ─► wav on the SAME 20 ms grid as the input ─► muxed onto the video
@@ -33,19 +32,14 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from sang.codec import load_wav
+
 REPO = Path(__file__).resolve().parents[1]
 KNNVC_DIR = REPO / "third_party" / "knn-vc"
 SV_MODEL = "microsoft/wavlm-base-plus-sv"
-SR, HOP = 16000, 320                          # kNN-VC: 16 kHz, one WavLM frame per 320 samples (20 ms)
+SR, HOP = 16000, 320
 FRAME_S = HOP / SR
 AUDIO_EXT = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".opus", ".aac", ".mp4", ".mov", ".webm", ".mkv"}
-
-
-# ---------------------------------------------------------------------- audio helpers
-def load_wav(path: str | Path, sr: int = SR) -> torch.Tensor:
-    """Any container decord can read (wav, m4a, mp3, mp4, flac) -> [N] float at `sr`, mono."""
-    from decord import AudioReader
-    return torch.from_numpy(AudioReader(str(path), sample_rate=sr, mono=True)[:].asnumpy()).float()[0]
 
 
 def save_wav(wav: torch.Tensor, path: str | Path, sr: int = SR) -> Path:
@@ -115,7 +109,6 @@ def chunks(wav: torch.Tensor, segs: list[tuple[int, int]], chunk_s: float = 3.0)
     return out
 
 
-# ---------------------------------------------------------------------- kNN regression
 def knn_features(query: torch.Tensor, bank: torch.Tensor, k: int, block: int = 1024) -> torch.Tensor:
     """kNN-VC's matching step, memory-bounded: each query frame [T, D] -> the mean of its k nearest
     bank frames [N, D] by cosine similarity (same ranking as kNN-VC's fast_cosine_dist)."""
@@ -125,7 +118,7 @@ def knn_features(query: torch.Tensor, bank: torch.Tensor, k: int, block: int = 1
     out = []
     for i in range(0, query.shape[0], block):
         q = F.normalize(query[i:i + block].float(), dim=-1).to(bn.dtype)
-        idx = (q @ bn.T).topk(k, dim=-1).indices                  # [b, k]
+        idx = (q @ bn.T).topk(k, dim=-1).indices
         out.append(bank[idx].float().mean(1))
     return torch.cat(out) if out else query.new_zeros(0, bank.shape[1])
 
@@ -146,7 +139,6 @@ def tier(bank_seconds: float) -> str:
     return "plateau (>5 min): kNN-VC near its best; beyond ~30 min consider a per-speaker fine-tune A/B"
 
 
-# ---------------------------------------------------------------------- models
 def load_knnvc(device: str = "cuda"):
     """kNN-VC with the prematched vocoder, from third_party/knn-vc + torch.hub's weight cache
     (downloaded once on the login node by bash_scripts/install_voice.sh)."""
@@ -154,7 +146,7 @@ def load_knnvc(device: str = "cuda"):
         raise FileNotFoundError(f"kNN-VC not at {KNNVC_DIR}; run bash bash_scripts/install_voice.sh")
     if str(KNNVC_DIR) not in sys.path:
         sys.path.insert(0, str(KNNVC_DIR))
-    from hubconf import knn_vc                      # noqa: E402  (third_party/knn-vc)
+    from hubconf import knn_vc
     return knn_vc(pretrained=True, progress=False, prematched=True, device=device)
 
 
@@ -179,7 +171,6 @@ class SpeakerEncoder:
         return torch.cat(out)
 
 
-# ---------------------------------------------------------------------- the voice bank
 class VoiceBank:
     """One person's matching set on disk: <dir>/bank.pt {feats [N,1024] fp16, centroid [512],
     files {name: stats}} + <dir>/bank.json (human-readable summary). Grows with every enrolment."""
@@ -221,7 +212,7 @@ class VoiceBank:
         if not new:
             log(f"nothing new: {len(files)} file(s) already in the bank")
             return {"added_s": 0.0}
-        pieces, owner = [], []                                      # owner[i] = bank key of pieces[i]
+        pieces, owner = [], []
         for p in new:
             try:
                 w = load_wav(p)
@@ -231,14 +222,14 @@ class VoiceBank:
                 owner += [key] * len(cs)
                 self.files[key] = {"file": p.name, "audio_s": round(w.numel() / SR, 1),
                                    "speech_s": round(sum(c.numel() for c in cs) / SR, 1), "kept_s": 0.0}
-            except Exception as e:                                   # one bad file never kills enrolment
+            except Exception as e:
                 log(f"  skip {p.name}: {type(e).__name__}: {e}")
         if not pieces:
             return {"added_s": 0.0}
 
         keep = [True] * len(pieces)
         if sv is not None:
-            emb = sv.embed(pieces)                                   # [C, 512]
+            emb = sv.embed(pieces)
             if ref is not None:
                 self.centroid = sv.embed([load_wav(ref)])[0]
             elif self.centroid is None:
@@ -260,7 +251,6 @@ class VoiceBank:
         return {"added_s": added.shape[0] * FRAME_S, "total_s": self.seconds}
 
 
-# ---------------------------------------------------------------------- conversion
 @torch.inference_mode()
 def convert(wav: torch.Tensor, bank: VoiceBank, knnvc, k: int | None = None) -> torch.Tensor:
     """Driving speech [N] at 16 kHz -> the same speech in the bank's voice, [N] samples exactly,
@@ -268,7 +258,7 @@ def convert(wav: torch.Tensor, bank: VoiceBank, knnvc, k: int | None = None) -> 
     if bank.feats.shape[0] == 0:
         raise ValueError(f"voice bank {bank.dir} is empty; enrol audio first (scripts/enroll_voice.py)")
     dev = knnvc.device
-    q = knnvc.get_features(wav[None].float(), vad_trigger_level=0)               # [T, 1024]
+    q = knnvc.get_features(wav[None].float(), vad_trigger_level=0)
     bank_dev = bank.feats.to(dev)
     out = knn_features(q, bank_dev, k or auto_k(bank.seconds))
     y = knnvc.vocode(out[None].to(dev)).float().cpu().squeeze()
@@ -292,8 +282,6 @@ def voice_bank(path: str | Path, knnvc, sv: SpeakerEncoder | None = None, log=pr
     return bank
 
 
-
-# ---------------------------------------------------------------------- metrics
 def levenshtein(a: str, b: str) -> int:
     prev = list(range(len(b) + 1))
     for i, ca in enumerate(a, 1):
@@ -308,3 +296,4 @@ def cer(hyp: str, ref: str) -> float:
     """Character error rate of hyp against ref, whitespace-normalised, case-folded."""
     h, r = " ".join(hyp.lower().split()), " ".join(ref.lower().split())
     return levenshtein(h, r) / max(1, len(r))
+

@@ -25,11 +25,10 @@ import torch
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.motion import REGIONS, MotionCodec, to_target
 from sang.naturalness import eye_ratio, fit_readout, lip_ratio
-from sang.paths import MOTION_CACHE
+from sang.paths import MOTION_CACHE, load_index
 
 
 def main() -> None:
@@ -42,11 +41,7 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("tm", REPO / "scripts" / "train_motion.py")
-    tm = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(tm)
-    rows = random.Random(args.seed).sample(tm.load_index(Path(args.cache)), args.n)
+    rows = random.Random(args.seed).sample(load_index(Path(args.cache)), args.n)
 
     pairs_path = Path(args.cache) / "openness_pairs.pt"
     st = torch.load(pairs_path, weights_only=False) if pairs_path.exists() else \
@@ -65,8 +60,8 @@ def main() -> None:
             s, n = r.get("start", 0), min(args.frames, int(d["n"]))
             y = to_target(d["m"][:n].float())
             t = time.perf_counter()
-            vr = open_video(r["clip"])                      # decode ONLY the frames we landmark,
-            stride = vr.get_avg_fps() / 25.0                # on decode_clip's 25 fps clock
+            vr = open_video(r["clip"])
+            stride = vr.get_avg_fps() / 25.0
             want = [i for i in range(0, n, args.every) if int(round((s + i) * stride)) < len(vr)]
             frames = vr.get_batch([int(round((s + i) * stride)) for i in want]).asnumpy()
             tm_dec += time.perf_counter() - t
@@ -93,7 +88,7 @@ def main() -> None:
 
 def fit_and_write(st: dict, cache: Path) -> None:
     if len(set(st["G"])) < 10:
-        return                                          # too few clips for a held-out R^2
+        return
     Y, G = torch.stack(st["Y"]), np.array(st["G"])
     out = {}
     for name, target, cols in (("lip", st["L"], REGIONS["mouth"]), ("eye", st["E"], REGIONS["eyes"])):
@@ -111,3 +106,4 @@ def fit_and_write(st: dict, cache: Path) -> None:
 
 if __name__ == "__main__":
     main()
+

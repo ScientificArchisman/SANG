@@ -1,5 +1,4 @@
-"""Sampler options (report section A2-A4): mouth averaging, mouth temperature, autoguidance, guidance
-interval, Sway step schedule, and the spec strings the scripts sweep. CPU only, tiny model."""
+"""Sampler options: mouth averaging, mouth temperature, and the spec strings the scripts take. CPU only, tiny model."""
 import sys
 from pathlib import Path
 
@@ -8,9 +7,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sang.motion import REGIONS, T_DIM
-from sang.motion_model import (REF_DIM, MotionFlowTransformer, cfg_combine, flow_times, generate, parse_spec, sample,
-                               sampler_kwargs)
-from sang.naturalness import guided_generate
+from sang.motion_model import REF_DIM, MotionFlowTransformer, flow_times, generate, parse_spec, sample, sampler_kwargs
 
 MOUTH = REGIONS["mouth"]
 CFG = {"cfg_audio": 2.0, "sample_steps": 4, "frames": 16, "prefix": 4}
@@ -20,7 +17,7 @@ def _model(seed=0):
     torch.manual_seed(seed)
     m = MotionFlowTransformer(dim=32, depth=1, heads=2, audio_dim=8).eval()
     g = torch.Generator().manual_seed(seed)
-    for mod in m.modules():                                  # adaLN-Zero starts as the identity
+    for mod in m.modules():
         if isinstance(mod, torch.nn.Linear) and mod.weight.abs().sum() == 0:
             mod.weight.data = torch.randn(mod.weight.shape, generator=g) * 0.2
             mod.bias.data = torch.randn(mod.bias.shape, generator=g) * 0.2
@@ -39,43 +36,16 @@ def _gen(seed=3):
 
 def test_flow_times():
     assert flow_times(4) == pytest.approx([1.0, 0.75, 0.5, 0.25, 0.0])
-    t = flow_times(10, sway=-1.0)
-    assert t[0] == 1.0 and abs(t[-1]) < 1e-12 and all(a > b for a, b in zip(t, t[1:]))
-    assert 1.0 - t[1] < 0.1                                   # more, smaller steps near the noise end
-    with pytest.raises(ValueError):
-        flow_times(4, sway=-1.5)
 
 
-def test_defaults_match_the_original_euler_cfg_loop():
+def test_temperature_scales_the_starting_noise():
     m, (a, r, p) = _model(), _inputs()
-    got = sample(m, a, r, 16, prefix=p, steps=4, cfg_audio=2.0, generator=_gen())
-    x = torch.randn(1, 16, T_DIM, generator=_gen())          # the pre-change loop, written out
-    keep, null = torch.ones(1, dtype=torch.bool), torch.ones(1, dtype=torch.bool)
-    for i in range(4):
-        t = torch.full((1,), 1.0 - i / 4)
-        v = cfg_combine(m(x, t, a, r, prefix=p, prefix_keep=keep), m(x, t, a, r, prefix=p, prefix_keep=keep, drop_audio=null), 2.0)
-        x = x - 0.25 * v
-    assert torch.allclose(got, x, atol=1e-5)
-
-
-def test_interval_autoguidance_and_temperature_degenerate_cases():
-    m, (a, r, p) = _model(), _inputs()
-    base = sample(m, a, r, 16, prefix=p, steps=4, cfg_audio=2.0, generator=_gen())
-    no_guidance = sample(m, a, r, 16, prefix=p, steps=4, cfg_audio=1.0, generator=_gen())
-    assert torch.allclose(sample(m, a, r, 16, prefix=p, steps=4, cfg_audio=2.0, generator=_gen(), g_tmax=-1.0), no_guidance)
-    # guiding with the model itself adds (ag - 1)(v - v) = 0 (up to float rounding: v comes from the batched
-    # CFG pair, the guide's v from a single call)
-    assert torch.allclose(sample(m, a, r, 16, prefix=p, steps=4, cfg_audio=2.0, generator=_gen(), ag_model=m, ag=3.0),
-                          base, atol=1e-5)
-    weak = _model(seed=7)
-    ag = sample(m, a, r, 16, prefix=p, steps=4, cfg_audio=2.0, generator=_gen(), ag_model=weak, ag=2.0)
-    assert not torch.allclose(ag, base)
+    base = sample(m, a, r, 16, prefix=p, steps=4, generator=_gen())
     ones = torch.ones(T_DIM)
     assert torch.allclose(sample(m, a, r, 16, prefix=p, steps=4, generator=_gen(), noise_scale=ones), base)
     cold = ones.clone()
     cold[MOUTH] = 0.5
     assert not torch.allclose(sample(m, a, r, 16, prefix=p, steps=4, generator=_gen(), noise_scale=cold), base)
-    assert sample(m, a, r, 16, prefix=p, steps=6, generator=_gen(), sway=-0.8).shape == base.shape
 
 
 def test_mouth_average_keeps_one_sample_outside_the_mouth():
@@ -94,26 +64,15 @@ def test_mouth_average_keeps_one_sample_outside_the_mouth():
 def test_specs():
     assert parse_spec("g=2,mouth=1.25,avg=4") == {"g": 2.0, "mouth": 1.25, "avg": 4.0} and parse_spec("") == {}
     with pytest.raises(ValueError):
-        parse_spec("g=2,mouht=1.25")                          # typos fail loudly
-    kw = sampler_kwargs(parse_spec("mouth=1.1,avg=4,tau=0.7,steps=6,sway=-0.8,gmax=0.7"), CFG)
-    assert kw["mouth_avg"] == 4 and kw["steps"] == 6 and kw["sway"] == -0.8 and kw["g_tmax"] == 0.7
-    assert kw["cfg_audio"][MOUTH[0]] == 1.1 and kw["cfg_audio"][0] == 2.0                  # g defaults to the run's
+        parse_spec("g=2,mouht=1.25")
+    kw = sampler_kwargs(parse_spec("mouth=1.1,avg=4,tau=0.7,steps=6,ramp=1.5"), CFG)
+    assert kw["mouth_avg"] == 4 and kw["steps"] == 6 and "ramp" not in kw
+    assert kw["cfg_audio"][MOUTH[0]] == 1.1 and kw["cfg_audio"][0] == 2.0
     assert kw["noise_scale"][MOUTH[0]] == 0.7 and kw["noise_scale"][0] == 1.0
-    assert sampler_kwargs({}, CFG) == {"cfg_audio": 2.0, "cfg_rescale": 0.0, "steps": 4, "sway": 0.0,
-                                       "g_tmin": 0.0, "g_tmax": 1.0, "mouth_avg": 1}
-    assert sampler_kwargs({}, CFG, steps=9)["steps"] == 9
-    with pytest.raises(ValueError):
-        sampler_kwargs(parse_spec("ag_mouth=1.5"), CFG)       # autoguidance without a guide model
-    m = _model()
-    ag = sampler_kwargs(parse_spec("ag_mouth=1.5"), CFG, ag_model=m)["ag"]
-    assert ag[MOUTH[0]] == 1.5 and ag[0] == 1.0
+    assert sampler_kwargs({}, CFG) == {"cfg_audio": 2.0, "steps": 4, "mouth_avg": 1}
+    latent = {**CFG, "latent": "x.pt", "latent_k": 8}
+    assert sampler_kwargs(parse_spec("g=3,steps=6"), latent) == {"cfg_audio": 3.0, "steps": 6, "mouth_avg": 1}
+    for bad in ("mouth=1.25", "tau=0.5"):
+        with pytest.raises(ValueError):
+            sampler_kwargs(parse_spec(bad), latent)
 
-
-def test_guided_generate_passes_the_sampler_through():
-    m = _model()
-    g = torch.Generator().manual_seed(1)
-    audio, ref = torch.randn(1, 2 * 30, 8, generator=g), torch.randn(1, REF_DIM, generator=g)
-    samp = sampler_kwargs(parse_spec("mouth=1.25,steps=3,avg=2"), CFG)
-    y, _ = guided_generate(m, audio, ref, 30, CFG, None, torch.zeros(30 * 640), None, "none", seed=5, sampler=samp)
-    want = generate(m, audio, ref, 30, window=16, n_prefix=4, generator=torch.Generator().manual_seed(5), **samp)
-    assert torch.allclose(y, want)

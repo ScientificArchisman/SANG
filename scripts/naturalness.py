@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
-"""Rule-based naturalness metrics, REAL vs GENERATED, on unseen validation speakers. Motion space
-only: no rendering, so ~400 clips take minutes.
+"""Naturalness metrics, REAL vs GENERATED, on unseen validation speakers. Motion space only: no rendering,
+so ~300 clips take minutes. This is where the TalkVid lip-sync numbers (lip corr / CCC) come from.
 
-    sbatch bash_scripts/job.sh scripts/naturalness.py --ckpt runs/motion_12k_anneal/best.pt
+    sbatch bash_scripts/job.sh scripts/naturalness.py --ckpt runs/d1_97h/last.pt \\
+        --sync-offsets <cache>/sync_offsets_c10.json --variants g=2,mouth=1.25,tau=0.5,avg=4,steps=6
 
-Needs <cache>/openness.json from scripts/calibrate_openness.py. Pass 1 measures the REAL clips and
-writes <cache>/naturalness_stats.json (closure timing and depth, blink intervals and durations),
-which the constraints are built from. Pass 2 generates every clip once per --modes entry with the
-same seed, so the columns differ only by the constraints:
-
-    none    the model as trained
-    lips    bilabial closure enforced at sampling (sang/naturalness.py, no retraining)
-    blinks  blinks added in the model's long gaps, snapped to pauses
-    both
+Needs <cache>/openness.json from scripts/calibrate_openness.py. Every variant (a sampler spec) generates every
+clip once with the same seed, so the columns differ only by the sampler.
 
 Metrics (real is the reference column; aim to match it, not to maximise):
     closure_depth    median lowest lip openness around /p b m/           lower = more closed
@@ -22,10 +16,6 @@ Metrics (real is the reference column; aim to match it, not to maximise):
     lip_ccc          concordance with the real lip trajectory (timing AND amplitude; 1 = identical)
     blinks_per_min, ibi_median_s, ibi_cv, blink_ms, blink_at_pause (vs pause_cover = chance)
     beat_align       head-stroke / loudness-onset alignment (Bailando-style), vs beat_chance
-
---lip-oracle level range adds a column '<setting>+level' / '+range' per setting: the same samples with the
-lip opening moved to the REAL clip's median / robust range (sang.naturalness.restyle_lip; timing untouched,
-so lip_corr is unchanged). The lip_ccc gain is the most a per-speaker style predictor could buy.
 """
 import argparse
 import json
@@ -40,21 +30,17 @@ import torch
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from sang.codec import load_wav
+from sang.data import split_by_speaker
+from sang.latent import Space
 from sang.motion import to_target
-from sang.motion_model import Norm, build, ema_weights, load_ema, parse_spec, sampler_kwargs
-from sang.naturalness import (FPS, Guide, PhonemeRecognizer, audio_onsets, beat_alignment, blink_events,
-                              closure_minima, closure_offset, energy_db, guided_generate, head_beats,
-                              lip_style, load_readouts, load_wav, median_frame, pauses, restyle_lip)
-from sang.paths import motion_cache
-from sang.sync import clip_key
+from sang.motion_model import RENDER_KEYS, Norm, build, generate, parse_spec, sampler_kwargs
+from sang.naturalness import (FPS, PhonemeRecognizer, audio_onsets, beat_alignment, blink_events, closure_minima,
+                              closure_offset, energy_db, head_beats, load_readouts, median_frame,
+                              pause_near, pauses)
+from sang.paths import load_index, motion_cache
+from sang.sync import SyncOffsets, clip_key, shift_ticks, shift_wav
 from sang.talkvid import clip_languages, filter_langs, parse_langs
-from sang.sync import SyncOffsets, shift_ticks, shift_wav
-
-
-def pause_near(pause: np.ndarray, reach: int = 5) -> np.ndarray:
-    """Frames within `reach` of a pause frame."""
-    k = np.ones(2 * reach + 1)
-    return np.convolve(pause.astype(float), k, mode="same") > 0
 
 
 def measure(y_raw: torch.Tensor, c: dict, read: dict, st: dict, real=None) -> dict:
@@ -94,7 +80,7 @@ def summarise(ms: list[dict], st: dict) -> dict:
          "pause_cover": float(np.mean([m["pause_cover"] for m in ms])),
          "beat_align": float(np.nanmean([m["bas"] for m in ms])),
          "beat_chance": float(np.nanmean([m["chance"] for m in ms]))}
-    for k in ("lip_corr", "lip_std_r", "lip_ccc", "eye_std_r", "lip_self_corr"):
+    for k in ("lip_corr", "lip_std_r", "lip_ccc", "eye_std_r"):
         if ms and k in ms[0]:
             s[k] = float(np.nanmean([m[k] for m in ms]))
     return s
@@ -127,19 +113,10 @@ def main() -> None:
     ap.add_argument("--n", type=int, default=300, help="val clips")
     ap.add_argument("--max-frames", type=int, default=250)
     ap.add_argument("--min-frames", type=int, default=125)
-    ap.add_argument("--modes", nargs="+", default=["none", "lips", "blinks", "both"])
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--cfg", type=float, nargs="+", default=None,
-                    help="audio guidance values to sweep (default: the run's cfg_audio); columns become mode@cfg")
-    ap.add_argument("--steps", type=int, default=None, help="Euler steps (default: the run's sample_steps)")
-    ap.add_argument("--self-corr", action="store_true",
-                    help="also draw a second sample (seed + 1) per clip and report lip_self_corr: correlation "
-                         "between two samples. ~ lip_corr -> take-to-take variability; >> lip_corr -> model bias")
-    ap.add_argument("--variants", nargs="+", default=None,
-                    help="sampler variants, each a spec like 'g=2,mouth=1.25,avg=4,tau=0.7,steps=6,sway=-0.8,gmax=0.7,"
-                         "ag_mouth=1.5' (keys: sang.motion_model.SAMPLER_KEYS; ag* need --guide-ckpt)")
-    ap.add_argument("--ema", default=None, help="extra EMA decay saved by training with ema_extra (e.g. 0.999); default = the main EMA")
-    ap.add_argument("--guide-ckpt", default=None, help="autoguidance guide: a weaker, less-trained SANG checkpoint")
+    ap.add_argument("--variants", nargs="+", default=[""],
+                    help="sampler specs, e.g. 'g=2,mouth=1.25,tau=0.5,avg=4,steps=6' (sang.motion_model.SAMPLER_KEYS); "
+                         "default: the run's guidance and steps")
     ap.add_argument("--sync-offsets", default=None,
                     help="<cache>/sync_offsets.json: drop no-sync val clips and move each clip's audio (features and "
                          "waveform) by its SyncNet offset, so lip metrics compare against aligned ground truth")
@@ -147,11 +124,8 @@ def main() -> None:
                     help="val languages; default = the checkpoint's training languages (cfg 'lang'), 'all' = every "
                          "language. The breakdown by English / non-English is reported either way")
     ap.add_argument("--ref-frame", default="first", choices=["first", "median"],
-                    help="reference frame: frame 0 (default, as always) or the frame with the clip's median lip opening "
-                         "(the convention of ref_frame=median training; an oracle 'typical photo')")
-    ap.add_argument("--lip-oracle", nargs="*", default=[], choices=["level", "range"],
-                    help="speaker-style oracle columns: each sample moved to the real clip's lip median / robust range")
-    ap.add_argument("--style-q", type=float, default=5.0, help="--lip-oracle range: the q / 100-q percentiles")
+                    help="reference frame: frame 0, or the frame with the clip's median lip opening (an oracle "
+                         "'typical photo', the convention of ref_frame=median training)")
     ap.add_argument("--name", default="", help="suffix for the results file, so parallel sweeps do not overwrite")
     ap.add_argument("--out", default=str(REPO / "results/naturalness"))
     args = ap.parse_args()
@@ -160,28 +134,26 @@ def main() -> None:
     ck = torch.load(args.ckpt, map_location=dev, weights_only=False)
     cfg = ck["cfg"]
     model = build(cfg).to(dev).eval()
-    model.load_state_dict(ema_weights(ck, args.ema))
+    model.load_state_dict(ck["ema"])
     norm = Norm(**ck["norm"]).to(dev)
-    ag_model = load_ema(args.guide_ckpt, dev, norm) if args.guide_ckpt else None
-    if args.variants:                                         # fail on a typo now, not after the audio pass
-        for v in args.variants:
-            sampler_kwargs(parse_spec(v), cfg, ag_model)
+    space = Space.of(ck, norm, dev)
+    specs = [(v, parse_spec(v)) for v in args.variants]
+    for v, spec in specs:
+        sampler_kwargs(spec, cfg)
+        if any(k in spec for k in RENDER_KEYS):
+            raise SystemExit(f"{v}: render-time keys ({', '.join(RENDER_KEYS)}) change nothing in motion space")
     cache = motion_cache(cfg["cache_dir"])
     read = load_readouts(cache / "openness.json")
     for k, r in read.items():
         print(f"readout {k}: held-out R^2 {r.r2:.3f}", flush=True)
 
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("tm", REPO / "scripts" / "train_motion.py")
-    tm = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(tm)
-    train_rows, val = tm.split_by_speaker(tm.load_index(cache), cfg["val_frac"], cfg["seed"])
+    train_rows, val = split_by_speaker(load_index(cache), cfg["val_frac"], cfg["seed"])
     langs = parse_langs(args.lang if args.lang is not None else cfg.get("lang"))
     lang_of = clip_languages(cache)
     meta_path = cache / "talkvid_meta.json"
     person_of = ({k: v.get("person") for k, v in json.loads(meta_path.read_text()).items()}
                  if meta_path.exists() else {})
-    train_rows, _ = filter_langs(train_rows, parse_langs(cfg.get("lang")), lang_of)   # what the model trained on
+    train_rows, _ = filter_langs(train_rows, parse_langs(cfg.get("lang")), lang_of)
     train_persons = {person_of.get(clip_key(r)) for r in train_rows} - {None}
     if langs is not None:
         val, dropped = filter_langs(val, langs, lang_of)
@@ -193,21 +165,21 @@ def main() -> None:
     val = [r for r in sorted(val, key=lambda r: r["clip"]) if r["n"] >= args.min_frames][: args.n]
     print(f"{len(val)} val clips from {len({Path(r['path']).parent.name for r in val})} unseen speakers", flush=True)
 
-    # ---------------- pass 1: real clips, audio events
     phon = PhonemeRecognizer(dev)
     clips, t0 = [], time.time()
     for r in val:
         try:
             d = torch.load(r["path"], map_location="cpu", weights_only=True)
             n = min(args.max_frames, int(d["n"]))
-            s = so.shift(r) if so is not None else 0                 # WavLM ticks; 0 = uncorrected
-            wav = shift_wav(load_wav(r["clip"], r.get("start", 0), n), s)
+            s = so.shift(r) if so is not None else 0
+            wav = shift_wav(load_wav(Path(r["clip"]).with_suffix(".m4a"), r.get("start", 0), n), s)
             db = energy_db(wav, n)
-            y_real = to_target(d["m"][:n].float())
+            m = d["m"][:n].float()
+            y_real = to_target(m)
             k = 0 if args.ref_frame == "first" else median_frame(read["lip"](y_real).numpy())
             clips.append({"row": r, "groups": clip_groups(r, lang_of, person_of, train_persons), "n": n, "y": y_real,
-                          "kp0": d["kp"][k].float(), "y_ref": y_real[k:k + 1],
-                          "audio": shift_ticks(d["audio"][: 2 * n].float(), s), "wav": wav, "db": db,
+                          "kp0": d["kp"][k].float(), "m_ref": m[k:k + 1],
+                          "audio": shift_ticks(d["audio"][: 2 * n].float(), s), "db": db,
                           "pause": pauses(db), "events": phon.bilabials(wav, n)})
         except Exception as e:
             print(f"  skip {Path(r['clip']).name}: {type(e).__name__}: {e}", flush=True)
@@ -215,74 +187,31 @@ def main() -> None:
           f"{time.time() - t0:.0f} s", flush=True)
 
     offs = [o for c in clips for o in closure_offset(read["lip"](c["y"]).numpy(), c["events"])]
-    off = Counter(offs).most_common(1)[0][0] if offs else 0
-    st = {"closure_offset": int(off)}
+    st = {"closure_offset": int(Counter(offs).most_common(1)[0][0]) if offs else 0}
     real = [measure(c["y"], c, read, st) for c in clips]
     mins = np.concatenate([m["minima"] for m in real])
-    st.update(tau_close=float(np.median(mins)), tau_violate=float(np.percentile(mins, 90)))
-    ibis = [(b2[1] - b1[1]) / FPS for m in real for b1, b2 in zip(m["blinks"], m["blinks"][1:])]
-    st.update(ibi_s=[round(x, 3) for x in ibis],
-              blink_frames=[int(e - s) for m in real for s, _, e in m["blinks"]] or [5],
-              eye_closed=float(np.median([m["eye"][b] for m in real for _, b, _ in m["blinks"]] or [np.nan])),
-              offset_hist={int(k): v for k, v in sorted(Counter(offs).items())})
-    if not ibis:
-        raise SystemExit("no blinks found in real motion: the eye readout cannot see them; check openness.json R^2")
-    # the sampling-time Guide reads naturalness_stats.json; an offset-corrected pass must not replace it silently
-    (cache / ("naturalness_stats_sync.json" if so is not None else "naturalness_stats.json")).write_text(json.dumps(st))
-    print(f"closure offset {off:+d} frames (hist {st['offset_hist']}), tau_close {st['tau_close']:.3f}, "
-          f"eye_closed {st['eye_closed']:.3f}, {len(ibis)} real inter-blink intervals", flush=True)
+    st["tau_violate"] = float(np.percentile(mins, 90))
+    print(f"closure offset {st['closure_offset']:+d} frames, closure threshold {st['tau_violate']:.3f}", flush=True)
 
-    # ---------------- pass 2: generate per mode
-    guide = Guide(read, st, phon)
-    table = {"real": summarise(real, st)}
-    extra, by_group = {}, {}
-    if args.variants:
-        variants = [(v, parse_spec(v)) for v in args.variants]
-    elif args.cfg:
-        variants = [(f"{g:g}", {"g": g}) for g in args.cfg]
-    else:
-        variants = [("", {})]
-    for vname, spec in variants:
-        samp = sampler_kwargs(spec, cfg, ag_model, steps=args.steps)
-        for mode in args.modes:
-            col = mode if not vname else f"{mode}@{vname}"
-            ms, infos, t0 = [], Counter(), time.time()
-            oracle = {h: [] for h in args.lip_oracle}
-            for c, rm in zip(clips, real):
-                ref = norm.ref(c["kp0"][None].to(dev), c["y_ref"].to(dev))
-                y, info = guided_generate(model, c["audio"][None].to(dev), ref, c["n"], cfg, norm, c["wav"],
-                                          guide, mode, args.seed, events=c["events"], sampler=samp)
-                infos.update(info)
-                ms.append(measure(norm.untarget(y[0]).cpu(), c, read, st, real=rm))
-                for h, hm in oracle.items():                 # the same sample in the real clip's lip style
-                    z = restyle_lip(y[0], norm, read["lip"], lip_style(rm["lip"], args.style_q), h, args.style_q)
-                    hm.append(measure(norm.untarget(z).cpu(), c, read, st, real=rm))
-                if args.self_corr:
-                    y2, _ = guided_generate(model, c["audio"][None].to(dev), ref, c["n"], cfg, norm, c["wav"],
-                                            guide, mode, args.seed + 1, events=c["events"], sampler=samp)
-                    l1 = read["lip"](norm.untarget(y[0]).cpu()).numpy()
-                    l2 = read["lip"](norm.untarget(y2[0]).cpu()).numpy()
-                    ms[-1]["lip_self_corr"] = float(np.corrcoef(l1, l2)[0, 1]) if min(l1.std(), l2.std()) > 1e-8 else float("nan")
-            table[col] = summarise(ms, st)
-            table[col]["gen_s"] = time.time() - t0
-            by_group[col] = {g: lip_summary([m for m, c in zip(ms, clips) if g in c["groups"]]) for g in GROUPS}
-            for h, hm in oracle.items():
-                table[f"{col}+{h}"] = summarise(hm, st)
-                by_group[f"{col}+{h}"] = {g: lip_summary([m for m, c in zip(hm, clips) if g in c["groups"]])
-                                          for g in GROUPS}
-            extra[col] = dict(infos)
-            print(f"{col}: {time.time() - t0:.0f} s  {dict(infos)}", flush=True)
+    table, by_group = {"real": summarise(real, st)}, {}
+    for vname, spec in specs:
+        samp = sampler_kwargs(spec, cfg)
+        col = vname or "model"
+        ms, t0 = [], time.time()
+        for c, rm in zip(clips, real):
+            m_ref = c["m_ref"].to(dev)
+            ref = norm.ref(c["kp0"][None].to(dev), to_target(m_ref))
+            g = torch.Generator(device=dev).manual_seed(args.seed)
+            z = generate(model, c["audio"][None].to(dev), ref, c["n"], window=cfg["frames"], n_prefix=cfg["prefix"],
+                         generator=g, **samp)[0]
+            ms.append(measure(to_target(space.decode(z, m_ref)).cpu(), c, read, st, real=rm))
+        table[col] = summarise(ms, st)
+        table[col]["gen_s"] = time.time() - t0
+        by_group[col] = {g: lip_summary([m for m, c in zip(ms, clips) if g in c["groups"]]) for g in GROUPS}
+        print(f"{col}: {time.time() - t0:.0f} s", flush=True)
 
-    first = next(k for k in table if k != "real")
-    keys = [k for k in table[first] if k not in ("clips", "minutes", "gen_s")]
-    if len(table) <= 5:
-        wid = {c: max(12, len(c) + 2) for c in table}
-        print("\n" + f"{'metric':<16}" + "".join(f"{c:>{wid[c]}}" for c in table))
-        for k in keys:
-            print(f"{k:<16}" + "".join(f"{table[c].get(k, float('nan')):>{wid[c]}.3f}" for c in table))
-    # one row per setting: readable however many variants were swept
     cols = [k for k in ("lip_corr", "lip_ccc", "lip_std_r", "closure_viol", "closure_depth", "eye_std_r",
-                        "blinks_per_min", "beat_align", "lip_self_corr", "gen_s") if k in table[first] or k in table["real"]]
+                        "blinks_per_min", "blink_at_pause", "beat_align", "beat_chance", "gen_s")]
     w = max(len(c) for c in table) + 2
     print("\n" + f"{'setting':<{w}}" + "".join(f"{k:>15}" for k in cols))
     for c, s in table.items():
@@ -293,17 +222,14 @@ def main() -> None:
         print(f"{c:<{w}}" + "".join(f"{gs[g]['clips']:>8d} {gs[g]['lip_corr']:>8.3f} {gs[g]['lip_ccc']:>8.3f}" for g in GROUPS))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    tag = "_variants" if args.variants else ("" if not args.cfg else "_cfg" + "-".join(f"{g:g}" for g in args.cfg))
-    tag += (f"_lang-{'-'.join(langs)}" if langs and args.lang is not None else "")
-    tag += ("_sync" if so is not None else "") + (f"_ema{args.ema}" if args.ema else "") + (f"_{args.name}" if args.name else "")
-    tag += "_ref-median" if args.ref_frame == "median" else ""
-    tag += ("_oracle-" + "-".join(args.lip_oracle)) if args.lip_oracle else ""
+    tag = (f"_lang-{'-'.join(langs)}" if langs and args.lang is not None else "") + ("_sync" if so is not None else "")
+    tag += ("_ref-median" if args.ref_frame == "median" else "") + (f"_{args.name}" if args.name else "")
     name = f"{Path(args.ckpt).parent.name}_step{ck['step']}{tag}.json"
-    (out / name).write_text(json.dumps({"ckpt": args.ckpt, "step": ck["step"], "stats": {k: v for k, v in st.items() if k != "ibi_s"},
-                                        "val_languages": langs or "all", "table": table, "by_group": by_group,
-                                        "constraints": extra}, indent=1))
+    (out / name).write_text(json.dumps({"ckpt": args.ckpt, "step": ck["step"], "stats": st,
+                                        "val_languages": langs or "all", "table": table, "by_group": by_group}, indent=1))
     print(f"\nwrote {out / name}", flush=True)
 
 
 if __name__ == "__main__":
     main()
+

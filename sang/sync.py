@@ -10,7 +10,6 @@ Convention. `offset` is SyncNet's "AV offset" in 25 fps frames (joonson/syncnet_
 when the audio is LATE. (Checked on job 176657: the model's own loss-minimising audio shift has the
 same sign, corr 0.65, and generated lips lag the real ones on negative-offset clips.) The
 correction moves the audio by `offset` frames:
-
     out[t] = audio[t - offset]        offset -2 -> out[t] = audio[t + 2]: late audio pulled forward
 
 WavLM features tick at 50 Hz (2 per frame), so the shift is round(2 * offset) ticks, which lets a
@@ -25,10 +24,9 @@ from pathlib import Path
 import torch
 
 FPS, TPF, SR = 25, 2, 16000
-TICK = SR // (FPS * TPF)            # 320 samples per WavLM tick (20 ms)
+TICK = SR // (FPS * TPF)
 
 
-# ---------------------------------------------------------------------- keys
 def clip_key(row: dict) -> str:
     """'<speaker>/<clip>' from a cache-index row: stable across machines and cache moves."""
     p = Path(row["path"])
@@ -58,7 +56,6 @@ def pick_clips(rows: list[dict], per_video: int, min_frames: int = 0) -> list[di
     return out
 
 
-# ---------------------------------------------------------------------- shifting
 def shift_ticks(x: torch.Tensor, s: int) -> torch.Tensor:
     """[T, ...] -> same length, out[t] = x[t - s], edge-padded."""
     if not s:
@@ -83,7 +80,6 @@ def shift_wav(wav: torch.Tensor, s: int, tick: int = TICK) -> torch.Tensor:
     return out
 
 
-# ---------------------------------------------------------------------- measuring
 def real_clip_mp4(row: dict, n_frames: int, out: Path, ffmpeg: str | None = None) -> Path:
     """Frames [start, start + n) of a TalkVid clip with its separate .m4a audio, as one mp4 that
     syncnet_python can read: the exact segment the cache holds."""
@@ -167,7 +163,6 @@ def merge(measured: list[dict], rows: list[dict], min_conf: float = 3.0, max_abs
     return {"meta": meta, "clips": clips}
 
 
-# ---------------------------------------------------------------------- applying
 class SyncOffsets:
     """<cache>/sync_offsets.json at load time: which clips to keep and how far to move their audio."""
 
@@ -200,3 +195,4 @@ class SyncOffsets:
             else:
                 why[rec.get("why", "dropped")] += 1
         return out, dict(why)
+

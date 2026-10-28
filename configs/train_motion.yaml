@@ -1,79 +1,57 @@
-# SANG-M, bidirectional (M1): audio + reference image -> 42-d LivePortrait motion -> frozen renderer.
-# Non-streaming by decision (2026-09-23). Every number below cites where it came from; change one
-# and you are running an ablation, so say so in the run name.
-
-# ---- data (cache from scripts/cache_motion.py) ----
-cache_dir: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed   # sang/paths.py MOTION_CACHE
+cache_dir: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed
+sync_offsets: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets_c10.json
 out_dir: runs/motion_bidir
-val_frac: 0.05            # split by SPEAKER, as scripts/train.py
-seed: 0                   # salts the speaker split too: keep it fixed so every run validates on the same speakers
-init_seed: null           # weights, noise, dropout and batch order; null = seed. Change THIS for a second seed
+val_frac: 0.05
+seed: 0
+init_seed: null
 workers: 8
-frames: 64                # L. KDTalker Tab. 7: LSE-C 6.875 / 7.256 / 7.326 at 8 / 32 / 64 frames
-prefix: 10                # FLOAT's L' = 10 preceding frames
+frames: 64
+prefix: 10
 windows_per_clip: 8
-sync_offsets: ""          # <cache_dir>/sync_offsets.json (scripts/sync_offsets.py --merge): shift each clip's
-                          # audio by its SyncNet offset and drop no-sync clips. "" = off (diagnosis job 176657)
-lang: all                 # train AND val languages (TalkVid names / Whisper codes), e.g. [English]; --lang overrides
-train_clips: 0            # > 0: random subset of N train clips (size-matched controls); --train-clips overrides
-preload: true             # clips in RAM (~2 MB each): per-sample BeeGFS reads capped run 1 at 1.4 it/s
-ref_frame: random         # reference frame per window: random (Ditto) | median = one of the clip's typical frames
-                          # (lip opening in the middle ref_band by rank); C0 found random refs pull each speaker's
-                          # usual opening 39 % toward the average (docs/research_log.md 3.12)
-ref_band: 0.2             # middle 20 % = 40th-60th percentile of the clip's lip opening
+lang: all
+train_clips: 0
+preload: true
+ref_frame: random
+ref_band: 0.2
 
-# ---- model: sang/motion_model.py ----
 audio_encoder: wavlm-large
-audio_kernel: 5           # +/-2 frames (+/-80 ms) centred audio window per frame
-attn_window: 0            # 0 = full bidirectional; FLOAT uses +/-2. Untested either way -> ablate
+audio_kernel: 5
+attn_window: 0
 dim: 512
 layers: 8
 heads: 8
-dropout: 0.1               # run 172260 (dropout 0) memorised 3.7k clips after <5k steps
+dropout: 0.1
 max_frames: 512
-place: false              # C4 head placement: also generate t_x, t_y, log scale relative to the reference frame
-                          # (45-d target, a fifth loss region; <cache>/norm45.pt). false = hold the photo's (42-d)
+place: false
+gft: false
+latent: ""
+latent_k: 0
 
-# ---- objective ----
-lam_vel: 1.0              # FLOAT lambda_vel = 1
-p_audio: 0.1              # FLOAT condition dropout
+lam_vel: 1.0
+p_audio: 0.1
 p_ref: 0.1
-p_prefix: 0.5             # FLOAT: previous-window dropout, keeps the first window in distribution
-t_dist: uniform           # FLOAT. AVTR-1 uses logit_normal -> ablation
-# Phase B (report 'SANG next round improvements' section 4). All off by default; val loss always uses uniform t.
-t_mean: 0.0               # logit_normal shift: sigmoid(t_mean + t_scale * N(0,1)); > 0 = more training at high noise
-t_scale: 1.0              # SD3: narrow (< 1) distributions hurt few-step sampling, keep 1
-lam_cfm: 0.0              # contrastive flow matching (arXiv 2506.05350), ImageNet optimum 0.05; > 0.1 degenerates
-cfm_neg: clip             # negative = another window of the same clip (same person, other audio); batch = another clip
-cfm_regions: [mouth]
-lam_ccc: 0.0              # 1 - CCC of lip opening on the one-step clean estimate (samples with t <= aux_tmax)
-lam_spec: 0.0             # L1 on the rFFT (< spec_hz) of the clean estimate (FreDF 2402.02399), same t mask
-spec_hz: 10.0             # syllable-rate lip motion is ~3-8 Hz; above 10 Hz is extractor jitter
-spec_regions: [mouth]
-aux_tmax: 0.3             # aux losses only where the clean estimate is sharp (t = 1 is noise)
-ema_extra: []             # extra EMA decays kept in every checkpoint, e.g. [0.999, 0.9995]; pick with --ema at eval
+p_prefix: 0.5
+t_dist: logit_normal
+t_mean: 0.3
+t_scale: 1.0
 
-# ---- optimisation ----
-lr: 3.0e-4                # AVTR-1: 3e-4 -> 1e-5 cosine over 200k, on one GPU in 35 h
+lr: 3.0e-4
 min_lr: 1.0e-5
 weight_decay: 0.05
 betas: [0.9, 0.99]
-warmup_steps: 5000
-max_steps: 200000
-batch_size: 256           # KDTalker
+warmup_steps: 2000
+max_steps: 15000
+batch_size: 256
 grad_clip: 1.0
 bf16: true
-ema: 0.995                # AVTR-1
+ema: 0.995
 
-# ---- eval / sampling ----
-eval_every: 1000          # 5000 missed the optimum: run 172260 was best at its first eval
-patience: 8               # stop after 8 evals without val improvement
-val_windows_per_clip: 4   # 1 gave 3 val batches from 209 clips: too noisy to early-stop on
-eval_batches: 8           # x64 windows of unseen speakers
-train_eval: true          # also score as many fixed TRAINING clips exactly like val (EMA, uniform t, no dropout) at
-                          # every eval: the like-for-like train curve (EVAL_TRAIN lines, scripts/plot_curves.py).
-                          # Own RNG, so the run is bit-identical with it off; ~10 s per eval
-sample_steps: 10          # FLOAT Tab. 5: NFE 10 best FID/FVD; KDTalker flat beyond 5 steps
-cfg_audio: 2.0            # FLOAT Tab. 6
+eval_every: 1000
+patience: 0
+val_windows_per_clip: 4
+eval_batches: 8
+train_eval: true
+sample_steps: 10
+cfg_audio: 2.0
 log_every: 100
 resume: ""

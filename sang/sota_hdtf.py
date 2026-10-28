@@ -10,12 +10,10 @@ params: trainable generator as the paper states it; "+LP" = also runs the frozen
 renderer (~130 M, counted from its released fp32 weights); None = not reported.
 """
 
-# metric keys, in table order, with the direction that is better
 METRICS = (("FID", "low"), ("FVD", "low"), ("CSIM", "high"), ("LSE-C", "high"), ("LSE-D", "low"),
            ("PSNR", "high"), ("SSIM", "high"), ("E-FID", "low"))
 
 SOTA = [
-    # ---- FLOAT, ICCV 2025, arXiv 2412.01064, Table 1 (HDTF)
     {"source": "FLOAT Tab. 1", "method": "SadTalker", "family": "3DMM + warping", "params": None,
      "m": {"FID": 71.95, "FVD": 339.06, "CSIM": 0.644, "E-FID": 1.914, "LSE-D": 7.947, "LSE-C": 7.305}},
     {"source": "FLOAT Tab. 1", "method": "EDTalk", "family": "motion bases", "params": None,
@@ -28,24 +26,20 @@ SOTA = [
      "m": {"FID": 33.55, "FVD": 296.76, "CSIM": 0.823, "E-FID": 1.234, "LSE-D": 8.903, "LSE-C": 6.242}},
     {"source": "FLOAT Tab. 1", "method": "FLOAT", "family": "motion latent", "params": None,
      "m": {"FID": 21.10, "FVD": 162.05, "CSIM": 0.843, "E-FID": 1.229, "LSE-D": 7.290, "LSE-C": 8.222}},
-    # ---- KDTalker, IJCV 2025, arXiv 2503.12963, Table 1 (HDTF)
     {"source": "KDTalker Tab. 1", "method": "Real video", "family": "-", "params": None,
      "m": {"LSE-C": 8.243, "LSE-D": 6.929}},
     {"source": "KDTalker Tab. 1", "method": "KDTalker", "family": "LivePortrait keypoints", "params": "42.9 M +LP",
      "m": {"FID": 9.756, "CSIM": 0.949, "LSE-C": 7.326, "LSE-D": 7.548}},
-    # ---- Teller, CVPR 2025, arXiv 2503.18429, Table 1 (HDTF)
     {"source": "Teller Tab. 1", "method": "Real video", "family": "-", "params": None,
      "m": {"LSE-C": 8.094, "LSE-D": 6.976}},
     {"source": "Teller Tab. 1", "method": "Teller", "family": "motion tokens (AR)", "params": None,
      "m": {"FID": 21.352, "FVD": 173.463, "LSE-C": 7.696, "LSE-D": 7.536}},
-    # ---- IMTalker, arXiv 2511.22167, Table 2 (HDTF, audio-driven)
     {"source": "IMTalker Tab. 2", "method": "FLOAT", "family": "motion latent", "params": None,
      "m": {"FID": 9.164, "FVD": 198.964, "CSIM": 0.843}},
     {"source": "IMTalker Tab. 2", "method": "Ditto", "family": "LivePortrait motion", "params": "n/r +LP",
      "m": {"FID": 11.746, "CSIM": 0.886}},
     {"source": "IMTalker Tab. 2", "method": "IMTalker", "family": "implicit motion", "params": "39 M + 124 M",
      "m": {"FID": 9.084, "FVD": 143.623, "CSIM": 0.869, "LSE-C": 7.711}},
-    # ---- SoulX-FlashHead, 2026, Table 3 (HDTF, 75 clips)
     {"source": "SoulX Tab. 3", "method": "EchoMimic", "family": "pixel (SD-1.5)", "params": "~1.7 B est.",
      "m": {"FID": 9.00, "FVD": 155.71, "LSE-C": 3.56, "LSE-D": 10.22}},
     {"source": "SoulX Tab. 3", "method": "SoulX-FlashHead Pro", "family": "pixel (Wan2.1)", "params": "1.3 B",
@@ -62,7 +56,6 @@ SOTA = [
      "m": {"FID": 19.83, "FVD": 242.29, "LSE-C": 1.89, "LSE-D": 11.91}},
     {"source": "SoulX Tab. 3", "method": "SadTalker", "family": "3DMM + warping", "params": None,
      "m": {"FID": 21.58, "FVD": 207.67, "LSE-C": 4.60, "LSE-D": 9.21}},
-    # ---- Playmate2, arXiv 2510.12089 (HDTF), DPO with a lip-sync reward
     {"source": "Playmate2", "method": "Playmate2 (after DPO)", "family": "pixel", "params": None,
      "m": {"LSE-C": 8.15, "LSE-D": 7.32}},
 ]
@@ -73,7 +66,7 @@ def fmt(v) -> str:
         return "–"
     if isinstance(v, str):
         return v
-    t = f"{v:.3f}".rstrip("0")                     # keep the paper's precision: 9.00 -> 9.00, 9.756 -> 9.756
+    t = f"{v:.3f}".rstrip("0")
     whole, _, dec = t.partition(".")
     return f"{whole}.{dec.ljust(2, '0')}"
 
@@ -90,3 +83,4 @@ def markdown_table(ours: list[dict] | None = None) -> str:
         rows.append(f"| {r['source']} | {r['method']} | {r['family']} | {r['params'] or 'n/r'} | "
                     + " | ".join(fmt(r["m"].get(c)) for c in cols) + " |")
     return "\n".join(rows)
+

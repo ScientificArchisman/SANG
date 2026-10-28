@@ -1,13 +1,7 @@
-# --- python ---
 __pycache__/
 *.pyc
 .pytest_cache/
-.vidtok_src/
-
-# --- secrets: never commit ---
 .env
-
-# --- model weights and large vendored payloads ---
 *.safetensors
 *.ckpt
 *.pt
@@ -16,46 +10,27 @@ checkpoints/
 third_party/pydeps/
 third_party/syncnet/
 third_party/videomaev2/
-# third_party/vidtok/ IS tracked: vendored source needed to run the tokenizer
-
-# --- datasets and derived caches ---
 data/
 cache/
-
-# --- run outputs and logs ---
 runs/
 slurm_logs/
 results/train/
 results/diagnose_flow.json
-
-# --- vendored clones with downloaded weights (fetch on cluster) ---
 third_party/LivePortrait/
 third_party/syncnet_python/
 third_party/insightface_full/
 third_party/knn-vc/
-
-# --- large regenerable artefacts ---
 *.npy
 *.mp4
 *.tar
-
-# --- local tooling state ---
 .claude/
-
-# --- macOS ---
 .DS_Store
-
-# --- voice banks hold real people's voices: never commit ---
 voices/
 *.wav
 results/
-
-# --- HDTF eval: per-clip features/videos and the I3D weights (regenerable) ---
 third_party/fvd/
 results/hdtf/*/clips/
 results/hdtf/*/videos/
-
-# --- local-only notes (kept on disk, not on GitHub) ---
 docs/
 reports/
 research_notes/

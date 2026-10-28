@@ -102,7 +102,7 @@ def do_merge(args, cache: Path) -> None:
         sys.exit(f"nothing measured under {cache / 'sync'}; run the measuring job first")
     rows = load_index(cache)
     res = merge(measured, rows, min_conf=args.min_conf, max_abs=args.max_abs, max_spread=args.max_spread)
-    if args.exclude:                                       # scripts/check_audio.py: segments without their audio
+    if args.exclude:
         bad = json.loads(Path(args.exclude).read_text())["bad"]
         hit = [k for k in bad if k in res["clips"]]
         for k in hit:
@@ -145,3 +145,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

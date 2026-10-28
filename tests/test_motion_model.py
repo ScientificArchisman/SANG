@@ -1,4 +1,5 @@
-"""Motion track: the LivePortrait port, the 42-d target, and the bidirectional flow transformer.
+"""Motion track: the LivePortrait port, the 42-d and 69-d motion vectors, the bidirectional flow transformer,
+its objective (logit-normal t, Guidance-Free Training) and latent targets.
 
 Runs on CPU with no LivePortrait install, no weights and no data."""
 import sys
@@ -8,12 +9,13 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from sang.diffusion import DiffusionHead
-from sang.motion import REGIONS, T_DIM, from_target, rotation_matrix, to_target
-from sang.motion_model import (REF_DIM, MotionFlowTransformer, Norm, cfg_combine, flow_loss, generate,
-                               guidance_vector, sample)
+import pytest
 
-B, L, P, A = 2, 16, 4, 32         # batch, target frames, prefix frames, audio feature dim
+from sang.motion import REGIONS, T_DIM, WIDE_DIM, WIDE_REGIONS, from_target, from_wide, rotation_matrix, to_target, wide
+from sang.motion_model import (REF_DIM, MotionFlowTransformer, Norm, build, flow_loss, generate, guidance_vector,
+                               parts_of, sample, sample_t, t_dim_of)
+
+B, L, P, A = 2, 16, 4, 32
 
 
 def _model(**kw):
@@ -39,7 +41,6 @@ def _unzero(m: torch.nn.Module) -> None:
             mod.bias.data = torch.randn(mod.bias.shape, generator=g) * 0.2
 
 
-# ------------------------------------------------------------------ LivePortrait port
 def test_rotation_matches_upstream_formula():
     """Literal numpy transcription of upstream src/utils/camera.py get_rotation_matrix."""
     pitch, yaw, roll = 12.0, -25.0, 7.5
@@ -54,26 +55,31 @@ def test_rotation_matches_upstream_formula():
 
 def test_target_partition_and_round_trip():
     assert sorted(i for r in REGIONS.values() for i in r) == list(range(T_DIM)) and T_DIM == 42
+    assert sorted(i for r in WIDE_REGIONS.values() for i in r) == list(range(WIDE_DIM)) and WIDE_DIM == 69
     m = torch.randn(7, 70)
     m[:, 0] = 1.2
     m[:, 1:4] = torch.rand(7, 3) * 40 - 20
     assert torch.allclose(from_target(to_target(m), m), m, atol=1e-4)
+    base = m[:1].clone()
+    base[:, 6] = 0.3
+    back = from_wide(wide(m), base)
+    assert torch.allclose(back[:, [0, 1, 2, 3, 4, 5]], m[:, [0, 1, 2, 3, 4, 5]], atol=1e-4)
+    assert torch.allclose(back[:, 7:], m[:, 7:], atol=1e-4) and torch.all(back[:, 6] == 0.3)
 
 
-# ------------------------------------------------------------------ model
 def test_shapes_and_zero_init():
     m = _model()
     b = _batch()
     v = m(b["target"], torch.rand(B), b["audio"], b["ref"], prefix=b["prefix"])
     assert v.shape == (B, L, T_DIM)
     assert v.abs().max() == 0, "adaLN-Zero + zero output layer: v must start at exactly 0"
-    v = m(b["target"], torch.rand(B), b["audio"][:, : 2 * L], b["ref"])      # no prefix
+    v = m(b["target"], torch.rand(B), b["audio"][:, : 2 * L], b["ref"])
     assert v.shape == (B, L, T_DIM)
 
 
 def test_frames_are_coupled_unlike_the_per_token_head():
-    """The reason this module exists. dv_i/dx_j must be non-zero for j != i; for the old per-token
-    DiffusionHead it is exactly zero, so a one-pass window would get independent per-frame noise."""
+    """dv_i/dx_j must be non-zero for j != i; a per-frame denoiser would give a one-pass window independent
+    per-frame noise."""
     m = _model()
     _unzero(m)
     b = _batch(prefix=False)
@@ -82,12 +88,6 @@ def test_frames_are_coupled_unlike_the_per_token_head():
     v[0, 3].sum().backward()
     others = x.grad[0].abs().sum(-1)
     assert others[[i for i in range(L) if i != 3]].sum() > 0, "frames do not interact"
-
-    head = DiffusionHead(T_DIM, 32, hidden=32, depth=2)
-    _unzero(head)
-    z = torch.randn(1, L, T_DIM, requires_grad=True)
-    head(z, torch.full((1,), 0.5), torch.randn(1, L, 32))[0, 3].sum().backward()
-    assert z.grad[0, [i for i in range(L) if i != 3]].abs().sum() == 0, "control: per-token head"
 
 
 def test_attention_window_limits_reach():
@@ -136,7 +136,7 @@ def test_sample_and_long_generation():
     ref = torch.randn(1, REF_DIM)
     y = sample(m, torch.randn(1, 2 * L, A), ref, L, steps=3)
     assert y.shape == (1, L, T_DIM) and torch.isfinite(y).all()
-    n = 37                                               # not a multiple of the window
+    n = 37
     y = generate(m, torch.randn(1, 2 * n, A), ref, n, window=L, n_prefix=P, steps=2)
     assert y.shape == (1, n, T_DIM) and torch.isfinite(y).all()
 
@@ -149,12 +149,12 @@ def test_first_window_is_the_training_dropped_prefix_configuration():
     _unzero(m)
     ref, audio = torch.randn(1, REF_DIM), torch.randn(1, 2 * L, A)
     y = generate(m, audio, ref, L, window=L, n_prefix=P, steps=3, generator=torch.Generator().manual_seed(3))
-    junk = torch.randn(1, P, T_DIM)                      # a dropped prefix's content must not matter
+    junk = torch.randn(1, P, T_DIM)
     want = sample(m, torch.cat([torch.zeros(1, 2 * P, A), audio], 1), ref, L, prefix=junk, steps=3,
                   generator=torch.Generator().manual_seed(3), prefix_keep=torch.zeros(1, dtype=torch.bool))
     assert torch.allclose(y, want, atol=1e-5)
     old = sample(m, audio, ref, L, prefix=None, steps=3, generator=torch.Generator().manual_seed(3))
-    assert not torch.allclose(y, old, atol=1e-3)           # the old, never-trained configuration
+    assert not torch.allclose(y, old, atol=1e-3)
 
 
 def test_start_prefix_continues_from_the_given_frames():
@@ -163,7 +163,7 @@ def test_start_prefix_continues_from_the_given_frames():
     _unzero(m)
     ref, start = torch.randn(1, REF_DIM), torch.randn(1, P, T_DIM)
     n = 2 * L + 3
-    audio = torch.randn(1, 2 * (P + n), A)                 # P lead frames before frame 0
+    audio = torch.randn(1, 2 * (P + n), A)
     y = generate(m, audio, ref, n, window=L, n_prefix=P, steps=2, start=start,
                  generator=torch.Generator().manual_seed(5))
     assert y.shape == (1, n, T_DIM)
@@ -173,24 +173,97 @@ def test_start_prefix_continues_from_the_given_frames():
     assert torch.allclose(y[:, :L], w0, atol=1e-5) and torch.allclose(y[:, L:2 * L], w1, atol=1e-5)
 
 
-def test_per_region_guidance_and_rescale():
-    assert guidance_vector(2.0) == 2.0 and guidance_vector(2.0, mouth=2.0) == 2.0      # uniform stays a float
-    vec = guidance_vector(2.0, mouth=1.5)
+def test_per_region_guidance():
+    assert guidance_vector(2.0, REGIONS, T_DIM) == 2.0 and guidance_vector(2.0, REGIONS, T_DIM, mouth=2.0) == 2.0
+    vec = guidance_vector(2.0, REGIONS, T_DIM, mouth=1.5)
     assert vec.shape == (T_DIM,) and torch.all(vec[REGIONS["mouth"]] == 1.5)
     assert torch.all(vec[REGIONS["rot"] + REGIONS["eyes"] + REGIONS["brow"]] == 2.0)
-    g = torch.Generator().manual_seed(0)
-    v_c, v_u = torch.randn(2, 16, T_DIM, generator=g), torch.randn(2, 16, T_DIM, generator=g)
-    assert torch.allclose(cfg_combine(v_c, v_u, 2.0), cfg_combine(v_c, v_u, torch.full((T_DIM,), 2.0)))
-    mixed = cfg_combine(v_c, v_u, vec)
-    assert torch.allclose(mixed[..., REGIONS["mouth"]], (v_u + 1.5 * (v_c - v_u))[..., REGIONS["mouth"]])
-    full = cfg_combine(v_c, v_u, 2.0, rescale=1.0)                    # temporal std pulled back to v_c's
-    assert torch.allclose(full.std(dim=1), v_c.std(dim=1), atol=1e-5)
+    with pytest.raises(ValueError):
+        guidance_vector(2.0, {"latent": list(range(8))}, 8, mouth=1.5)
     m = _model().eval()
     _unzero(m)
     a, ref = torch.randn(1, 2 * L, A), torch.randn(1, REF_DIM)
     y1 = sample(m, a, ref, L, steps=3, cfg_audio=2.0, generator=torch.Generator().manual_seed(1))
     y2 = sample(m, a, ref, L, steps=3, cfg_audio=torch.full((T_DIM,), 2.0), generator=torch.Generator().manual_seed(1))
     assert torch.allclose(y1, y2, atol=1e-5)
+    x = torch.randn(1, L, T_DIM, generator=torch.Generator().manual_seed(1))
+    t = torch.ones(1)
+    v_c, v_u = m(x, t, a, ref), m(x, t, a, ref, drop_audio=torch.ones(1, dtype=torch.bool))
+    one = sample(m, a, ref, L, steps=1, cfg_audio=2.0, generator=torch.Generator().manual_seed(1))
+    assert torch.allclose(one, x - (v_u + 2.0 * (v_c - v_u)), atol=1e-5)
+
+
+def test_logit_normal_shift():
+    torch.manual_seed(0)
+    t0, t3 = sample_t(20000, "cpu", "logit_normal", 0.0), sample_t(20000, "cpu", "logit_normal", 0.3)
+    assert abs(float(t0.median()) - 0.5) < 0.02 and float(t3.median()) > 0.55
+    assert 0 < float(t3.min()) and float(t3.max()) < 1
+
+
+class Counting(torch.nn.Module):
+    """Records every beta / drop_audio a wrapped model is called with."""
+
+    def __init__(self, m):
+        super().__init__()
+        self.m, self.calls = m, []
+        self.gft, self.t_dim, self.parts, self.tpf = m.gft, m.t_dim, m.parts, m.tpf
+
+    def forward(self, *a, **kw):
+        self.calls.append((kw.get("beta"), kw.get("drop_audio")))
+        return self.m(*a, **kw)
+
+
+def test_gft_takes_guidance_as_an_input_and_samples_in_one_pass():
+    m = _model(gft=True).eval()
+    b = _batch(prefix=False)
+    t = torch.full((B,), 0.5)
+    base = m(b["target"], t, b["audio"], b["ref"])
+    assert torch.allclose(base, m(b["target"], t, b["audio"], b["ref"], beta=torch.full((B,), 0.3)))
+    _unzero(m)
+    v1, v3 = (m(b["target"], t, b["audio"], b["ref"], beta=torch.full((B,), x)) for x in (1.0, 0.3))
+    assert not torch.allclose(v1, v3)
+    drop = torch.ones(B, dtype=torch.bool)
+    assert torch.allclose(m(b["target"], t, b["audio"], b["ref"], drop_audio=drop, beta=torch.full((B,), 0.3)),
+                          m(b["target"], t, b["audio"], b["ref"], drop_audio=drop))
+    c = Counting(m)
+    sample(c, b["audio"], b["ref"], L, steps=3, cfg_audio=2.0)
+    assert len(c.calls) == 3 and all(torch.allclose(beta, torch.full((B,), 0.5)) and d is None for beta, d in c.calls)
+    with pytest.raises(ValueError):
+        sample(m, b["audio"], b["ref"], L, steps=2, cfg_audio=torch.full((T_DIM,), 2.0))
+
+
+def test_gft_loss_trains_the_sampling_model_and_not_the_unconditional_pass():
+    torch.manual_seed(0)
+    m = _model(gft=True)
+    _unzero(m)
+    b = _batch()
+    c = Counting(m)
+    loss, parts = flow_loss(c, b)
+    assert len(c.calls) == 2 and c.calls[1][1].all() and c.calls[1][0] is None
+    loss.backward()
+    assert m.beta[-1].weight.grad.abs().sum() > 0 and torch.isfinite(loss)
+    opt = torch.optim.AdamW(m.parameters(), lr=3e-3)
+    first = None
+    for _ in range(120):
+        loss, _ = flow_loss(m, b, p_audio=0.0, p_ref=0.0, p_prefix=0.0)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        first = first if first is not None else float(loss.detach())
+    assert float(loss.detach()) < 0.5 * first
+
+
+def test_a_latent_target_is_one_region_of_any_width():
+    cfg = {"latent": "x.pt", "latent_k": 12, "dim": 32, "layers": 1, "heads": 2, "audio_encoder": "wavlm-base"}
+    assert t_dim_of(cfg) == 12 and parts_of(cfg) == {"latent": list(range(12))}
+    assert t_dim_of({"place": True}) == 45 and set(parts_of({"place": True})) == {"rot", "brow", "eyes", "mouth", "place"}
+    m = build(cfg)
+    b = {"target": torch.randn(B, L, 12), "audio": torch.randn(B, 2 * L, 768), "ref": torch.randn(B, REF_DIM)}
+    loss, parts = flow_loss(m, b)
+    assert torch.isfinite(loss) and "fm_latent" not in parts and "vel" in parts
+    assert sample(m, b["audio"], b["ref"], L, steps=2).shape == (B, L, 12)
+    with pytest.raises(ValueError):
+        generate(m, b["audio"], b["ref"], L, window=L, n_prefix=0, steps=2, mouth_avg=2)
 
 
 def test_norm_round_trip():
@@ -206,3 +279,4 @@ def test_default_size():
     n = sum(p.numel() for p in m.parameters())
     assert 40e6 < n < 80e6, n
     print(f"default MotionFlowTransformer: {n / 1e6:.1f} M parameters")
+

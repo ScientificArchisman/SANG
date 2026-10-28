@@ -1,11 +1,6 @@
-"""Benchmark metrics the repo never had: CSIM, LSE-C/LSE-D, FID, FVD.
+"""Benchmark metrics: PSNR, SSIM, CSIM, LSE-C/LSE-D, FID, FVD, and background motion in demos.
 
-Shared by the motion-ceiling gate (M0) and the full evaluation (M1+), so the two report the
-same numbers computed the same way. Nothing here is differentiable and nothing is used in a
-training loop -- that is deliberate: the SyncNet term that WAS in the loop scored 0.20 against
-real video's 0.42 and was being satisfied by mouth-band texture (docs/recovery_plan §2.2).
-
-Every published number in this field is protocol-dependent (SadTalker's HDTF FID is 21.58 in
+Nothing here is differentiable and nothing is used in a training loop. Every published number in this field is protocol-dependent (SadTalker's HDTF FID is 21.58 in
 one paper and 71.95 in another), so nothing is comparable until the baselines are re-run
 through THIS module.
 """
@@ -28,18 +23,22 @@ def psnr(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def ssim(a: np.ndarray, b: np.ndarray) -> float:
-    """Mean per-frame SSIM over [T,H,W,3] uint8, reusing VidTok's implementation."""
+    """Mean per-frame SSIM over [T,H,W,3] uint8: 11x11 Gaussian window (sigma 1.5), frames average-pooled to
+    ~256 px first (VidTok's compute_ssim, MIT licence, which every SSIM in the research log used)."""
     import torch
-    sys.path.insert(0, str(REPO / "third_party"))
-    from vidtok.modules.util import compute_ssim
+    import torch.nn.functional as F
+    x, y = (torch.from_numpy(np.ascontiguousarray(v)).permute(0, 3, 1, 2).float().div_(255.0) for v in (a, b))
+    f = max(1, round(min(x.shape[-2:]) / 256))
+    if f > 1:
+        x, y = F.avg_pool2d(x, f), F.avg_pool2d(y, f)
+    c = torch.arange(11, dtype=x.dtype) - 5.0
+    g = (-(c[None] ** 2 + c[:, None] ** 2) / (2 * 1.5 ** 2)).exp()
+    conv = lambda z: F.conv2d(z, (g / g.sum()).expand(3, 1, 11, 11), groups=3)
+    mx, my = conv(x), conv(y)
+    sxx, syy, sxy = conv(x * x) - mx ** 2, conv(y * y) - my ** 2, conv(x * y) - mx * my
+    return float(((2 * mx * my + 1e-4) / (mx ** 2 + my ** 2 + 1e-4) * (2 * sxy + 9e-4) / (sxx + syy + 9e-4)).mean())
 
-    def prep(x):
-        t = torch.from_numpy(np.ascontiguousarray(x)).permute(3, 0, 1, 2).float().div_(255.0)
-        return t.unsqueeze(0)
-    return float(compute_ssim(prep(a), prep(b)))
 
-
-# ------------------------------------------------------------------ identity
 class ArcFace:
     """InsightFace buffalo_l embeddings. Already a LivePortrait dependency, so no new install.
 
@@ -61,7 +60,7 @@ class ArcFace:
         self.app.prepare(ctx_id=0 if device == "cuda" else -1, det_size=(320, 320))
 
     def embed(self, frame_rgb: np.ndarray) -> np.ndarray | None:
-        faces = self.app.get(np.ascontiguousarray(frame_rgb[:, :, ::-1]))   # insightface wants BGR
+        faces = self.app.get(np.ascontiguousarray(frame_rgb[:, :, ::-1]))
         if not faces:
             return None
         f = max(faces, key=lambda x: (x.bbox[2] - x.bbox[0]) * (x.bbox[3] - x.bbox[1]))
@@ -82,7 +81,6 @@ def csim(arc: ArcFace, source_rgb: np.ndarray, frames_rgb: np.ndarray, stride: i
     return float(np.mean(sims)) if sims else float("nan")
 
 
-# ------------------------------------------------------------------ lip sync
 def write_mp4(frames_rgb: np.ndarray, path: Path, fps: float = 25.0,
               audio: Path | None = None) -> Path:
     """[T,H,W,3] uint8 -> an mp4 that syncnet_python can ingest (yuv420p, optional audio mux)."""
@@ -95,7 +93,7 @@ def write_mp4(frames_rgb: np.ndarray, path: Path, fps: float = 25.0,
         for f in frames_rgb:
             w.append_data(np.ascontiguousarray(f))
     if audio:
-        import imageio_ffmpeg                      # ships its own binary: no system ffmpeg needed
+        import imageio_ffmpeg
         subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error",
                         "-i", str(silent), "-i", str(audio),
                         "-c:v", "copy", "-c:a", "aac", "-shortest", str(path)], check=True)
@@ -116,18 +114,12 @@ def lse(video: Path, workdir: Path | None = None, ref: str = "sang", verbose: bo
         raise FileNotFoundError(f"syncnet_python not at {SYNCNET}; see bash_scripts/install_motion.sh")
     tmp = Path(workdir or tempfile.mkdtemp(prefix="lse_"))
     (tmp / "work").mkdir(parents=True, exist_ok=True)
-    # absolute: syncnet_python runs with cwd=its own checkout, so a relative path does not resolve
     common = ["--data_dir", str(tmp / "work"), "--reference", ref, "--videofile", str(Path(video).resolve())]
-    # Decode as UTF-8 whatever the locale: on the compute nodes it is ASCII, and text=True turned one
-    # '…' or progress-bar glyph in syncnet's output into a UnicodeDecodeError that skipped the whole
-    # clip (every HDTF clip, 2026-10-07). The child gets UTF-8 stdio for the same reason.
     io = dict(capture_output=True, encoding="utf-8", errors="replace", timeout=600,
               env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"})
     try:
         subprocess.run([sys.executable, "run_pipeline.py", *common], cwd=SYNCNET, check=True, **io)
         r = subprocess.run([sys.executable, "run_syncnet.py", *common], cwd=SYNCNET, check=True, **io)
-        # syncnet_python PR #78 (2026-04-17) moved print -> logging, so the result lines ("AV offset",
-        # "Min dist", "Confidence") now arrive on STDERR; reading stdout alone gave nan every time.
         out = r.stdout + "\n" + r.stderr
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         tail = ((getattr(e, "stderr", "") or "") + (getattr(e, "stdout", "") or ""))[-800:]
@@ -160,27 +152,6 @@ def parse_syncnet(out: str) -> tuple[tuple[float, float, float], list[str]]:
     return tuple(vals), lines
 
 
-# ------------------------------------------------------------------ distribution metrics
-def fid(real_frames: list[np.ndarray], gen_frames: list[np.ndarray], device: str = "cuda") -> float:
-    """Frechet Inception Distance over all frames, pytorch-fid's Inception-v3 pool3 features."""
-    import torch
-    from pytorch_fid.inception import InceptionV3
-
-    model = InceptionV3([3]).to(device).eval()
-
-    def stats(frames):
-        feats = []
-        with torch.no_grad():
-            for i in range(0, len(frames), 32):
-                x = np.stack(frames[i:i + 32]).astype(np.float32) / 255.0
-                t = torch.from_numpy(x).permute(0, 3, 1, 2).to(device)
-                t = torch.nn.functional.interpolate(t, size=(299, 299), mode="bilinear", align_corners=False)
-                feats.append(model(t)[0].squeeze(-1).squeeze(-1).cpu().numpy())
-        f = np.concatenate(feats)
-        return f.mean(0), np.cov(f, rowvar=False)
-    return _frechet(*stats(real_frames), *stats(gen_frames))
-
-
 def _frechet(mu1, s1, mu2, s2, eps: float = 1e-6) -> float:
     from scipy import linalg
     diff = mu1 - mu2
@@ -190,15 +161,12 @@ def _frechet(mu1, s1, mu2, s2, eps: float = 1e-6) -> float:
     return float(diff.dot(diff) + np.trace(s1) + np.trace(s2) - 2 * np.trace(covmean))
 
 
-# ------------------------------------------------------------------ streaming features (HDTF eval)
-I3D_URL = "https://www.dropbox.com/s/ge9e5ujwgetktms/i3d_torchscript.pt?dl=1"   # StyleGAN-V's I3D port
 I3D_PATH = REPO / "third_party" / "fvd" / "i3d_torchscript.pt"
 
 
 class InceptionFeats:
     """pytorch-fid Inception-v3 pool3 features (2048-d), frames [N,H,W,3] uint8 -> [N, 2048].
-    Same network and resize as `fid` above, but per batch, so features from many clips can be
-    pooled without holding every frame in memory."""
+    Per batch, so features from many clips can be pooled without holding every frame in memory."""
 
     def __init__(self, device: str = "cuda"):
         from pytorch_fid.inception import InceptionV3
@@ -236,14 +204,14 @@ class I3DFeats:
         clips, out = [], []
         for k in range(n):
             x = torch.from_numpy(np.ascontiguousarray(video[k * clip_len:(k + 1) * clip_len])).float().div_(255.0)
-            x = x.permute(0, 3, 1, 2)                                            # T, C, H, W
+            x = x.permute(0, 3, 1, 2)
             h, w = x.shape[-2:]
             s = 224 / min(h, w)
             x = F.interpolate(x, size=(round(h * s), round(w * s)), mode="bilinear", align_corners=False)
             h, w = x.shape[-2:]
             top, left = (h - 224) // 2, (w - 224) // 2
             x = x[..., top:top + 224, left:left + 224]
-            clips.append(((x - 0.5) * 2).permute(1, 0, 2, 3))                 # C, T, H, W in [-1, 1]
+            clips.append(((x - 0.5) * 2).permute(1, 0, 2, 3))
         with torch.no_grad():
             for i in range(0, len(clips), batch):
                 b = torch.stack(clips[i:i + batch]).to(self.device)
@@ -256,13 +224,6 @@ def frechet(a: np.ndarray, b: np.ndarray) -> float:
     if len(a) < 2 or len(b) < 2:
         return float("nan")
     return _frechet(a.mean(0), np.cov(a, rowvar=False), b.mean(0), np.cov(b, rowvar=False))
-
-
-def fvd(real_videos: list[np.ndarray], gen_videos: list[np.ndarray], device: str = "cuda", clip_len: int = 16) -> float:
-    """FVD-16 between two lists of [T,H,W,3] uint8 videos (non-overlapping 16-frame clips)."""
-    i3d = I3DFeats(device)
-    return frechet(np.concatenate([i3d(v, clip_len) for v in real_videos]),
-                   np.concatenate([i3d(v, clip_len) for v in gen_videos]))
 
 
 def background_motion(real: np.ndarray, gen: np.ndarray, quiet_pct: float = 40.0,
@@ -296,14 +257,14 @@ def self_check() -> None:
     assert psnr(a, a) == float("inf")
     b = a.astype(np.int16) + 8
     got = psnr(a, np.clip(b, 0, 255).astype(np.uint8))
-    assert 28.0 < got < 32.0, got                     # 8/255 rms -> ~30 dB
+    assert 28.0 < got < 32.0, got
     mu = np.zeros(4); cov = np.eye(4)
-    # eps regularisation biases the trace term by -2*d*eps, so 0 is only approached to ~1e-5.
     assert abs(_frechet(mu, cov, mu, cov)) < 1e-4
     assert abs(_frechet(mu, cov, mu + 1, cov) - 4.0) < 1e-4
+    assert abs(ssim(a, a) - 1.0) < 1e-5 and ssim(a, np.clip(b, 0, 255).astype(np.uint8)) < 1.0
     rng = np.random.default_rng(1)
     still = np.broadcast_to((rng.random((1, 64, 64, 3)) * 255).astype(np.uint8), (10, 64, 64, 3))
-    shaky = np.stack([np.roll(still[0], i % 2, axis=1) for i in range(10)])      # 1-px wobble everywhere
+    shaky = np.stack([np.roll(still[0], i % 2, axis=1) for i in range(10)])
     r = background_motion(still, shaky)
     assert r["bg_real"] == 0.0 and r["bg_gen"] > 10 and background_motion(still, still)["bg_ratio"] == 0.0
     log = ("2026-09-30 10:12:33,512 - INFO - AV offset: \t3\n"
@@ -316,3 +277,4 @@ def self_check() -> None:
 
 if __name__ == "__main__":
     self_check()
+

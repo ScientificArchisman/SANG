@@ -2,7 +2,6 @@
 
 CPU only; no network, weights, decord or data."""
 import importlib.util
-import json
 import sys
 from pathlib import Path
 
@@ -11,7 +10,6 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 from sang.bench import frechet
-from sang.motion import paste_back
 from sang.sota_hdtf import METRICS, SOTA, markdown_table
 
 
@@ -35,26 +33,28 @@ def test_time_and_crop_parsing(tmp_path):
     v = {x["name"]: x for x in dl.parse_annotations(ann, ("RD",))}
     assert v["Radio11"]["clips"] == [(30.0, 60.0), (90.0, 150.0)]
     assert v["Radio11"]["crops"] == {0: (412, 599, 0, 599), 1: (557, 478, 0, 478)}
-    assert v["Radio24"]["clips"] == []                                   # URL without time stamps
+    assert v["Radio24"]["clips"] == []
     assert dl.crop_filter((412, 599, 0, 599), 720, 1280, 720) == "crop=598:598:412:0,scale=512:512:flags=lanczos"
-    assert dl.crop_filter((483, 390, 0, 390), 720, 1920, 1080).startswith("crop=584:584:724:0")   # 1080p download
+    assert dl.crop_filter((483, 390, 0, 390), 720, 1920, 1080).startswith("crop=584:584:724:0")
 
 
 def test_test_list_one_clip_per_video_stable_order(tmp_path):
     for n in ("A_0", "A_1", "B_1", "B_0", "C_0", "D_2"):
         (tmp_path / f"{n}.mp4").write_bytes(b"")
     picked = ev.test_list(tmp_path, 10)
-    assert sorted(p.stem for p in picked) == ["A_0", "B_0", "C_0", "D_2"]   # one per video, lowest index
+    assert sorted(p.stem for p in picked) == ["A_0", "B_0", "C_0", "D_2"]
     assert [p.stem for p in ev.test_list(tmp_path, 2)] == [p.stem for p in picked[:2]]
 
 
 def test_frechet_and_paste_back():
+    import torch
+    from sang.pipeline import GpuPaster
     r = np.random.default_rng(0)
     a = r.normal(size=(400, 6))
     assert abs(frechet(a, a)) < 1e-3 and abs(frechet(a, a + 1) - 6) < 1e-2
     assert np.isnan(frechet(a[:1], a))
-    M = np.array([[0.5, 0, 10], [0, 0.5, 20], [0, 0, 1.0]])               # 512 crop -> a 256 box at (10, 20)
-    out = paste_back(np.full((1, 512, 512, 3), 255, np.uint8), M, np.zeros((300, 300, 3), np.uint8))
+    M = np.array([[0.5, 0, 10], [0, 0.5, 20], [0, 0, 1.0]])
+    out = GpuPaster(M, np.zeros((300, 300, 3), np.uint8), 512, device="cpu")(torch.full((1, 512, 512, 3), 255, dtype=torch.uint8))
     assert out.shape == (1, 300, 300, 3) and out[0, 150, 150, 0] == 255 and out[0, 5, 5, 0] == 0
 
 
@@ -74,26 +74,19 @@ def test_lse_survives_non_ascii_syncnet_output(tmp_path, monkeypatch):
 
 def test_tables():
     assert {k for k, _ in METRICS} >= {"FID", "FVD", "CSIM", "LSE-C", "LSE-D"}
-    for r in SOTA:                                                       # every published value is a known metric
+    for r in SOTA:
         assert set(r["m"]) <= {k for k, _ in METRICS}, r
-    summary = {"name": "g2", "protocol": {"seconds": 10, "cfg": None, "cfg_mouth": 1.25},
+    summary = {"name": "d1", "protocol": {"seconds": 10, "sampler": "g=2,mouth=1.25"},
                "rows": {"real": {"n_clips": 75, "m": {"LSE-C": 8.1, "LSE-D": 6.9, "CSIM": 0.85}},
+                        "gt_motion": {"n_clips": 75, "m": {"FID": 16.4, "FVD": 31.0}},
                         "sang": {"n_clips": 75, "m": {"FID": 12.0, "FVD": 150.0, "LSE-C": 7.0}}}}
-    rows = ev.ours_rows([summary, summary])
-    assert [r["method"] for r in rows].count("Real video") == 1                 # shared rows appear once
-    assert "mouth γ 1.25" in rows[-1]["method"]
+    lat = {**summary, "name": "lat", "protocol": {"seconds": 10, "gt_latent": "runs/latent/ae.pt", "gt_k": 16}}
+    rows = ev.ours_rows([summary, summary, lat])
+    methods = [r["method"] for r in rows]
+    assert methods.count("Real video") == 1 and methods.count("Real motion → LivePortrait (ceiling)") == 1
+    assert "Real motion → LivePortrait (ceiling) through 16 codes of ae.pt" in methods
+    assert "SANG-M (d1: g=2,mouth=1.25)" in methods and "SANG-M (lat: run defaults)" in methods
     md = markdown_table(rows)
     assert md.splitlines()[2].startswith("| Ours (n=75, 10 s) | Real video")
-    rule = {**summary, "name": "d1_oracle", "protocol": {"seconds": 10, "sampler": "g=2", "rules": "blinks",
-                                                          "lip_oracle": "range"}}
-    assert ev.ours_rows([rule])[-1]["method"] == "SANG-M (d1_oracle: g=2, rules blinks, lip oracle range)"
-    swap = {**summary, "name": "d1_real_rot", "protocol": {"seconds": 10, "sampler": "g=2", "real_regions": ["rot", "eyes"]}}
-    assert ev.ours_rows([swap])[-1]["method"] == "SANG-M (d1_real_rot: g=2, real rot+eyes)"
-    swap["protocol"]["swap_reverse"] = True
-    assert ev.ours_rows([swap])[-1]["method"].endswith("real rot+eyes reversed)")
-    import torch
-    y = torch.cumsum(torch.randn(50, 3), 0)
-    r = ev.reversed_path(y)
-    assert torch.allclose(r[0], y[0]) and torch.allclose(r.std(0), y.std(0), atol=1e-4)
-    assert torch.allclose(r.diff(dim=0).abs().sort(0).values, y.diff(dim=0).abs().sort(0).values, atol=1e-4)
     assert "| KDTalker Tab. 1 | KDTalker |" in md and "9.756" in md
+

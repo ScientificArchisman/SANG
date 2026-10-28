@@ -32,7 +32,6 @@ KINDS = ("video_url", "resolution", "annotion_time", "crop_wh", "crop_ratio")
 RAW_URL = "https://raw.githubusercontent.com/MRzzm/HDTF/main/HDTF_dataset/{subset}_{kind}.txt"
 
 
-# ---------------------------------------------------------------------- annotations
 def fetch_annotations(dst: Path) -> None:
     dst.mkdir(parents=True, exist_ok=True)
     for s in SUBSETS:
@@ -45,7 +44,7 @@ def fetch_annotations(dst: Path) -> None:
 def _lines(path: Path) -> list[list[str]]:
     if not path.exists():
         return []
-    text = path.read_text(encoding="utf-8-sig").replace("\ufeff", "")       # WDA_video_url.txt starts with a BOM
+    text = path.read_text(encoding="utf-8-sig").replace("\ufeff", "")
     return [l.split() for l in text.splitlines() if l.strip()]
 
 
@@ -68,8 +67,8 @@ def parse_annotations(ann: Path, subsets=SUBSETS) -> list[dict]:
         crops = {}
         for r in _lines(ann / f"{s}_crop_wh.txt"):
             if len(r) >= 5:
-                crops[r[0].removesuffix(".mp4")] = tuple(int(float(v)) for v in r[1:5])   # min_w, w, min_h, h
-        for name in sorted(url):                                # Radio24 has a URL but no time stamps: skipped
+                crops[r[0].removesuffix(".mp4")] = tuple(int(float(v)) for v in r[1:5])
+        for name in sorted(url):
             clips = []
             for span in times.get(name, []):
                 m = re.match(r"^([\d:.]+)-([\d:.]+)$", span)
@@ -95,7 +94,6 @@ def crop_filter(box: tuple[int, int, int, int], ref_h: int, real_w: int, real_h:
     return f"crop={w}:{h}:{x}:{y},scale={size}:{size}:flags=lanczos"
 
 
-# ---------------------------------------------------------------------- media helpers
 def ffmpeg_exe() -> str:
     try:
         import imageio_ffmpeg
@@ -107,7 +105,7 @@ def ffmpeg_exe() -> str:
 def probe_size(path: Path) -> tuple[int, int]:
     """(width, height) of the first video stream, via ffmpeg's banner (no ffprobe needed)."""
     out = subprocess.run([ffmpeg_exe(), "-hide_banner", "-i", str(path)], capture_output=True,
-                         encoding="utf-8", errors="replace").stderr       # the banner carries YouTube titles
+                         encoding="utf-8", errors="replace").stderr
     m = re.search(r"Video:.*?(\d{2,5})x(\d{2,5})", out)
     if not m:
         raise RuntimeError(f"cannot read the frame size of {path}")
@@ -137,11 +135,11 @@ def download(v: dict, raw: Path, cookies: str | None, retries: int = 2) -> Path:
                 ydl.download([v["url"]])
             if dst.exists():
                 return dst
-            hits = sorted(raw.glob(f"{v['name']}.*"))          # merged into another container
+            hits = sorted(raw.glob(f"{v['name']}.*"))
             if hits:
                 subprocess.run([ffmpeg_exe(), "-y", "-loglevel", "error", "-i", str(hits[0]), "-c", "copy", str(dst)], check=True)
                 return dst
-        except Exception as e:                                  # removed / private / rate-limited
+        except Exception as e:
             err = e
             time.sleep(5)
     raise RuntimeError(f"download failed: {err}")
@@ -166,7 +164,6 @@ def cut_and_crop(v: dict, src: Path, clips_dir: Path, crops_dir: Path, size: int
     return done
 
 
-# ---------------------------------------------------------------------- main
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", required=True, help="dataset root: annotations/, raw/, clips/, crops512/ go here")
@@ -180,7 +177,7 @@ def main() -> None:
     args = ap.parse_args()
 
     try:
-        import yt_dlp  # noqa: F401
+        import yt_dlp
     except ImportError:
         sys.exit("yt-dlp is not installed: pip install yt-dlp")
 
@@ -231,3 +228,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

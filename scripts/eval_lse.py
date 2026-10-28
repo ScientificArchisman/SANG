@@ -37,10 +37,10 @@ def main() -> None:
     args = ap.parse_args()
 
     files = []
-    for a in map(Path, args.videos):                  # a folder = its *_real.mp4 + *_gen.mp4
+    for a in map(Path, args.videos):
         files += sorted(a.glob("*_real.mp4")) + sorted(a.glob("*_gen.mp4")) if a.is_dir() else [a]
     seen, uniq = set(), []
-    for f in files:                                   # the same real clip may come from several folders
+    for f in files:
         key = f.name if f.stem.endswith("_real") else str(f)
         if key not in seen:
             seen.add(key)
@@ -68,3 +68,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

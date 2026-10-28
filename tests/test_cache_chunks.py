@@ -30,7 +30,7 @@ def fake(T: int, cuts=()):
         if n < 8:
             raise ValueError("too short")
         calls.append(start)
-        return np.arange(start, start + n)                  # frame numbers stand in for frames
+        return np.arange(start, start + n)
 
     def extract(frames):
         s = int(frames[0])
@@ -57,15 +57,14 @@ def test_one_chunk_is_the_old_behaviour():
 
 
 def test_chunks_follow_each_other_and_skip_short_shots():
-    # 0-250 | 250-300 (50 frames: too short) | 300-330 (30: too short) | 330-580 | 580-600 (20: too short)
     got, _ = run(600, 4, cuts=(300, 330))
     assert got == [(0, 0, 250), (1, 330, 250)]
-    assert run(600, 2)[0] == [(0, 0, 250), (1, 250, 250)]        # stops at K chunks
-    assert run(1000, 10)[0][-1] == (3, 750, 250)                  # or at the end of the clip
+    assert run(600, 2)[0] == [(0, 0, 250), (1, 250, 250)]
+    assert run(1000, 10)[0][-1] == (3, 750, 250)
 
 
 def test_resume_adds_only_later_chunks():
-    got, calls = run(800, 3, prev={0: {"start": 0, "n": 240}})    # chunk 0 was cached earlier (cut at 240)
+    got, calls = run(800, 3, prev={0: {"start": 0, "n": 240}})
     assert got == [(1, 240, 250), (2, 490, 250)] and calls == [240, 490]
     got, calls = run(800, 2, prev={0: {"start": 0, "n": 240}, 1: {"start": 240, "n": 250}})
     assert got == [] and calls == []
@@ -99,9 +98,9 @@ def test_main_writes_chunks_resumes_from_any_index(tmp_path, monkeypatch):
 
     codec_mod = type(sys)("sang.codec")
     codec_mod.load_wavlm = lambda name, device: WavLM()
+    codec_mod.load_wav = lambda path, s, n: torch.zeros(n * 640)
     monkeypatch.setitem(sys.modules, "sang.codec", codec_mod)
     monkeypatch.setattr(m, "MotionCodec", Codec)
-    monkeypatch.setattr(m, "load_audio", lambda clip, s, n: torch.zeros(1, 1, n * 640))
     monkeypatch.setattr(torch.Tensor, "cuda", lambda self, *a, **k: self)
     monkeypatch.delenv("SLURM_ARRAY_TASK_ID", raising=False)
 
@@ -123,5 +122,6 @@ def test_main_writes_chunks_resumes_from_any_index(tmp_path, monkeypatch):
     assert all((out / Path(r["path"]).parent.name / Path(r["path"]).name).exists() for r in rows)
     d = torch.load(out / "vidB" / "vidB_NA_c1_5.000_29.000.pt", weights_only=True)
     assert d["n"] == 250 and d["audio"].shape == (500, 1024) and d["m"].shape == (250, 70)
-    m.main()                                                 # rerun: everything is cached already
+    m.main()
     assert len((out / "index_c3_000.jsonl").read_text().splitlines()) == 5
+

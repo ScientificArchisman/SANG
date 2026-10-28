@@ -20,7 +20,6 @@ has probability < --min-prob is 'unk'. A "speaker" is a TalkVid source video (it
 same person can appear in several videos, so this is an upper bound on distinct people.
 """
 import argparse
-import importlib.util
 import json
 import sys
 import time
@@ -36,20 +35,14 @@ from tqdm import tqdm
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.paths import DATA_ROOT, motion_cache
+from sang.data import split_by_speaker
+from sang.paths import DATA_ROOT, load_index, motion_cache
 from sang.talkvid import WHISPER_NAMES, build_lookup, match
 from sang.sync import SyncOffsets, clip_key, video_of
 
 FPS = 25
 CLIPS_PER_VIDEO_BINS = [(1, 1), (2, 2), (3, 5), (6, 10), (11, 20), (21, 50), (51, 10 ** 9)]
 SECONDS_BINS = [(0, 5), (5, 10), (10, 15), (15, 20), (20, 10 ** 9)]
-
-
-def load_train_module():
-    spec = importlib.util.spec_from_file_location("tm", REPO / "scripts" / "train_motion.py")
-    tm = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(tm)
-    return tm
 
 
 def bin_counts(values, bins) -> list[dict]:
@@ -106,7 +99,7 @@ def split_stats(rows: list[dict], langs: dict, offsets: SyncOffsets | None, meta
         lang_clips[code] += 1
         lang_hours[code] += r["n"] / FPS / 3600
     votes = {}
-    for r in rows:                                          # a video's language = its clips' majority
+    for r in rows:
         votes.setdefault(video_of(r), Counter())[langs.get(clip_key(r), {}).get("lang", "unk")] += 1
     lang_videos = Counter(c.most_common(1)[0][0] for c in votes.values())
     counts = sorted(per_video.values(), reverse=True)
@@ -162,7 +155,7 @@ class WhisperLID:
 
 
 def label_languages(rows: list[dict], cache: Path, whisper: str, dev: str, batch: int, workers: int) -> dict:
-    from sang.naturalness import load_wav
+    from sang.codec import load_wav
     path = cache / "lang_lid.json"
     langs = json.loads(path.read_text()) if path.exists() else {}
     todo = [r for r in rows if clip_key(r) not in langs]
@@ -173,7 +166,7 @@ def label_languages(rows: list[dict], cache: Path, whisper: str, dev: str, batch
 
     def load(r):
         try:
-            return load_wav(r["clip"], r.get("start", 0), min(int(r["n"]), 10 * FPS)).numpy()
+            return load_wav(Path(r["clip"]).with_suffix(".m4a"), r.get("start", 0), min(int(r["n"]), 10 * FPS)).numpy()
         except Exception:
             return None
 
@@ -210,11 +203,10 @@ def main() -> None:
 
     cfg = yaml.safe_load(Path(args.config).read_text())
     cache = motion_cache(cfg["cache_dir"])
-    tm = load_train_module()
     print(f"reading the cache index in {cache}", flush=True)
-    rows = tm.load_index(cache)
+    rows = load_index(cache)
     print(f"{len(rows)} cached clips", flush=True)
-    train, val = tm.split_by_speaker(rows, cfg["val_frac"], cfg["seed"])
+    train, val = split_by_speaker(rows, cfg["val_frac"], cfg["seed"])
     so_path = None if args.sync_offsets == "none" else Path(args.sync_offsets or cache / "sync_offsets.json")
     so = SyncOffsets.load(so_path) if so_path and so_path.exists() else None
     if so is not None:
@@ -222,7 +214,7 @@ def main() -> None:
         val_used, drop_v = so.filter(val)
     else:
         train_used, val_used, drop_t, drop_v = train, val, {}, {}
-    min_frames = cfg["frames"] + cfg["prefix"]                # MotionWindows needs one full window
+    min_frames = cfg["frames"] + cfg["prefix"]
     train_used = [r for r in train_used if r["n"] >= min_frames]
     val_used = [r for r in val_used if r["n"] >= min_frames]
 
@@ -291,3 +283,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

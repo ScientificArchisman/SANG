@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""Train the bidirectional MotionFlowTransformer on the motion cache (M1).
+"""Train the bidirectional MotionFlowTransformer on the motion cache.
 
-    sbatch bash_scripts/train_motion.sh                      # configs/train_motion.yaml
-    sbatch bash_scripts/train_motion.sh --config configs/train_motion.yaml resume=runs/motion_bidir/last.pt
+    sbatch bash_scripts/train_motion.sh out_dir=runs/<name> [key=value ...]     # configs/train_motion.yaml
+
+Options beyond the yaml's defaults (the d1 recipe):
+  place=true            also generate the head placement (45-d target)
+  gft=true              Guidance-Free Training: guidance becomes an input, one pass per sampling step
+  latent=<path.pt> latent_k=<k>
+                        generate the first k codes of a motion latent from scripts/fit_latent.py instead of the
+                        hand-picked 42-d target (everything LivePortrait renders, relative to the photo)
 
 Validation is in motion space only -- no renderer in the loop -- and reports the two failure modes
 this architecture is most exposed to, using Motar's (arXiv:2609.10317) rollout ratios, ideal 1.0:
   std_r  generated / GT temporal std     -> << 1 is the static, mean-seeking collapse
   vc_r   generated / GT frame-diff std   -> >> 1 is jitter, << 1 is frozen
-plus audio_gain: mouth error with a DIFFERENT clip's audio over mouth error with the right audio.
-~1.0 means the model ignores audio -- which is exactly how v3 failed (2.7% sensitivity).
-HDTF FID/FVD/LSE are measured by rendering; see scripts/infer_motion.py.
+plus audio_gain: mouth error with a DIFFERENT clip's audio over mouth error with the right audio
+(~1.0 = the model ignores audio). A latent run reports them on the decoded 69-d motion.
 """
 import argparse
 import copy
@@ -22,159 +27,31 @@ import time
 from pathlib import Path
 
 import torch
-import yaml
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.motion import PLACE, REGIONS, T_DIM, placement, to_target
+from sang.data import MotionWindows, fit_norm, fit_place_norm, load_cfg, split_by_speaker
+from sang.latent import MotionLatent
+from sang.motion import WIDE_REGIONS
 from sang.motion_model import Norm, build, flow_loss, sample
-from sang.naturalness import typical_frames
 from sang.paths import load_index
+from sang.sync import SyncOffsets, clip_key
 from sang.talkvid import clip_languages, filter_langs, parse_langs
-from sang.sync import SyncOffsets, clip_key, shift_ticks
-
-TPF = 2
 
 
-# ---------------------------------------------------------------------- data
-def split_by_speaker(rows: list[dict], val_frac: float, seed: int):
-    """Speaker-disjoint split, decided per speaker by a hash of its name.
-
-    The speaker is the clip's parent directory, so val measures unseen identities. Hashing (rather
-    than shuffling the speakers present) keeps every speaker on the same side as the cache grows:
-    runs trained on 3.7k and 16k clips are validated on the same people, and nobody who was in a
-    past run's train set can turn up in a later run's val set. `seed` salts the hash."""
-    import hashlib
-
-    def is_val(spk: str) -> bool:
-        h = int(hashlib.md5(f"{seed}:{spk}".encode()).hexdigest(), 16)
-        return (h % 10_000) < val_frac * 10_000
-
-    val = {Path(r["path"]).parent.name for r in rows if is_val(Path(r["path"]).parent.name)}
-    return ([r for r in rows if Path(r["path"]).parent.name not in val],
-            [r for r in rows if Path(r["path"]).parent.name in val])
-
-
-def fit_norm(rows: list[dict], n_clips: int = 500, seed: int = 0) -> Norm:
-    pick = random.Random(seed).sample(rows, min(n_clips, len(rows)))
-    ys, kps = [], []
-    for r in pick:
-        d = torch.load(r["path"], map_location="cpu", weights_only=True)
-        ys.append(to_target(d["m"].float()))
-        kps.append(d["kp"].float())
-    return Norm.fit(torch.cat(ys), torch.cat(kps))
-
-
-def fit_place_norm(rows: list[dict], base: Norm, n_clips: int = 500, seed: int = 0, floor: float = 1e-3) -> Norm:
-    """`base` (the 42-d Norm, kept as it is) + statistics of the 3 head-placement columns: each frame's
-    placement relative to a random frame of its clip, as training draws the reference."""
-    rng = random.Random(seed)
-    ps = []
-    for r in rng.sample(rows, min(n_clips, len(rows))):
-        p = placement(torch.load(r["path"], map_location="cpu", weights_only=True)["m"].float())
-        ps.append(p - p[rng.randrange(len(p))])
-    ps = torch.cat(ps)
-    return Norm(torch.cat([base.t_mean, ps.mean(0)]), torch.cat([base.t_std, ps.std(0).clamp_min(floor)]),
-                base.kp_mean, base.kp_std)
-
-
-class MotionWindows(Dataset):
-    """Random windows of P prefix + L target frames. The reference is a random frame of the same
-    clip (Ditto's choice), which at inference becomes the source image. ref_frame='median': a random
-    one of the clip's TYPICAL frames instead -- lip opening within the middle `ref_band` of the clip
-    by rank (sang.naturalness.typical_frames), so the reference shows the speaker's usual opening
-    (C0, docs/research_log.md 3.12: with random references the model pulls it 39 % toward the average).
-
-    preload=True reads every clip once at start-up and keeps the normalised 42-d targets, reference
-    features and fp16 audio in RAM (~2 MB per 20 s clip). Reading one .pt per SAMPLE from BeeGFS
-    capped the first run at ~1.4 it/s: 256 network file opens per step.
-
-    A 45-d Norm (head placement, C4) adds 3 columns to every window: the frames' placement relative to
-    the window's reference frame (sang.motion.to_target with ref), normalised like the rest."""
-
-    def __init__(self, rows, L: int, P: int, norm: Norm, per_clip: int, fixed: bool = False,
-                 preload: bool = True, threads: int = 16, shifts: dict | None = None, neg: bool = False,
-                 ref_frame: str = "random", lip=None, ref_band: float = 0.2):
-        if ref_frame not in ("random", "median"):
-            raise ValueError(f"ref_frame must be 'random' or 'median', got {ref_frame!r}")
-        if ref_frame == "median" and lip is None:
-            raise ValueError("ref_frame='median' needs the lip-opening readout (openness.json)")
-        self.ref_frame, self.lip, self.ref_band = ref_frame, lip, ref_band
-        self.rows = [r for r in rows if r["n"] >= L + P]
-        self.L, self.P, self.norm, self.per_clip = L, P, norm, per_clip
-        self.place = norm.place           # 45-d target: append the placement relative to the reference
-        self.neg = neg                    # also return another window of the same clip (contrastive FM)
-        self.shifts = shifts or {}        # clip_key -> WavLM ticks the audio is moved by (sang/sync.py)
-        self.fixed = fixed                # val: the same windows every eval, so curves are comparable
-        if not self.rows:
-            raise ValueError(f"no clip has {L + P} frames")
-        self.mem = None
-        if preload:
-            from concurrent.futures import ThreadPoolExecutor
-            t0 = time.time()
-            with ThreadPoolExecutor(threads) as ex:          # I/O-bound: threads hide network latency
-                self.mem = list(ex.map(self._load, self.rows))
-            gb = sum(m[2].numel() * m[2].element_size() for m in self.mem) / 1e9
-            print(f"  preloaded {len(self.mem)} clips in {time.time() - t0:.0f} s, audio {gb:.1f} GB", flush=True)
-
-    def _load(self, r):
-        d = torch.load(r["path"], map_location="cpu", weights_only=True)
-        y_raw = to_target(d["m"].float())
-        y = self.norm.target(y_raw)                                      # [n, 42]  normalised
-        ref = self.norm.ref(d["kp"].float(), y_raw)                      # [n, REF_DIM] one per frame
-        audio = shift_ticks(d["audio"], self.shifts.get(clip_key(r), 0))  # audio-video offset corrected
-        cands = (torch.from_numpy(typical_frames(self.lip(y_raw).numpy(), self.ref_band))
-                 if self.ref_frame == "median" else None)                # the clip's typical frames
-        place = placement(d["m"].float()) if self.place else None        # [n, 3] absolute, raw
-        return y, ref, audio.half().contiguous(), cands, place
-
-    def _frames(self, y_all, p_all, sl: slice, k: int) -> torch.Tensor:
-        """Normalised target rows `sl`, with their placement relative to frame k when the target has it."""
-        if p_all is None:
-            return y_all[sl]
-        zp = (p_all[sl] - p_all[k] - self.norm.t_mean[T_DIM:]) / self.norm.t_std[T_DIM:]
-        return torch.cat([y_all[sl], zp], -1)
-
-    def __len__(self):
-        return len(self.rows) * self.per_clip
-
-    def __getitem__(self, i):
-        j = i % len(self.rows)
-        y_all, ref_all, audio, cands, p_all = self.mem[j] if self.mem is not None else self._load(self.rows[j])
-        n, span = y_all.shape[0], self.L + self.P
-        rng = random.Random(i) if self.fixed else random
-        s = rng.randint(0, n - span)
-        k = int(cands[rng.randrange(len(cands))]) if cands is not None else rng.randint(0, n - 1)
-        y = self._frames(y_all, p_all, slice(s, s + span), k)
-        item = {"prefix": y[: self.P], "target": y[self.P:], "ref": ref_all[k],
-                "audio": audio[TPF * s: TPF * (s + span)]}          # fp16: half the bytes per batch; the model casts
-        if self.neg:
-            item["neg_target"] = self._frames(y_all, p_all, neg_start(n, self.L, s + self.P, rng), k)[: self.L]
-        return item
-
-
-def neg_start(n: int, L: int, start: int, rng, min_gap: int = 16) -> slice:
-    """A window of L frames from the same clip whose start is >= min_gap frames from `start` when the
-    clip allows it (same speaker and recording, different speech); else any other start."""
-    starts = [s for s in range(0, n - L + 1) if abs(s - start) >= min_gap] or \
-             [s for s in range(0, n - L + 1) if s != start] or [start]
-    s = rng.choice(starts)
-    return slice(s, s + L)
-
-
-# ---------------------------------------------------------------------- eval
 @torch.no_grad()
-def evaluate(model, loader, cfg, dev, max_batches: int) -> dict:
+def evaluate(model, loader, cfg, dev, max_batches: int, encode, decode) -> dict:
+    """Val flow loss, plus rollout statistics of sampled windows in motion regions (mouth, rot[, place])."""
     model.eval()
     g = torch.Generator(device=dev).manual_seed(0)
     fm = n = 0.0
-    place = getattr(model, "t_dim", T_DIM) > T_DIM
-    stats = {k: [] for k in ("mse_mouth", "mse_rot", "std_r_mouth", "vc_r_mouth", "std_r_rot", "vc_r_rot")
-             + (("mse_place", "std_r_place", "vc_r_place") if place else ()) + ("audio_gain",)}
-    mouth, rot = REGIONS["mouth"], REGIONS["rot"]
-    parts = (("mouth", mouth), ("rot", rot)) + ((("place", PLACE),) if place else ())
+    parts = ({k: WIDE_REGIONS[k] for k in ("mouth", "rot", "place")} if decode is not None else
+             {k: v for k, v in model.parts.items() if k in ("mouth", "rot", "place")})
+    view = decode or (lambda z: z)
+    stats = {k: [] for p in parts for k in (f"mse_{p}", f"std_r_{p}", f"vc_r_{p}")}
+    stats["audio_gain"] = []
 
     def ratio(a, b):
         return float(a.std(1).mean() / b.std(1).mean().clamp_min(1e-6))
@@ -182,33 +59,29 @@ def evaluate(model, loader, cfg, dev, max_batches: int) -> dict:
     for bi, batch in enumerate(loader):
         if bi >= max_batches:
             break
-        batch = {k: v.to(dev) for k, v in batch.items()}
-        torch.manual_seed(bi)                              # same t / noise every eval
-        loss, _ = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0,
-                            t_dist="uniform")
+        batch = encode({k: v.to(dev) for k, v in batch.items()})
+        torch.manual_seed(bi)
+        loss, _ = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0, t_dist="uniform")
         fm += float(loss)
         n += 1
-        gt, L = batch["target"], batch["target"].shape[1]
+        L = batch["target"].shape[1]
         kw = dict(prefix=batch["prefix"], steps=cfg["sample_steps"], cfg_audio=cfg["cfg_audio"])
         g.manual_seed(bi)
-        gen = sample(model, batch["audio"], batch["ref"], L, generator=g, **kw)
-        g.manual_seed(bi)                                  # identical noise, someone else's audio
-        other = sample(model, batch["audio"].roll(1, 0), batch["ref"], L, generator=g, **kw)
+        gen = view(sample(model, batch["audio"], batch["ref"], L, generator=g, **kw))
+        g.manual_seed(bi)
+        other = view(sample(model, batch["audio"].roll(1, 0), batch["ref"], L, generator=g, **kw))
+        gt = view(batch["target"])
         e = (gen - gt).pow(2)
-        stats["mse_mouth"].append(float(e[..., mouth].mean()))
-        stats["mse_rot"].append(float(e[..., rot].mean()))
-        if place:
-            stats["mse_place"].append(float(e[..., PLACE].mean()))
-        for name, idx in parts:
+        for name, idx in parts.items():
+            stats[f"mse_{name}"].append(float(e[..., idx].mean()))
             stats[f"std_r_{name}"].append(ratio(gen[..., idx], gt[..., idx]))
-            stats[f"vc_r_{name}"].append(ratio(gen[:, 1:, idx] - gen[:, :-1, idx],
-                                               gt[:, 1:, idx] - gt[:, :-1, idx]))
+            stats[f"vc_r_{name}"].append(ratio(gen[:, 1:, idx] - gen[:, :-1, idx], gt[:, 1:, idx] - gt[:, :-1, idx]))
+        mouth = parts["mouth"]
         stats["audio_gain"].append(float((other - gt)[..., mouth].pow(2).mean() / e[..., mouth].mean()))
     model.train()
     return {"val_loss": fm / max(1, n), **{k: sum(v) / max(1, len(v)) for k, v in stats.items()}}
 
 
-# ---------------------------------------------------------------------- train
 def lr_at(step, cfg):
     if step < cfg["warmup_steps"]:
         return cfg["lr"] * (step + 1) / cfg["warmup_steps"]
@@ -221,34 +94,22 @@ def main() -> None:
     ap.add_argument("--config", default=str(REPO / "configs/train_motion.yaml"))
     ap.add_argument("--lang", nargs="+", default=None,
                     help="train AND validate on these languages only: TalkVid names or Whisper codes, e.g. "
-                         "--lang English, --lang en zh, --lang English,Chinese; 'all' (default) = every language")
+                         "--lang English, --lang en zh; 'all' (default) = every language")
     ap.add_argument("--train-clips", type=int, default=None,
-                    help="random subset of N training clips after the language filter (seeded), e.g. a "
-                         "multilingual run the size of the English-only one; default all")
+                    help="random subset of N training clips after the language filter (seeded)")
     ap.add_argument("overrides", nargs="*", help="key=value, parsed as YAML")
     args = ap.parse_args()
-    if args.lang:                                   # `--lang English max_steps=15000`: key=value is an override
+    if args.lang:
         args.overrides = [v for v in args.lang if "=" in v] + args.overrides
         args.lang = [v for v in args.lang if "=" not in v] or None
-    cfg = yaml.safe_load(Path(args.config).read_text())
-    for o in args.overrides:
-        k, v = o.split("=", 1)
-        val = yaml.safe_load(v)
-        if isinstance(val, str):                  # YAML 1.1 reads "1e-4" as a string, not a float
-            try:
-                val = float(val)
-            except ValueError:
-                pass
-        cfg[k] = val
+    cfg = load_cfg(args.config, args.overrides)
     if args.lang is not None:
         cfg["lang"] = args.lang
     if args.train_clips is not None:
         cfg["train_clips"] = args.train_clips
     langs = parse_langs(cfg.get("lang"))
-    cfg["lang"] = langs or "all"                          # saved in every checkpoint; evaluation follows it
+    cfg["lang"] = langs or "all"
 
-    # `seed` also salts the speaker split (and every script that rebuilds it), so a second training seed
-    # changes `init_seed` only: weights, noise, condition dropout and batch order; same split, same val set.
     init = cfg["seed"] if cfg.get("init_seed") is None else int(cfg["init_seed"])
     torch.manual_seed(init)
     random.seed(init)
@@ -256,14 +117,14 @@ def main() -> None:
         print(f"init seed {init} (split seed {cfg['seed']})", flush=True)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     if dev == "cpu":
-        cfg["bf16"] = False                                # smoke tests only
+        cfg["bf16"] = False
     out = Path(cfg["out_dir"])
     out.mkdir(parents=True, exist_ok=True)
     cache = Path(cfg["cache_dir"])
 
     rows = load_index(cache)
     train_rows, val_rows = split_by_speaker(rows, cfg["val_frac"], cfg["seed"])
-    if langs is not None:                                # validation follows the training languages
+    if langs is not None:
         lang_of = clip_languages(cache)
         n_t, n_v = len(train_rows), len(val_rows)
         train_rows, drop_t = filter_langs(train_rows, langs, lang_of)
@@ -279,45 +140,45 @@ def main() -> None:
     if norm_path.exists():
         norm = Norm(**torch.load(norm_path, weights_only=True))
     else:
-        norm = fit_norm(train_rows, seed=cfg["seed"])       # train speakers only: no val leakage
-        torch.save({k: v for k, v in norm.state_dict().items()}, norm_path)
-    if cfg.get("place"):                                  # C4: 3 more columns, the 42 normalised as before
+        norm = fit_norm(train_rows, seed=cfg["seed"])
+        torch.save(dict(norm.state_dict()), norm_path)
+    if cfg.get("place") and not cfg.get("latent"):
         place_path = cache / "norm45.pt"
         if place_path.exists():
             norm = Norm(**torch.load(place_path, weights_only=True))
         else:
             norm = fit_place_norm(train_rows, norm, seed=cfg["seed"])
-            torch.save({k: v for k, v in norm.state_dict().items()}, place_path)
-        print(f"head placement: 45-d target (t_x, t_y, log scale relative to the reference frame; std "
-              f"{', '.join(f'{v:.4f}' for v in norm.t_std[T_DIM:].tolist())}). Val loss has a fifth region: "
-              f"not comparable with 42-d runs", flush=True)
+            torch.save(dict(norm.state_dict()), place_path)
+        print("head placement: 45-d target; val loss has a fifth region, not comparable with 42-d runs", flush=True)
+    latent = None
+    if cfg.get("latent"):
+        latent = MotionLatent.unpack(torch.load(cfg["latent"], map_location="cpu", weights_only=False)).to(dev)
+        if not 0 < int(cfg["latent_k"]) <= latent.K:
+            raise SystemExit(f"latent_k must be in 1..{latent.K}")
+        print(f"motion latent {cfg['latent']} ({latent.kind}, K {latent.K}): the model generates its first "
+              f"{cfg['latent_k']} codes", flush=True)
     shifts = None
     if cfg.get("sync_offsets"):
         so = SyncOffsets.load(cfg["sync_offsets"])
         train_rows, why_t = so.filter(train_rows)
         val_rows, why_v = so.filter(val_rows)
         shifts = {clip_key(r): so.shift(r) for r in train_rows + val_rows}
-        moved = sum(s != 0 for s in shifts.values())
-        print(f"sync offsets {cfg['sync_offsets']}: audio moved in {moved}/{len(shifts)} clips; "
-              f"dropped train {why_t}, val {why_v} (val loss is not comparable with runs without it)", flush=True)
+        print(f"sync offsets {cfg['sync_offsets']}: audio moved in {sum(s != 0 for s in shifts.values())}/"
+              f"{len(shifts)} clips; dropped train {why_t}, val {why_v}", flush=True)
     if cfg.get("train_clips"):
         n_t = len(train_rows)
         train_rows = sorted(random.Random(cfg["seed"]).sample(train_rows, min(int(cfg["train_clips"]), n_t)),
                             key=lambda r: r["path"])
         print(f"train_clips={cfg['train_clips']}: random subset {n_t} -> {len(train_rows)} train clips", flush=True)
     L, P = cfg["frames"], cfg["prefix"]
-    pre = cfg.get("preload", True)
-    neg = cfg.get("lam_cfm", 0) > 0 and cfg.get("cfm_neg", "clip") == "clip"
-    ref_kw = {"ref_frame": cfg.get("ref_frame", "random"), "ref_band": cfg.get("ref_band", 0.2)}
-    if ref_kw["ref_frame"] == "median":
+    data_kw = {"preload": cfg.get("preload", True), "shifts": shifts, "wide": latent is not None,
+               "ref_frame": cfg.get("ref_frame", "random"), "ref_band": cfg.get("ref_band", 0.2)}
+    if data_kw["ref_frame"] == "median":
         from sang.naturalness import load_readouts
-        ref_kw["lip"] = load_readouts(cache / "openness.json")["lip"]
-        print(f"reference frame: a typical one per clip (lip opening in the middle {ref_kw['ref_band']:.0%} "
-              f"by rank), not a random one", flush=True)
-    train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], preload=pre, shifts=shifts, neg=neg,
-                             **ref_kw)
-    val_ds = MotionWindows(val_rows, L, P, norm, cfg.get("val_windows_per_clip", 4), fixed=True, preload=pre,
-                           shifts=shifts, **ref_kw)
+        data_kw["lip"] = load_readouts(cache / "openness.json")["lip"]
+        print(f"reference frame: a typical one per clip (middle {data_kw['ref_band']:.0%} by lip opening)", flush=True)
+    train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], **data_kw)
+    val_ds = MotionWindows(val_rows, L, P, norm, cfg.get("val_windows_per_clip", 4), fixed=True, **data_kw)
     print(f"{len(train_ds.rows)} train / {len(val_ds.rows)} val clips "
           f"({len({Path(r['path']).parent.name for r in val_rows})} unseen val speakers)", flush=True)
     dl = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True, num_workers=cfg["workers"],
@@ -325,53 +186,51 @@ def main() -> None:
     vdl = DataLoader(val_ds, batch_size=min(cfg["batch_size"], 64), shuffle=False,
                      num_workers=min(2, cfg["workers"]), drop_last=True)
     tdl = None
-    if cfg.get("train_eval", False):               # the val score on as many fixed TRAINING clips: a like-for-like
+    if cfg.get("train_eval", False):
         sub = random.Random(cfg["seed"]).sample(train_ds.rows, min(len(val_ds.rows), len(train_ds.rows)))
         tev_ds = MotionWindows(sorted(sub, key=lambda r: r["path"]), L, P, norm, cfg.get("val_windows_per_clip", 4),
-                               fixed=True, preload=pre, shifts=shifts, **ref_kw)
+                               fixed=True, **data_kw)
         tdl = DataLoader(tev_ds, batch_size=min(cfg["batch_size"], 64), shuffle=False,
                          num_workers=min(2, cfg["workers"]), drop_last=True)
         print(f"train_eval: {len(tev_ds.rows)} fixed training clips scored like val at every eval", flush=True)
 
+    k = int(cfg.get("latent_k", 0))
+    if latent is None:
+        encode, decode = (lambda b: b), None
+    else:
+        encode = lambda b: {**b, "target": latent.encode(b["target"], k), "prefix": latent.encode(b["prefix"], k)}
+        decode = latent.decode
+
     model = build(cfg).to(dev)
     ema = copy.deepcopy(model).eval().requires_grad_(False)
-    ema_extra = {float(d): copy.deepcopy(model).eval().requires_grad_(False) for d in cfg.get("ema_extra", []) or []}
     decay = [p for n_, p in model.named_parameters() if p.ndim >= 2 and "pos" not in n_]
     no_decay = [p for n_, p in model.named_parameters() if p.ndim < 2 or "pos" in n_]
     opt = torch.optim.AdamW([{"params": decay, "weight_decay": cfg["weight_decay"]},
                              {"params": no_decay, "weight_decay": 0.0}],
                             lr=cfg["lr"], betas=tuple(cfg["betas"]))
-    print(f"MotionFlowTransformer: {sum(p.numel() for p in model.parameters()) / 1e6:.1f} M params", flush=True)
+    print(f"MotionFlowTransformer: {sum(p.numel() for p in model.parameters()) / 1e6:.1f} M params, target "
+          f"{model.t_dim}-d, {'GFT' if model.gft else 'CFG'}", flush=True)
 
     step, best, bad = 0, float("inf"), 0
     if cfg.get("resume"):
         ck = torch.load(cfg["resume"], map_location=dev, weights_only=False)
         model.load_state_dict(ck["model"])
         ema.load_state_dict(ck["ema"])
-        for d, m_ in ema_extra.items():
-            if f"{d:g}" in ck.get("ema_extra", {}):
-                m_.load_state_dict(ck["ema_extra"][f"{d:g}"])
         opt.load_state_dict(ck["opt"])
         step, best = ck["step"], ck.get("best", best)
         print(f"resumed at step {step}", flush=True)
 
-    kw = {k: cfg[k] for k in ("lam_vel", "p_audio", "p_ref", "p_prefix", "t_dist")}
-    for k, d in (("t_mean", 0.0), ("t_scale", 1.0), ("lam_cfm", 0.0), ("cfm_regions", ["mouth"]), ("lam_ccc", 0.0),
-                 ("lam_spec", 0.0), ("spec_hz", 10.0), ("spec_regions", ["mouth"]), ("aux_tmax", 0.3)):
-        kw[k] = cfg.get(k, d)
-    if kw["lam_ccc"] > 0:                                  # lip-opening readout, in normalised target space
-        from sang.naturalness import load_readouts
-        kw["lip_a"] = load_readouts(cache / "openness.json")["lip"].in_z(norm)[0].to(dev)
-    on = {k: kw[k] for k in ("t_mean", "lam_cfm", "lam_ccc", "lam_spec") if kw[k]}
-    print(f"objective: t_dist {kw['t_dist']} {on or '(no phase-B terms)'}; extra EMAs {sorted(ema_extra) or 'none'}", flush=True)
+    kw = {k_: cfg[k_] for k_ in ("lam_vel", "p_audio", "p_ref", "p_prefix", "t_dist")}
+    kw.update(t_mean=cfg.get("t_mean", 0.0), t_scale=cfg.get("t_scale", 1.0))
+    print(f"objective: t_dist {kw['t_dist']} (mean {kw['t_mean']}, scale {kw['t_scale']})", flush=True)
     t0 = time.time()
-    t_data = t_gpu = 0.0                                   # seconds per logging window: waiting vs computing
+    t_data = t_gpu = 0.0
     t_prev = time.perf_counter()
     while step < cfg["max_steps"]:
         for batch in dl:
             t_got = time.perf_counter()
             t_data += t_got - t_prev
-            batch = {k: v.to(dev, non_blocking=True) for k, v in batch.items()}
+            batch = encode({k_: v.to(dev, non_blocking=True) for k_, v in batch.items()})
             for gr in opt.param_groups:
                 gr["lr"] = lr_at(step, cfg)
             with torch.autocast(dev, dtype=torch.bfloat16, enabled=cfg["bf16"]):
@@ -383,34 +242,31 @@ def main() -> None:
             with torch.no_grad():
                 for pe, pm in zip(ema.parameters(), model.parameters()):
                     pe.lerp_(pm, 1.0 - cfg["ema"])
-                for d, m_ in ema_extra.items():
-                    for pe, pm in zip(m_.parameters(), model.parameters()):
-                        pe.lerp_(pm, 1.0 - d)
             step += 1
             if dev == "cuda":
-                torch.cuda.synchronize()                   # so compute time is not billed to data
+                torch.cuda.synchronize()
             t_gpu += time.perf_counter() - t_got
 
             if step % cfg["log_every"] == 0:
                 sps = cfg["log_every"] / (time.time() - t0)
                 t0 = time.time()
-                msg = " ".join(f"{k} {float(v):.4f}" for k, v in parts.items())
+                msg = " ".join(f"{k_} {float(v):.4f}" for k_, v in parts.items())
                 n_ = cfg["log_every"]
                 print(f"step {step:>7} lr {opt.param_groups[0]['lr']:.2e} {msg} gnorm {float(gnorm):.3f} "
                       f"{sps:.1f} it/s  (data {t_data / n_:.3f} s + gpu {t_gpu / n_:.3f} s per step)", flush=True)
                 t_data = t_gpu = 0.0
 
             if step % cfg["eval_every"] == 0 or step == cfg["max_steps"]:
-                r = evaluate(ema, vdl, cfg, dev, cfg["eval_batches"])
-                print("EVAL step {} ".format(step) + " ".join(f"{k} {v:.4f}" for k, v in r.items()), flush=True)
-                if tdl is not None:                        # own RNG: training is bit-identical with or without it
+                r = evaluate(ema, vdl, cfg, dev, cfg["eval_batches"], encode, decode)
+                print("EVAL step {} ".format(step) + " ".join(f"{k_} {v:.4f}" for k_, v in r.items()), flush=True)
+                if tdl is not None:
                     with torch.random.fork_rng(devices=[torch.cuda.current_device()] if dev == "cuda" else []):
-                        rt = evaluate(ema, tdl, cfg, dev, cfg["eval_batches"])
-                    print("EVAL_TRAIN step {} ".format(step) + " ".join(f"{k.removeprefix('val_')} {v:.4f}"
-                                                                      for k, v in rt.items()), flush=True)
+                        rt = evaluate(ema, tdl, cfg, dev, cfg["eval_batches"], encode, decode)
+                    print("EVAL_TRAIN step {} ".format(step) + " ".join(f"{k_.removeprefix('val_')} {v:.4f}"
+                                                                      for k_, v in rt.items()), flush=True)
                 ck = {"model": model.state_dict(), "ema": ema.state_dict(), "opt": opt.state_dict(),
-                      "ema_extra": {f"{d:g}": m_.state_dict() for d, m_ in ema_extra.items()},
-                      "step": step, "best": best, "cfg": cfg, "norm": norm.state_dict()}
+                      "step": step, "best": best, "cfg": cfg, "norm": norm.state_dict(),
+                      "latent": latent.pack() if latent is not None else None}
                 torch.save(ck, out / "last.pt")
                 if r["val_loss"] < best:
                     best = ck["best"] = r["val_loss"]
@@ -419,13 +275,10 @@ def main() -> None:
                     (out / "best.json").write_text(json.dumps({"step": step, **r}, indent=1))
                 else:
                     bad += 1
-                # Run 172260 (3,678 clips, no dropout) was best at its FIRST eval (5k) and then lost
-                # 4.7x in val loss while train loss kept falling: stop instead of burning the GPU.
                 if cfg.get("patience", 0) and bad >= cfg["patience"]:
-                    print(f"early stop at step {step}: no val improvement for {bad} evals "
-                          f"(best {best:.4f})", flush=True)
+                    print(f"early stop at step {step}: no val improvement for {bad} evals (best {best:.4f})", flush=True)
                     step = cfg["max_steps"]
-            t_prev = time.perf_counter()                   # eval and logging are not data wait
+            t_prev = time.perf_counter()
             if step >= cfg["max_steps"]:
                 break
     print(f"done. best val_loss {best:.4f} -> {out / 'best.pt'}", flush=True)
@@ -433,3 +286,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

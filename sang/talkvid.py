@@ -12,7 +12,6 @@ from urllib.parse import parse_qs, urlparse
 FIELDS = {"Person ID": "person", "Language": "language", "Gender": "gender", "Ethnicity": "ethnicity",
           "Age Group": "age", "Video Category": "category"}
 
-# Whisper language codes -> TalkVid's language names, for comparing the two labels
 WHISPER_NAMES = {"en": "English", "zh": "Chinese", "ko": "Korean", "es": "Spanish", "hi": "Hindi", "ja": "Japanese",
                  "ms": "Malay", "cy": "Welsh", "sw": "Swahili", "ur": "Urdu", "fr": "French", "de": "German",
                  "ar": "Arabic", "ru": "Russian", "pt": "Portuguese", "it": "Italian", "pl": "Polish", "tr": "Turkish",
@@ -45,10 +44,6 @@ def build_lookup(entries: list[dict]) -> dict[str, list[tuple[float, float, dict
         labels = {short: str(info[k]) for k, short in FIELDS.items() if k in info}
         out.setdefault(vid, []).append((float(e["start-time"]), float(e["end-time"]), labels))
     return out
-
-
-def load_lookup(path) -> dict[str, list[tuple[float, float, dict]]]:
-    return build_lookup(json.loads(Path(path).read_text()))
 
 
 def clip_languages(cache: Path, min_prob: float = 0.5) -> dict[str, str]:
@@ -109,3 +104,4 @@ def match(lookup: dict, vid: str, stem: str, tol: float = 0.05) -> dict | None:
     s, e = t
     best = min(lookup[vid], key=lambda x: abs(x[0] - s) + abs(x[1] - e))
     return best[2] if abs(best[0] - s) <= tol and abs(best[1] - e) <= tol else None
+

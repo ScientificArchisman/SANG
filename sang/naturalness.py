@@ -1,37 +1,24 @@
-"""Rule-based naturalness for SANG-M: interpretable metrics and training-free constraints.
+"""Naturalness metrics in motion space (no rendering): lip sync against the real trajectory, closure at
+/p b m/, blinks, and head strokes against loudness onsets.
 
-Three facts about talking faces that the audio alone ties only weakly to the motion, and that a
-flow model trained on audio therefore gets wrong in a way nobody sees in a loss curve:
-
-  1. /p b m/ close the lips. PD-GS (arXiv:2608.05218) calls the failure a "leaky mouth".
-  2. People blink, a few hundred ms at a time, and preferentially at pauses.
-  3. Head strokes line up with loudness onsets (stressed syllables).
-
-Everything is measured in the 42-d motion space, so no rendering is needed. Openness is read out
-of the motion with LINEAR maps fitted to LivePortrait's own landmark ratios
-(scripts/calibrate_openness.py), which is what makes (1) and (2) enforceable at sampling time as
-half-space constraints -- `sang.motion_model.project` -- with no retraining.
-
-Phonemes come from a language-agnostic IPA recogniser (wav2vec2 XLSR-53 espeak, CTC at 50 Hz),
-because TalkVid spans 15 languages and has no transcripts to force-align.
+Openness is read out of the 42-d target with LINEAR maps fitted to LivePortrait's own landmark ratios
+(scripts/calibrate_openness.py). Phonemes come from a language-agnostic IPA recogniser (wav2vec2 XLSR-53
+espeak, CTC at 50 Hz), because TalkVid spans 15 languages and has no transcripts to force-align.
 """
 import json
-import math
 from pathlib import Path
 
 import numpy as np
 import torch
 
-from sang.motion import REGIONS, T_DIM
+from sang.motion import T_DIM
 
 FPS, SR, TPF = 25, 16000, 2
-HOP = SR // FPS                                    # 640 samples per video frame
+HOP = SR // FPS
 PHONEME_MODEL = "facebook/wav2vec2-xlsr-53-espeak-cv-ft"
-BILABIAL = set("pbmɸβ")                            # lips close; labiodental f/v do not
+BILABIAL = set("pbmɸβ")
 
 
-# ---------------------------------------------------------------------- landmark ratios
-# Upstream src/utils/retargeting_utils.py (read 2026-09-28), on the 203-point landmarks.
 def _dist_ratio(lmk: np.ndarray, i1: int, i2: int, i3: int, i4: int) -> np.ndarray:
     lmk = np.asarray(lmk, np.float64)
     return (np.linalg.norm(lmk[..., i1, :] - lmk[..., i2, :], axis=-1)
@@ -48,7 +35,6 @@ def eye_ratio(lmk: np.ndarray) -> np.ndarray:
     return 0.5 * (_dist_ratio(lmk, 6, 18, 0, 12) + _dist_ratio(lmk, 30, 42, 24, 36))
 
 
-# ---------------------------------------------------------------------- linear readouts
 class Readout:
     """r = w . y + b on the RAW 42-d target (w is zero outside its region, and on a 45-d target's placement)."""
 
@@ -61,11 +47,6 @@ class Readout:
 
     def __call__(self, y_raw: torch.Tensor) -> torch.Tensor:
         return y_raw.float() @ self._wide(y_raw.shape[-1], y_raw.device) + self.b
-
-    def in_z(self, norm) -> tuple[torch.Tensor, float]:
-        """The same readout on NORMALISED targets: r = a . z + c."""
-        w = self._wide(norm.t_std.numel(), norm.t_std.device)
-        return w * norm.t_std, float(w @ norm.t_mean) + self.b
 
     def to_dict(self) -> dict:
         return {"w": self.w.tolist(), "b": self.b, "r2": self.r2}
@@ -119,16 +100,6 @@ def load_readouts(path: Path) -> dict[str, Readout]:
     return {k: Readout(v["w"], v["b"], v.get("r2", float("nan"))) for k, v in d.items() if k in ("lip", "eye")}
 
 
-# ---------------------------------------------------------------------- audio side
-def load_wav(clip: str, start_frame: int, n_frames: int) -> torch.Tensor:
-    """16 kHz mono for exactly frames [start, start + n) of a TalkVid clip -> [N]."""
-    from decord import AudioReader
-    wav = torch.from_numpy(AudioReader(str(Path(clip).with_suffix(".m4a")), sample_rate=SR,
-                                       mono=True)[:].asnumpy()).float()[0]
-    wav = wav[start_frame * HOP:(start_frame + n_frames) * HOP]
-    return torch.nn.functional.pad(wav, (0, max(0, n_frames * HOP - len(wav))))
-
-
 def energy_db(wav: torch.Tensor, n: int) -> np.ndarray:
     """RMS level per video frame, dB. [N] -> [n]."""
     w = torch.nn.functional.pad(wav.float().flatten(), (0, max(0, n * HOP - wav.numel())))[: n * HOP]
@@ -159,14 +130,13 @@ class PhonemeRecognizer:
         self.m = Wav2Vec2ForCTC.from_pretrained(PHONEME_MODEL, local_files_only=True).to(device).eval()
         vocab = json.loads(Path(hf_hub_download(PHONEME_MODEL, "vocab.json", local_files_only=True)).read_text())
         self.bilabial = torch.tensor(sorted(i for t, i in vocab.items() if is_bilabial(t)))
-        self.tokens = {i: t for t, i in vocab.items()}           # id -> IPA token (scripts/error_split.py)
         self.device = device
 
     @torch.no_grad()
     def posteriors(self, wav: torch.Tensor) -> torch.Tensor:
         w = wav.float().flatten().to(self.device)
-        w = (w - w.mean()) / (w.var() + 1e-7).sqrt()          # the model's feature extractor does this
-        return self.m(w[None]).logits[0].float().softmax(-1).cpu()   # [ticks, V]
+        w = (w - w.mean()) / (w.var() + 1e-7).sqrt()
+        return self.m(w[None]).logits[0].float().softmax(-1).cpu()
 
     def bilabials(self, wav: torch.Tensor, n: int, min_prob: float = 0.5) -> list[int]:
         return bilabial_events(self.posteriors(wav), self.bilabial, n, min_prob)
@@ -184,7 +154,6 @@ def bilabial_events(post: torch.Tensor, ids: torch.Tensor, n: int, min_prob: flo
     return out
 
 
-# ---------------------------------------------------------------------- motion side
 def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
     """[s, e) runs of True."""
     m = np.concatenate([[False], np.asarray(mask, bool), [False]])
@@ -275,171 +244,14 @@ def beat_alignment(hb: np.ndarray, ab: np.ndarray, n: int, sigma: float = 2.0,
     return score(ab), float(np.mean(chance))
 
 
-# ---------------------------------------------------------------------- constraints
-def closure_bounds(events: list[int], offset: int, n: int, tau: float, width: int = 1) -> np.ndarray:
-    """Upper bound on lip openness: tau at each bilabial's closure frame (+/- width // 2)."""
-    ub = np.full(n, np.inf)
-    for f in events:
-        for k in range(-(width // 2), width // 2 + 1):
-            if 0 <= f + offset + k < n:
-                ub[f + offset + k] = min(ub[f + offset + k], tau)
-    return ub
+def pause_near(pause: np.ndarray, reach: int = 5) -> np.ndarray:
+    """Frames within `reach` of a pause frame."""
+    return np.convolve(pause.astype(float), np.ones(2 * reach + 1), mode="same") > 0
 
 
-def blink_bounds(blinks: list[tuple[int, int]], n: int, e_open: float, e_closed: float) -> np.ndarray:
-    """Upper bound on eye openness tracing a half-sine blink of each (start, duration)."""
-    ub = np.full(n, np.inf)
-    for s, dur in blinks:
-        for k in range(dur):
-            if 0 <= s + k < n:
-                shape = math.sin(math.pi * (k + 0.5) / dur)
-                ub[s + k] = min(ub[s + k], e_open - (e_open - e_closed) * shape)
-    return ub
-
-
-def schedule_blinks(existing: list[int], pause: np.ndarray, n: int, ibis: list[float],
-                    durs: list[int], rng: np.random.Generator, snap: int = 15,
-                    min_sep: int = 8) -> list[tuple[int, int]]:
-    """Fill the gaps the model left: walk the clip, draw the next inter-blink interval from the
-    REAL distribution; if the model already blinked before it was due, restart from that blink,
-    otherwise add one at the nearest pause frame within +/-snap frames (0.6 s) of the due time.
-    Returns only the ADDED blinks as (start, duration)."""
-    ibis_f = np.maximum(np.asarray(ibis, np.float64) * FPS, min_sep)
-    existing = sorted(existing)
-    pause_idx = np.flatnonzero(pause)
-    added = []
-    last = -float(rng.uniform(0, 1)) * float(rng.choice(ibis_f))      # random phase at clip start
-    while True:
-        due = last + float(rng.choice(ibis_f))
-        nxt = [b for b in existing if last < b <= due + min_sep]
-        if nxt:
-            last = nxt[0]
-            continue
-        dur = int(rng.choice(durs))
-        if due + dur >= n:
-            return added
-        f = int(round(due))
-        if len(pause_idx):
-            near = pause_idx[np.abs(pause_idx - f) <= snap]
-            if len(near):
-                f = int(near[np.argmin(np.abs(near - f))])
-        f = max(f, int(last) + min_sep) if last >= 0 else f
-        if f + dur >= n:
-            return added
-        if all(abs(f - b) >= min_sep for b in existing):
-            added.append((f, dur))
-        last = f
-
-
-class Guide:
-    """Readouts + real-data statistics + phoneme recogniser: builds the bounds for `generate`.
-
-    stats come from scripts/naturalness.py over REAL validation motion: closure offset and depth,
-    the eyes' closed level, inter-blink intervals and blink durations."""
-
-    def __init__(self, readouts: dict[str, Readout], stats: dict, phonemes: PhonemeRecognizer | None):
-        self.read, self.stats, self.phon = readouts, stats, phonemes
-
-    @classmethod
-    def load(cls, cache_dir: Path, device: str = "cuda", phonemes: bool = True) -> "Guide":
-        """phonemes=False: skip the recogniser (blinks need none; lips do). Stats: naturalness_stats.json,
-        else the offset-corrected naturalness_stats_sync.json (a cache only ever measured with --sync-offsets)."""
-        cache_dir = Path(cache_dir)
-        stats = next((cache_dir / f for f in ("naturalness_stats.json", "naturalness_stats_sync.json")
-                      if (cache_dir / f).exists()), cache_dir / "naturalness_stats.json")
-        for f in (cache_dir / "openness.json", stats):
-            if not f.exists():
-                raise FileNotFoundError(f"{f} missing: run scripts/calibrate_openness.py, "
-                                        "then scripts/naturalness.py, first")
-        print(f"rule constraints: {stats}", flush=True)
-        return cls(load_readouts(cache_dir / "openness.json"), json.loads(stats.read_text()),
-                   PhonemeRecognizer(device) if phonemes else None)
-
-    def to_z(self, name: str, ub_raw: np.ndarray, norm) -> tuple[torch.Tensor, torch.Tensor]:
-        a, c = self.read[name].in_z(norm)
-        return a, torch.as_tensor(ub_raw, dtype=torch.float32, device=a.device)[None] - c
-
-    def bounds(self, mode: str, wav: torch.Tensor, n: int, norm, y_first=None, seed: int = 0,
-               events: list[int] | None = None) -> tuple[list, dict]:
-        """mode: lips | blinks | both. y_first: the unconstrained sample [n, 42] (normalised),
-        needed for blinks so the model's own blinks are kept and only the gaps filled."""
-        st, out, info = self.stats, [], {}
-        if mode in ("lips", "both"):
-            ev = events if events is not None else self.phon.bilabials(wav, n)
-            out.append(self.to_z("lip", closure_bounds(ev, st["closure_offset"], n, st["tau_close"]), norm))
-            info["bilabials"] = len(ev)
-        if mode in ("blinks", "both"):
-            eye = self.read["eye"](norm.untarget(y_first)).cpu().numpy()
-            own = [b for _, b, _ in blink_events(eye)]
-            add = schedule_blinks(own, pauses(energy_db(wav, n)), n, st["ibi_s"], st["blink_frames"],
-                                  np.random.default_rng(seed))
-            e_open = float(np.median(eye))
-            out.append(self.to_z("eye", blink_bounds(add, n, e_open, st["eye_closed"]), norm))
-            info.update(own_blinks=len(own), added_blinks=len(add))
-        return out, info
-
-
-def guided_generate(model, audio, ref, n: int, cfg: dict, norm, wav: torch.Tensor, guide: Guide | None,
-                    mode: str = "none", seed: int = 0, steps: int | None = None,
-                    cfg_audio=None, events: list[int] | None = None,
-                    start: torch.Tensor | None = None, cfg_rescale: float = 0.0, sampler: dict | None = None):
-    """generate() with the rule constraints. Blinks need a first, unconstrained pass (same seed)
-    to see where the model already blinks; lips alone need only one pass. -> ([1, n, 42], info).
-    `start`: see generate() -- None, or a clean first prefix (then `audio` has that many lead frames;
-    `wav` stays the unpadded clip audio, frame 0 = video frame 0).
-    `sampler`: keyword arguments from motion_model.sampler_kwargs (a parsed '--sampler' spec); they
-    override steps / cfg_audio / cfg_rescale."""
-    from sang.motion_model import generate
-
-    def run(bounds):
-        g = torch.Generator(device=ref.device).manual_seed(seed)
-        kw = {"steps": steps or cfg["sample_steps"], "cfg_audio": cfg["cfg_audio"] if cfg_audio is None else cfg_audio,
-              "cfg_rescale": cfg_rescale, **(sampler or {})}
-        return generate(model, audio, ref, n, window=cfg["frames"], n_prefix=cfg["prefix"],
-                        generator=g, bounds=bounds, start=start, **kw)
-
-    if mode == "none" or guide is None:
-        return run(None), {}
-    first = run(None) if mode in ("blinks", "both") else None
-    bounds, info = guide.bounds(mode, wav, n, norm, None if first is None else first[0], seed, events)
-    return run(bounds), info
-
-
-# ---------------------------------------------------------------------- speaker style
 def ccc(x, y) -> float:
     """Concordance of two trajectories: timing AND level AND amplitude (1 = identical)."""
     x, y = np.asarray(x, np.float64), np.asarray(y, np.float64)
     cov = float(np.mean((x - x.mean()) * (y - y.mean())))
     return 2 * cov / (x.var() + y.var() + (x.mean() - y.mean()) ** 2 + 1e-12)
 
-
-def lip_style(lip, q: float = 5.0) -> dict:
-    """A clip's lip-opening style in three numbers: robust floor, median and ceiling (the q-th, 50th
-    and (100-q)-th percentiles), i.e. the parameters of an STL template 'lo <= lip <= hi'."""
-    lo, mid, hi = np.percentile(np.asarray(lip, np.float64), [q, 50.0, 100.0 - q])
-    return {"lo": float(lo), "mid": float(mid), "hi": float(hi)}
-
-
-def lip_restyled(lip, style: dict, how: str = "range", q: float = 5.0):
-    """The lip trajectory moved to `style` (numpy or torch, same type out):
-      level  shifted so its median is style['mid']
-      range  its q / 100-q percentiles mapped onto style['lo'] / style['hi'] (level and amplitude)"""
-    have = lip_style(lip.detach().cpu().numpy() if torch.is_tensor(lip) else lip, q)
-    if how == "level":
-        return lip + (style["mid"] - have["mid"])
-    if how == "range":
-        return style["lo"] + (lip - have["lo"]) * (style["hi"] - style["lo"]) / max(have["hi"] - have["lo"], 1e-6)
-    raise ValueError(f"restyle: level | range, not {how!r}")
-
-
-def restyle_lip(z: torch.Tensor, norm, readout: Readout, style: dict, how: str = "range",
-                q: float = 5.0) -> torch.Tensor:
-    """Give a generated clip the lip style `style` (lip_style of some target) by moving every frame's
-    mouth along the lip readout, the smallest move in normalised space (as motion_model.project), so
-    the opening becomes lip_restyled(opening, style, how). Timing is untouched: the lip correlation
-    with any reference stays exactly the same. With the REAL clip's style this is the speaker-style oracle: the most a per-speaker style
-    predictor could gain. z [n, t_dim] normalised -> the same shape."""
-    a, c = readout.in_z(norm)
-    a = a.to(z)
-    lip = z @ a + c
-    return z + (lip_restyled(lip, style, how, q) - lip).unsqueeze(-1) * a / (a @ a)

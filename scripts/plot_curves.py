@@ -102,7 +102,7 @@ def main() -> None:
                 label="training (fixed train clips, scored like validation)")
     ax.plot(vs / 1e3, vl, "o-", color="#d94801", lw=1.8, ms=4, label="validation (unseen speakers)")
     ax.axvline(vs[i_best] / 1e3, color="grey", ls=":", lw=1)
-    at_end = vs[i_best] > 0.85 * vs[-1]                    # centred, the label would cross the right edge
+    at_end = vs[i_best] > 0.85 * vs[-1]
     ax.annotate(f"best val {vl[i_best]:.3f}\n(step {vs[i_best]:,})", (vs[i_best] / 1e3, vl[i_best]),
                 xytext=(-6 if at_end else 0, 18), textcoords="offset points", ha="right" if at_end else "center",
                 fontsize=8, color="grey")
@@ -130,3 +130,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -1,6 +1,5 @@
 """ref_frame=median training: the reference is one of the clip's typical-opening frames (sang.naturalness.
 typical_frames, scripts/train_motion.MotionWindows). CPU only."""
-import importlib.util
 import json
 import subprocess
 import sys
@@ -19,12 +18,12 @@ from sang.naturalness import Readout, median_frame, typical_frames
 
 
 def test_typical_frames_are_the_middle_band_by_rank():
-    lip = np.arange(101, dtype=float)[::-1]                  # frame i has opening 100 - i
+    lip = np.arange(101, dtype=float)[::-1]
     idx = typical_frames(lip, band=0.2)
-    assert sorted(lip[idx]) == list(range(40, 61))           # 40th..60th percentile
+    assert sorted(lip[idx]) == list(range(40, 61))
     assert len(typical_frames(lip, band=0.0)) == 1 and lip[typical_frames(lip, 0.0)][0] == 50
     assert lip[median_frame(lip)] == 50
-    assert len(typical_frames(np.ones(7), 0.2)) >= 1          # ties: never empty
+    assert len(typical_frames(np.ones(7), 0.2)) >= 1
 
 
 def make_cache(root: Path, n_spk: int = 6, T: int = 90) -> list[dict]:
@@ -40,7 +39,7 @@ def make_cache(root: Path, n_spk: int = 6, T: int = 90) -> list[dict]:
             rows.append({"clip": f"/x/spk{s}/c{c}.mp4", "path": str(p), "n": T})
     (root / "index_000.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
     w = torch.zeros(T_DIM)
-    w[REGIONS["mouth"][1]] = 1.0                             # lip opening = one mouth coordinate
+    w[REGIONS["mouth"][1]] = 1.0
     we = torch.zeros(T_DIM)
     we[REGIONS["eyes"][1]] = 1.0
     (root / "openness.json").write_text(json.dumps({"lip": {"w": w.tolist(), "b": 0.0}, "eye": {"w": we.tolist(), "b": 0.0}}))
@@ -48,9 +47,7 @@ def make_cache(root: Path, n_spk: int = 6, T: int = 90) -> list[dict]:
 
 
 def test_dataset_draws_the_reference_from_typical_frames(tmp_path):
-    spec = importlib.util.spec_from_file_location("tm", REPO / "scripts" / "train_motion.py")
-    tm = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(tm)
+    import sang.data as tm
     rows = make_cache(tmp_path)
     ys = [to_target(torch.load(r["path"], weights_only=True)["m"].float()) for r in rows]
     kps = [torch.load(r["path"], weights_only=True)["kp"].float() for r in rows]
@@ -64,14 +61,14 @@ def test_dataset_draws_the_reference_from_typical_frames(tmp_path):
         k = int((all_refs - item["ref"]).abs().sum(1).argmin())
         assert k in set(typical_frames(lip(ys[j]).numpy(), 0.2).tolist())
     with pytest.raises(ValueError):
-        tm.MotionWindows(rows, 32, 4, norm, per_clip=1, preload=False, ref_frame="median")   # no readout
+        tm.MotionWindows(rows, 32, 4, norm, per_clip=1, preload=False, ref_frame="median")
 
 
 def test_training_with_median_reference_end_to_end(tmp_path):
     cache = tmp_path / "cache"
     make_cache(cache)
     out = tmp_path / "run"
-    over = [f"cache_dir={cache}", f"out_dir={out}", "dim=32", "layers=1", "heads=2", "max_steps=2", "warmup_steps=1",
+    over = [f"cache_dir={cache}", f"out_dir={out}", "sync_offsets=", "dim=32", "layers=1", "heads=2", "max_steps=2", "warmup_steps=1",
             "eval_every=2", "log_every=1", "batch_size=2", "workers=0", "eval_batches=1", "sample_steps=2",
             "val_frac=0.3", "windows_per_clip=2", "ref_frame=median"]
     log = subprocess.run([sys.executable, str(REPO / "scripts" / "train_motion.py"), *over],
@@ -79,3 +76,4 @@ def test_training_with_median_reference_end_to_end(tmp_path):
     assert log.returncode == 0, log.stderr[-2000:]
     assert "typical one per clip" in log.stdout
     assert torch.load(out / "last.pt", weights_only=False)["cfg"]["ref_frame"] == "median"
+
