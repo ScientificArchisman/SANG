@@ -51,7 +51,8 @@ def make_cache(root: Path, n_spk: int = 6, T: int = 90) -> list[dict]:
 def test_dataset_draws_the_reference_from_typical_frames(tmp_path):
     import sang.data.dataset as tm
     rows = make_cache(tmp_path)
-    ys = [to_target(torch.load(r["path"], weights_only=True)["m"].float()) for r in rows]
+    ms = [torch.load(r["path"], weights_only=True)["m"].float() for r in rows]
+    ys = [to_target(m) for m in ms]
     kps = [torch.load(r["path"], weights_only=True)["kp"].float() for r in rows]
     norm = Norm.fit(torch.cat(ys), torch.cat(kps))
     lip = Readout(json.loads((tmp_path / "openness.json").read_text())["lip"]["w"], 0.0)
@@ -59,7 +60,7 @@ def test_dataset_draws_the_reference_from_typical_frames(tmp_path):
     for i in range(len(ds)):
         j = i % len(rows)
         item = ds[i]
-        all_refs = norm.ref(kps[j], ys[j])
+        all_refs = norm.ref(kps[j], ms[j])
         k = int((all_refs - item["ref"]).abs().sum(1).argmin())
         assert k in set(typical_frames(lip(ys[j]).numpy(), 0.2).tolist())
     with pytest.raises(ValueError):

@@ -48,6 +48,15 @@ def test_pack_round_trip_old_packs_and_no_autoencoder():
         MotionLatent.unpack({**lat.pack(), "kind": "ae"})
 
 
+def test_spread_weights_give_the_decoded_motion_error():
+    lat = fit_pca(deltas(), K=12)
+    u, u2 = torch.randn(50, 8), torch.randn(50, 8)
+    w = lat.spread(8)
+    decoded = ((lat.decode(u) - lat.decode(u2)) / lat.sd).pow(2).sum(-1)
+    assert abs(float(w.mean()) - 1) < 1e-5 and bool((w[:-1] >= w[1:]).all())
+    assert torch.allclose((w * (u - u2).pow(2)).sum(-1) * lat.c_sd[:8].pow(2).mean(), decoded, rtol=1e-3)
+
+
 def test_codes_map_motion_both_ways():
     m = motion(200)
     w = wide(m)

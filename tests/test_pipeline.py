@@ -118,12 +118,13 @@ def test_talker_detects_the_face_once_pastes_and_times_every_stage(monkeypatch, 
     assert crops.shape == (N, 32, 32, 3) and torch.allclose(m, m2)
 
 
-def test_a_smaller_latent_trains_and_talks(monkeypatch, tiny_cache):
-    lat, log = train(tiny_cache, "lat", "latent_k=16")
-    assert "target 16-d, GFT" in log and "std_r_place" in log and "EVAL step 3" in log
+def test_a_smaller_latent_with_the_wide_photo_and_spread_weights_trains_and_talks(monkeypatch, tiny_cache):
+    lat, log = train(tiny_cache, "lat", "latent_k=16", "photo=wide", "code_weight=spread")
+    assert "target 16-d, GFT, photo wide (69), code weights spread" in log and "std_r_place" in log
+    assert "EVAL step 3" in log and (tiny_cache / "norm69.pt").exists()
     codec, _ = fake_codec(monkeypatch)
     t = Talker(lat, "g=2,steps=3", device="cpu", codec=codec, wavlm=FakeWavLM())
-    frames, m, _ = t.run(SRC, WAV, N, start="source")
+    frames, m, _ = t.run(SRC, WAV, N, start="source", normalize_lip=False)
     assert frames.shape == (N, 100, 120, 3) and torch.isfinite(m).all()
     ck = torch.load(lat, map_location="cpu", weights_only=False)
     assert ck["latent"]["K"] == 69 and ck["cfg"]["latent_k"] == 16

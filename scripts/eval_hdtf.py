@@ -131,7 +131,7 @@ class Evaluator:
         a, src = self.args, frames[0]
         real = self.real_motion(frames) if a.real_stats else None
         gen, m, timer = self.talker.run(src, wav, len(frames), seed=a.seed, stitch=a.stitch,
-                                        paste=a.paste_back, start=a.start)
+                                        paste=a.paste_back, start=a.start, normalize_lip=a.normalize_lip)
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
         self.last_stats = self.motion_stats(m, real)
         if not a.paste_back:
@@ -378,6 +378,9 @@ def main() -> None:
     ap.add_argument("--gt-latent", default=None, help="ceiling row through a motion latent (scripts/fit_latent.py)")
     ap.add_argument("--gt-k", type=int, default=None, help="--gt-latent: codes kept")
     ap.add_argument("--stitch", action=argparse.BooleanOptionalAction, default=True)
+    ap.add_argument("--normalize-lip", action=argparse.BooleanOptionalAction, default=True,
+                    help="close the photo's lips before generating (LivePortrait's flag_normalize_lip); "
+                         "--no-normalize-lip keeps them as training references are")
     ap.add_argument("--paste-back", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--lse", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--save-videos", action=argparse.BooleanOptionalAction, default=True)

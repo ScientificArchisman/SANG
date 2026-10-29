@@ -69,6 +69,13 @@ class MotionLatent(nn.Module):
                              "(its code: commit bbac3a0)")
         return cls.unpack(ck["latent"])
 
+    def spread(self, k: int) -> torch.Tensor:
+        """Per-code loss weights [k], mean 1, that turn an MSE over the first k codes into the MSE of the decoded
+        deltas in standardised units (every one of the 69 numbers divided by its spread): the codes are orthonormal
+        there, so a code's error counts with its variance c_sd^2."""
+        w = self.c_sd[:k] ** 2
+        return w / w.mean()
+
     def from_motion(self, m: torch.Tensor, m_ref: torch.Tensor, k: int | None = None) -> torch.Tensor:
         """Motion [n,70] relative to a reference frame [1,70] -> the first k standardised codes [n, k]."""
         return self.encode(wide(m) - wide(m_ref), k)

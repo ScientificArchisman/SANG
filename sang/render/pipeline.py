@@ -117,19 +117,19 @@ class Talker:
 
     @torch.no_grad()
     def run(self, src: np.ndarray, wav: torch.Tensor, n_frames: int, seed: int = 0, stitch: bool = True, paste: bool = True, start: str = "null", batch: int = 16, half: bool = True,
-            timer: Timer | None = None):
+            timer: Timer | None = None, normalize_lip: bool = True):
         """src [H,W,3] uint8, wav [N] 16 kHz -> (frames [n,H,W,3] or, with paste=False, crops [n,512,512,3] uint8,
         motion [n,70], timer). start='source': the first window continues from the photo's own motion after
-        `prefix` frames of silence (the HDTF protocol's default); 'null': the dropped-prefix start training uses."""
+        `prefix` frames of silence (the HDTF protocol's default); 'null': the dropped-prefix start training uses.
+        normalize_lip=False: keep the photo's own lips (training references are raw frames) instead of closing them."""
         from sang.model.flow import generate
-        from sang.model.target import to_target
         timer = timer or Timer()
         codec = self.codec
         with timer("source"):
             crop = codec.crop_image(np.ascontiguousarray(src))
-            sm = codec.source_motion(src, crop=crop)
+            sm = codec.source_motion(src, normalize_lip=normalize_lip, crop=crop)
             m_src = sm["m"].to(self.dev)
-            ref = self.norm.ref(sm["kp"].to(self.dev), to_target(m_src))
+            ref = self.norm.ref(sm["kp"].to(self.dev), m_src)
         lead = self.cfg["prefix"] if start == "source" else 0
         with timer("audio"):
             audio = self.wavlm.encode(torch.nn.functional.pad(wav, (lead * HOP, 0))[None, None].to(self.dev)).float()

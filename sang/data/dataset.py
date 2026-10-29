@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 from sang.data.sync import clip_key, shift_ticks
 from sang.eval.naturalness import typical_frames
 from sang.model.flow import Norm
-from sang.model.target import to_target, wide
+from sang.model.target import describe, to_target, wide
 
 TPF = 2
 
@@ -56,13 +56,13 @@ def val_clips(rows: list[dict], min_frames: int) -> list[str]:
     return out
 
 
-def fit_norm(rows: list[dict], n_clips: int = 500, seed: int = 0) -> Norm:
-    """Statistics of the photo input (sang.model.flow.Norm) over random frames of n_clips clips."""
+def fit_norm(rows: list[dict], width: int = 42, n_clips: int = 500, seed: int = 0) -> Norm:
+    """Statistics of the photo input (sang.model.flow.Norm, `width` = 42 or 69) over random frames of n_clips clips."""
     pick = random.Random(seed).sample(rows, min(n_clips, len(rows)))
     ys, kps = [], []
     for r in pick:
         d = torch.load(r["path"], map_location="cpu", weights_only=True)
-        ys.append(to_target(d["m"].float()))
+        ys.append(describe(d["m"].float(), width))
         kps.append(d["kp"].float())
     return Norm.fit(torch.cat(ys), torch.cat(kps))
 
@@ -86,7 +86,7 @@ class MotionWindows(Dataset):
 
     Targets: the raw sang.model.target.wide vector minus the reference frame's, 69-d deltas that the training loop
     encodes into latent codes on the GPU. The reference is described to the model as Norm.ref of its x_c and
-    42-d target.
+    motion.
 
     preload=True reads every clip once at start-up and keeps it in RAM (~2 MB per 20 s clip): reading
     one .pt per SAMPLE from BeeGFS capped the first run at ~1.4 it/s."""
@@ -117,11 +117,10 @@ class MotionWindows(Dataset):
     def _load(self, r):
         d = torch.load(r["path"], map_location="cpu", weights_only=True)
         m = d["m"].float()
-        y_raw = to_target(m)
         y = wide(m)
-        ref = self.norm.ref(d["kp"].float(), y_raw)
+        ref = self.norm.ref(d["kp"].float(), m)
         audio = shift_ticks(d["audio"], self.shifts.get(clip_key(r), 0))
-        cands = (torch.from_numpy(typical_frames(self.lip(y_raw).numpy(), self.ref_band))
+        cands = (torch.from_numpy(typical_frames(self.lip(to_target(m)).numpy(), self.ref_band))
                  if self.ref_frame == "median" else None)
         return y, ref, audio.half().contiguous(), cands
 

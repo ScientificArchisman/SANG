@@ -5,6 +5,8 @@
 
 The model generates the first latent_k codes of the motion latent at `latent` (scripts/fit_latent.py): everything
 LivePortrait renders, relative to the photo. Guidance-Free Training: guidance is an input, one pass per sampling step.
+  photo=wide            describe the photo by its 69 wide numbers instead of its 42-d target
+  code_weight=spread    weight each code's loss by its variance: the MSE of the decoded motion in standardised units
 
 Validation is in motion space only -- no renderer in the loop -- and reports the two failure modes
 this architecture is most exposed to, using Motar's (arXiv:2609.10317) rollout ratios, ideal 1.0:
@@ -32,13 +34,13 @@ from sang.data.dataset import MotionWindows, fit_norm, load_cfg, split_by_speake
 from sang.data.paths import load_index
 from sang.data.sync import SyncOffsets, clip_key
 from sang.data.talkvid import clip_languages, filter_langs, parse_langs
-from sang.model.flow import Norm, build, flow_loss, sample
+from sang.model.flow import PHOTO_DIM, Norm, build, flow_loss, sample
 from sang.model.latent import MotionLatent
 from sang.model.target import WIDE_REGIONS
 
 
 @torch.no_grad()
-def evaluate(model, loader, cfg, dev, max_batches: int, encode, decode) -> dict:
+def evaluate(model, loader, cfg, dev, max_batches: int, encode, decode, w=None) -> dict:
     """Val flow loss, plus rollout statistics of sampled windows in the decoded motion's mouth, rot and place."""
     model.eval()
     g = torch.Generator(device=dev).manual_seed(0)
@@ -55,7 +57,7 @@ def evaluate(model, loader, cfg, dev, max_batches: int, encode, decode) -> dict:
             break
         batch = encode({k: v.to(dev) for k, v in batch.items()})
         torch.manual_seed(bi)
-        loss, _ = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0, t_dist="uniform")
+        loss, _ = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0, t_dist="uniform", w=w)
         fm += float(loss)
         n += 1
         L = batch["target"].shape[1]
@@ -130,11 +132,12 @@ def main() -> None:
                              f"(languages in the cache: {sorted(l for l in have if l)})")
         print(f"languages {langs}: train {n_t} -> {len(train_rows)} clips, val {n_v} -> {len(val_rows)} clips; "
               f"dropped train {drop_t}, val {drop_v}", flush=True)
-    norm_path = cache / "norm42.pt"
+    width = PHOTO_DIM[cfg["photo"]]
+    norm_path = cache / f"norm{width}.pt"
     if norm_path.exists():
         norm = Norm(**torch.load(norm_path, weights_only=True))
     else:
-        norm = fit_norm(train_rows, seed=cfg["seed"])
+        norm = fit_norm(train_rows, width, seed=cfg["seed"])
         torch.save(dict(norm.state_dict()), norm_path)
     if not Path(cfg["latent"]).exists():
         raise SystemExit(f"no motion latent at {cfg['latent']}: run scripts/fit_latent.py first")
@@ -183,6 +186,9 @@ def main() -> None:
 
     encode = lambda b: {**b, "target": latent.encode(b["target"], k), "prefix": latent.encode(b["prefix"], k)}
     decode = latent.decode
+    if cfg["code_weight"] not in ("equal", "spread"):
+        raise SystemExit(f"code_weight must be equal or spread, got {cfg['code_weight']!r}")
+    w = latent.spread(k) if cfg["code_weight"] == "spread" else None
 
     model = build(cfg).to(dev)
     ema = copy.deepcopy(model).eval().requires_grad_(False)
@@ -192,7 +198,7 @@ def main() -> None:
                              {"params": no_decay, "weight_decay": 0.0}],
                             lr=cfg["lr"], betas=tuple(cfg["betas"]))
     print(f"MotionFlowTransformer: {sum(p.numel() for p in model.parameters()) / 1e6:.1f} M params, target "
-          f"{model.t_dim}-d, GFT", flush=True)
+          f"{model.t_dim}-d, GFT, photo {cfg['photo']} ({width}), code weights {cfg['code_weight']}", flush=True)
 
     step, best, bad = 0, float("inf"), 0
     if cfg.get("resume"):
@@ -204,7 +210,7 @@ def main() -> None:
         print(f"resumed at step {step}", flush=True)
 
     kw = {k_: cfg[k_] for k_ in ("lam_vel", "p_audio", "p_ref", "p_prefix", "t_dist")}
-    kw.update(t_mean=cfg.get("t_mean", 0.0), t_scale=cfg.get("t_scale", 1.0))
+    kw.update(t_mean=cfg.get("t_mean", 0.0), t_scale=cfg.get("t_scale", 1.0), w=w)
     print(f"objective: t_dist {kw['t_dist']} (mean {kw['t_mean']}, scale {kw['t_scale']})", flush=True)
     t0 = time.time()
     t_data = t_gpu = 0.0
@@ -240,11 +246,11 @@ def main() -> None:
                 t_data = t_gpu = 0.0
 
             if step % cfg["eval_every"] == 0 or step == cfg["max_steps"]:
-                r = evaluate(ema, vdl, cfg, dev, cfg["eval_batches"], encode, decode)
+                r = evaluate(ema, vdl, cfg, dev, cfg["eval_batches"], encode, decode, w)
                 print("EVAL step {} ".format(step) + " ".join(f"{k_} {v:.4f}" for k_, v in r.items()), flush=True)
                 if tdl is not None:
                     with torch.random.fork_rng(devices=[torch.cuda.current_device()] if dev == "cuda" else []):
-                        rt = evaluate(ema, tdl, cfg, dev, cfg["eval_batches"], encode, decode)
+                        rt = evaluate(ema, tdl, cfg, dev, cfg["eval_batches"], encode, decode, w)
                     print("EVAL_TRAIN step {} ".format(step) + " ".join(f"{k_.removeprefix('val_')} {v:.4f}"
                                                                       for k_, v in rt.items()), flush=True)
                 ck = {"model": model.state_dict(), "ema": ema.state_dict(), "opt": opt.state_dict(),

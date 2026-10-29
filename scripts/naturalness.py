@@ -196,7 +196,7 @@ def main() -> None:
         ms, t0 = [], time.time()
         for c, rm in zip(clips, real):
             m_ref = c["m_ref"].to(dev)
-            ref = norm.ref(c["kp0"][None].to(dev), to_target(m_ref))
+            ref = norm.ref(c["kp0"][None].to(dev), m_ref)
             g = torch.Generator(device=dev).manual_seed(args.seed)
             z = generate(model, c["audio"][None].to(dev), ref, c["n"], window=cfg["frames"], n_prefix=cfg["prefix"],
                          generator=g, **samp)[0]
