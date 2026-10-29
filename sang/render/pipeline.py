@@ -2,7 +2,7 @@
 infer_motion.py both run, so a demo is exactly what the benchmark scores.
 
 Stages: source (face crop and the photo's motion, detected once), audio (WavLM), motion (the flow model and
-the map back to 70-d motion, sang.model.latent.Space), render (LivePortrait, `batch` frames per call, FP16 with
+the map back to 70-d motion, sang.model.latent.MotionLatent.to_motion), render (LivePortrait, `batch` frames per call, FP16 with
 `half`) and paste (back into the photo with LivePortrait's feathered crop mask, GpuPaster).
 
 GpuPaster is LivePortrait's paste-back (cv2.warpAffine of the crop over the full frame, then a float blend)
@@ -102,7 +102,7 @@ class Talker:
         and sample_steps."""
         from sang.data.audio import load_wavlm
         from sang.model.flow import Norm, build, parse_spec, sampler_kwargs
-        from sang.model.latent import Space
+        from sang.model.latent import MotionLatent
         from sang.render.liveportrait import MotionCodec
         ck = torch.load(ckpt, map_location=device, weights_only=False)
         spec = parse_spec(sampler)
@@ -110,7 +110,7 @@ class Talker:
         self.model = build(self.cfg).to(device).eval()
         self.model.load_state_dict(ck["ema"])
         self.norm = Norm(**ck["norm"]).to(device)
-        self.space = Space.of(ck, self.norm, device)
+        self.latent = MotionLatent.of(ck).to(device)
         self.sampler = sampler_kwargs(spec, self.cfg)
         self.codec = codec or MotionCodec(device=device)
         self.wavlm = wavlm or load_wavlm(self.cfg.get("audio_encoder", "wavlm-large"), device=device)
@@ -134,11 +134,11 @@ class Talker:
         with timer("audio"):
             audio = self.wavlm.encode(torch.nn.functional.pad(wav, (lead * HOP, 0))[None, None].to(self.dev)).float()
         with timer("motion"):
-            first = self.space.encode(m_src, m_src, self.model.t_dim).unsqueeze(1).expand(1, lead, -1) if lead else None
+            first = self.latent.from_motion(m_src, m_src, self.model.t_dim).unsqueeze(1).expand(1, lead, -1) if lead else None
             g = torch.Generator(device=self.dev).manual_seed(seed)
             z = generate(self.model, audio, ref, n_frames, window=self.cfg["frames"], n_prefix=self.cfg["prefix"],
                          generator=g, start=first, **self.sampler)[0]
-            m = self.space.decode(z, m_src)
+            m = self.latent.to_motion(z, m_src)
         with timer("render"):
             state = codec.source_state(crop["img_crop_256x256"], precropped=True)
             it = codec.render_iter(state, m.cpu(), relative=False, stitch=stitch, batch=batch, half=half)

@@ -14,6 +14,7 @@ sys.path.insert(0, str(REPO))
 
 from sang.eval.naturalness import Readout, median_frame, typical_frames
 from sang.model.flow import Norm
+from sang.model.latent import fit_pca
 from sang.model.target import REGIONS, T_DIM, to_target
 
 
@@ -43,6 +44,7 @@ def make_cache(root: Path, n_spk: int = 6, T: int = 90) -> list[dict]:
     we = torch.zeros(T_DIM)
     we[REGIONS["eyes"][1]] = 1.0
     (root / "openness.json").write_text(json.dumps({"lip": {"w": w.tolist(), "b": 0.0}, "eye": {"w": we.tolist(), "b": 0.0}}))
+    torch.save(fit_pca(torch.randn(500, 69, generator=g), K=69).pack(), root / "pca.pt")
     return rows
 
 
@@ -70,7 +72,7 @@ def test_training_with_median_reference_end_to_end(tmp_path):
     out = tmp_path / "run"
     over = [f"cache_dir={cache}", f"out_dir={out}", "sync_offsets=", "dim=32", "layers=1", "heads=2", "max_steps=2", "warmup_steps=1",
             "eval_every=2", "log_every=1", "batch_size=2", "workers=0", "eval_batches=1", "sample_steps=2",
-            "val_frac=0.3", "windows_per_clip=2", "ref_frame=median"]
+            "val_frac=0.3", "windows_per_clip=2", "ref_frame=median", f"latent={cache / 'pca.pt'}"]
     log = subprocess.run([sys.executable, str(REPO / "scripts" / "train_motion.py"), *over],
                          capture_output=True, encoding="utf-8", cwd=REPO)
     assert log.returncode == 0, log.stderr[-2000:]

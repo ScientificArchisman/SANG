@@ -2,7 +2,7 @@
 """Naturalness metrics, REAL vs GENERATED, on unseen validation speakers. Motion space only: no rendering,
 so ~300 clips take minutes. This is where the TalkVid lip-sync numbers (lip corr / CCC) come from.
 
-    sbatch bash_scripts/run.sh scripts/naturalness.py --ckpt runs/d1_97h/last.pt \\
+    sbatch bash_scripts/run.sh scripts/naturalness.py --ckpt runs/l42_gft/last.pt \\
         --sync-offsets <cache>/sync_offsets_c10.json --variants g=2,steps=6
 
 Needs <cache>/openness.json from scripts/calibrate_openness.py. Every variant (a sampler spec) generates every
@@ -33,7 +33,7 @@ sys.path.insert(0, str(REPO))
 from sang.data.audio import load_wav
 from sang.data.dataset import split_by_speaker
 from sang.model.flow import Norm, build, generate, parse_spec, sampler_kwargs
-from sang.model.latent import Space
+from sang.model.latent import MotionLatent
 from sang.model.target import to_target
 from sang.eval.naturalness import (FPS, PhonemeRecognizer, audio_onsets, beat_alignment, blink_events, closure_minima,
                               closure_offset, energy_db, head_beats, load_readouts, median_frame,
@@ -136,7 +136,7 @@ def main() -> None:
     model = build(cfg).to(dev).eval()
     model.load_state_dict(ck["ema"])
     norm = Norm(**ck["norm"]).to(dev)
-    space = Space.of(ck, norm, dev)
+    latent = MotionLatent.of(ck).to(dev)
     specs = [(v, parse_spec(v)) for v in args.variants]
     cache = motion_cache(cfg["cache_dir"])
     read = load_readouts(cache / "openness.json")
@@ -200,7 +200,7 @@ def main() -> None:
             g = torch.Generator(device=dev).manual_seed(args.seed)
             z = generate(model, c["audio"][None].to(dev), ref, c["n"], window=cfg["frames"], n_prefix=cfg["prefix"],
                          generator=g, **samp)[0]
-            ms.append(measure(to_target(space.decode(z, m_ref)).cpu(), c, read, st, real=rm))
+            ms.append(measure(to_target(latent.to_motion(z, m_ref)).cpu(), c, read, st, real=rm))
         table[col] = summarise(ms, st)
         table[col]["gen_s"] = time.time() - t0
         by_group[col] = {g: lip_summary([m for m, c in zip(ms, clips) if g in c["groups"]]) for g in GROUPS}

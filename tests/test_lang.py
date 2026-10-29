@@ -11,6 +11,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from sang.data import talkvid
+from sang.model.latent import fit_pca
 
 
 def test_parse_langs_accepts_names_codes_commas_and_all():
@@ -60,7 +61,8 @@ def test_training_with_lang_filters_train_and_val_and_records_it(tmp_path):
     out = tmp_path / "run"
     over = [f"cache_dir={cache}", f"out_dir={out}", "sync_offsets=", "dim=32", "layers=1", "heads=2", "max_steps=2", "warmup_steps=1",
             "eval_every=2", "log_every=1", "batch_size=2", "workers=0", "eval_batches=1", "sample_steps=2",
-            "val_frac=0.4", "windows_per_clip=2"]
+            "val_frac=0.4", "windows_per_clip=2", f"latent={cache / 'pca.pt'}"]
+    torch.save(fit_pca(torch.randn(500, 69), K=69).pack(), cache / "pca.pt")
     log = subprocess.run([sys.executable, str(REPO / "scripts" / "train_motion.py"), "--lang", "en", *over],
                          capture_output=True, encoding="utf-8", cwd=REPO)
     assert log.returncode == 0, log.stderr[-2000:]

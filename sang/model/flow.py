@@ -13,14 +13,14 @@ Long clips follow FLOAT: each window is conditioned on the last P generated fram
 prefix, and that prefix is dropped with p = 0.5 in training so the first window of a clip -- which
 has none -- is in distribution.
 
-The target is a run's choice (`t_dim_of`): the 42-d LivePortrait target (sang.model.target) or the first k
-codes of a learned motion latent (sang.model.latent). `parts_of` names the target's regions for the
-region-balanced loss; a latent has one, so its loss is a plain MSE.
+The target is the first `latent_k` codes of the PCA motion latent (sang.model.latent): everything LivePortrait
+renders, relative to the photo. The loss is a plain MSE over the codes.
 
-Guidance-Free Training (GFT, Chen et al., ICML 2025, arXiv 2501.15420), `gft: true`: the network takes a
-guidance temperature beta = 1/gamma as an extra condition and is trained so that
+Guidance is trained in (Guidance-Free Training, GFT, Chen et al., ICML 2025, arXiv 2501.15420): the network takes
+a guidance temperature beta = 1/gamma as an extra condition and is trained so that
 beta v(x | audio, beta) + (1 - beta) sg[v(x | no audio, 1)] is the conditional velocity. At sampling one pass
-with beta = 1/gamma IS the classifier-free-guided velocity, so guidance costs no second pass.
+with beta = 1/gamma IS the classifier-free-guided velocity (HDTF: same metrics as CFG at the same gamma,
+docs/research_log.md 3.22). The audio is still dropped with p_audio, so v(x | no audio) stays trained.
 """
 import math
 
@@ -28,19 +28,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from sang.model.target import REGIONS, T_DIM
+from sang.model.target import T_DIM
 
 REF_DIM = 63 + T_DIM
 
 
-def t_dim_of(cfg: dict) -> int:
-    """Target width of a run: the latent's `latent_k`, else 42."""
-    return int(cfg["latent_k"]) if cfg.get("latent") else T_DIM
-
-
-def parts_of(cfg: dict) -> dict:
-    """The target's regions: rot / brow / eyes / mouth, or one 'latent' region."""
-    return {"latent": list(range(t_dim_of(cfg)))} if cfg.get("latent") else REGIONS
 
 
 class SwiGLU(nn.Module):
@@ -94,26 +86,24 @@ class DiTBlock(nn.Module):
 
 
 class MotionFlowTransformer(nn.Module):
-    """v_theta(x_t, t | audio, ref, prefix[, beta]) over a whole window.
+    """v_theta(x_t, t | audio, ref, prefix, beta) over a whole window.
 
-    x_t    [B, L, t_dim]       noisy target frames
+    x_t    [B, L, t_dim]       noisy latent codes
     t      [B]                 flow time; 0 = clean, 1 = noise
     audio  [B, 2(P+L), 1024]   WavLM ticks at 50 Hz covering prefix + target frames
-    ref    [B, REF_DIM]        normalised [x_c, reference 42-d target]
+    ref    [B, REF_DIM]        the photo: normalised [x_c, its 42-d target] (sang.model.target.to_target)
     prefix [B, P, t_dim] | None  clean previous frames (FLOAT's L'); None = no prefix at all
-    beta   [B] | None          GFT guidance temperature 1/gamma (gft models only; None = 1, no guidance)
+    beta   [B] | None          guidance temperature 1/gamma (None = 1, no guidance)
     -> v   [B, L, t_dim]
     """
 
     def __init__(self, dim: int = 512, depth: int = 8, heads: int = 8, audio_dim: int = 1024,
                  ticks_per_frame: int = 2, audio_kernel: int = 5, attn_window: int = 0,
-                 max_frames: int = 512, dropout: float = 0.0, t_dim: int = T_DIM, gft: bool = False,
-                 parts: dict | None = None):
+                 max_frames: int = 512, dropout: float = 0.0, t_dim: int = 42):
         super().__init__()
         if audio_kernel % 2 == 0:
             raise ValueError("audio_kernel must be odd so the window is centred on its frame")
-        self.tpf, self.attn_window, self.t_dim, self.gft = ticks_per_frame, attn_window, t_dim, gft
-        self.parts = parts or REGIONS
+        self.tpf, self.attn_window, self.t_dim = ticks_per_frame, attn_window, t_dim
         self.in_proj = nn.Linear(t_dim, dim)
         self.pos = nn.Embedding(max_frames, dim)
         self.prefix_tag = nn.Parameter(torch.zeros(dim))
@@ -123,10 +113,9 @@ class MotionFlowTransformer(nn.Module):
             nn.SiLU(), nn.Conv1d(dim, dim, 1))
         self.ref = nn.Sequential(nn.Linear(REF_DIM, dim), nn.SiLU(), nn.Linear(dim, dim))
         self.time = nn.Sequential(Sinusoidal(dim), nn.Linear(dim, dim), nn.SiLU(), nn.Linear(dim, dim))
-        if gft:
-            self.beta = nn.Sequential(Sinusoidal(dim), nn.Linear(dim, dim), nn.SiLU(), nn.Linear(dim, dim))
-            nn.init.zeros_(self.beta[-1].weight)
-            nn.init.zeros_(self.beta[-1].bias)
+        self.beta = nn.Sequential(Sinusoidal(dim), nn.Linear(dim, dim), nn.SiLU(), nn.Linear(dim, dim))
+        nn.init.zeros_(self.beta[-1].weight)
+        nn.init.zeros_(self.beta[-1].bias)
         self.null_audio = nn.Parameter(torch.zeros(dim))
         self.null_ref = nn.Parameter(torch.zeros(dim))
         self.blocks = nn.ModuleList([DiTBlock(dim, heads, dropout) for _ in range(depth)])
@@ -155,7 +144,7 @@ class MotionFlowTransformer(nn.Module):
 
     def forward(self, x_t, t, audio, ref, prefix=None, prefix_keep=None, drop_audio=None, drop_ref=None, beta=None):
         """prefix_keep [B] bool: False drops the whole prefix (null tokens, null audio); drop_audio / drop_ref [B]
-        bool: condition dropout. A GFT model always sees beta = 1 where the audio is dropped."""
+        bool: condition dropout. Where the audio is dropped the model always sees beta = 1."""
         B, L, _ = x_t.shape
         P = 0 if prefix is None else prefix.shape[1]
         n = P + L
@@ -180,12 +169,10 @@ class MotionFlowTransformer(nn.Module):
         c_ref = self.ref(ref.float())
         if drop_ref is not None:
             c_ref = torch.where(drop_ref.view(B, 1), self.null_ref.expand_as(c_ref), c_ref)
-        c = c_time + c_audio + c_ref.unsqueeze(1)
-        if self.gft:
-            b = torch.ones(B, device=dev) if beta is None else beta.float().to(dev).expand(B)
-            if drop_audio is not None:
-                b = torch.where(drop_audio, torch.ones_like(b), b)
-            c = c + self.beta(b * 1000.0).unsqueeze(1)
+        b = torch.ones(B, device=dev) if beta is None else beta.float().to(dev).expand(B)
+        if drop_audio is not None:
+            b = torch.where(drop_audio, torch.ones_like(b), b)
+        c = c_time + c_audio + c_ref.unsqueeze(1) + self.beta(b * 1000.0).unsqueeze(1)
 
         mask = self._mask(n, dev)
         x = tok
@@ -193,13 +180,6 @@ class MotionFlowTransformer(nn.Module):
             x = blk(x, c, mask)
         shift, scale = self.out_ada(c).chunk(2, dim=-1)
         return self.out(_modulate(self.out_norm(x), shift, scale))[:, P:]
-
-
-def region_mse(pred: torch.Tensor, target: torch.Tensor, parts: dict) -> tuple[torch.Tensor, dict]:
-    """Mean within each region, summed over regions (AVTR-1 eq. 5): every region gets one share of the loss
-    however many columns it has. One region = a plain MSE."""
-    p = {k: F.mse_loss(pred[..., idx].float(), target[..., idx].float()) for k, idx in parts.items()}
-    return sum(p.values()), p
 
 
 def sample_t(B: int, device, dist: str = "uniform", mean: float = 0.0, scale: float = 1.0) -> torch.Tensor:
@@ -215,11 +195,10 @@ def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
               t_dist: str = "uniform", t_mean: float = 0.0, t_scale: float = 1.0) -> tuple[torch.Tensor, dict]:
     """batch: target [B,L,t_dim], audio [B,2(P+L),1024], ref [B,REF_DIM], prefix [B,P,t_dim] (optional).
 
-    Rectified flow on the region-balanced MSE, plus lam_vel times the same loss on frame-to-frame differences of
-    the one-step clean estimate (FLOAT). Condition dropout rates are FLOAT's: audio 0.1, reference 0.1,
-    previous-window context 0.5.
+    Rectified flow (MSE), plus lam_vel times the same loss on frame-to-frame differences of the one-step clean
+    estimate (FLOAT). Condition dropout rates are FLOAT's: audio 0.1, reference 0.1, previous-window context 0.5.
 
-    GFT models: beta ~ U(0, 1) per sample, and the loss is on beta v(x | audio, beta) + (1 - beta) v_u, where
+    GFT: beta ~ U(0, 1) per sample, and the loss is on beta v(x | audio, beta) + (1 - beta) v_u, where
     v_u = v(x | no audio, 1) from the same network in eval mode without gradient (the paper's Algorithm 1)."""
     x0 = batch["target"]
     B, dev = x0.shape[0], x0.device
@@ -231,22 +210,19 @@ def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
     drop = torch.rand(B, device=dev) < p_audio
     kw = dict(prefix=prefix, drop_ref=torch.rand(B, device=dev) < p_ref,
               prefix_keep=(torch.rand(B, device=dev) >= p_prefix) if prefix is not None else None)
-    if model.gft:
-        beta = torch.rand(B, device=dev)
-        v = model(x_t, t, batch["audio"], batch["ref"], drop_audio=drop, beta=beta, **kw)
-        training = model.training
-        model.eval()
-        with torch.no_grad():
-            v_u = model(x_t, t, batch["audio"], batch["ref"], drop_audio=torch.ones_like(drop), **kw)
-        model.train(training)
-        v = beta.view(B, 1, 1) * v + (1 - beta.view(B, 1, 1)) * v_u
-    else:
-        v = model(x_t, t, batch["audio"], batch["ref"], drop_audio=drop, **kw)
-    loss, parts = region_mse(v, eps - x0, model.parts)
-    out = {"fm": loss.detach(), **({f"fm_{k}": p.detach() for k, p in parts.items()} if len(parts) > 1 else {})}
+    beta = torch.rand(B, device=dev)
+    v = model(x_t, t, batch["audio"], batch["ref"], drop_audio=drop, beta=beta, **kw)
+    training = model.training
+    model.eval()
+    with torch.no_grad():
+        v_u = model(x_t, t, batch["audio"], batch["ref"], drop_audio=torch.ones_like(drop), **kw)
+    model.train(training)
+    v = beta.view(B, 1, 1) * v + (1 - beta.view(B, 1, 1)) * v_u
+    loss = F.mse_loss(v.float(), (eps - x0).float())
+    out = {"fm": loss.detach()}
     if lam_vel > 0:
         x0_hat = x_t - tb * v
-        vel, _ = region_mse(x0_hat[:, 1:] - x0_hat[:, :-1], x0[:, 1:] - x0[:, :-1], model.parts)
+        vel = F.mse_loss((x0_hat[:, 1:] - x0_hat[:, :-1]).float(), (x0[:, 1:] - x0[:, :-1]).float())
         loss = loss + lam_vel * vel
         out["vel"] = vel.detach()
     out["loss"] = loss.detach()
@@ -262,11 +238,8 @@ def flow_times(steps: int) -> list[float]:
 def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps: int = 10,
            cfg_audio: float = 2.0, generator: torch.Generator | None = None,
            prefix_keep: torch.Tensor | None = None) -> torch.Tensor:
-    """Euler from t = 1 (noise) to 0, with classifier-free guidance on the audio:
-    v = v_u + gamma (v_c - v_u). The unconditional
-    branch drops audio and keeps the reference and prefix, so guidance pushes along the audio direction
-    rather than away from the speaker's identity. Both branches run as one batch. A GFT model takes
-    beta = 1/gamma instead: one pass per step.
+    """Euler from t = 1 (noise) to 0, one pass per step at beta = 1/cfg_audio: the guided velocity
+    v_u + gamma (v_c - v_u), whose unconditional branch drops the audio and keeps the photo and the prefix.
 
     prefix_keep [B] bool (optional): False = the prefix slot is present but DROPPED, exactly as
     flow_loss drops it -- which is how training represents 'no previous frames'."""
@@ -275,18 +248,11 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
     keep = None
     if prefix is not None:
         keep = torch.ones(B, dtype=torch.bool, device=dev) if prefix_keep is None else prefix_keep.to(dev)
-    beta = torch.full((B,), 1.0 / float(cfg_audio), device=dev) if model.gft else None
-    plain = model.gft or cfg_audio == 1.0
-    two = lambda z: None if z is None else torch.cat([z, z])
-    drop2 = torch.cat([torch.zeros(B, dtype=torch.bool, device=dev), torch.ones(B, dtype=torch.bool, device=dev)])
+    beta = torch.full((B,), 1.0 / float(cfg_audio), device=dev)
     ts = flow_times(steps)
     for i in range(steps):
         t = torch.full((B,), ts[i], device=dev)
-        if plain:
-            v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, beta=beta)
-        else:
-            vv = model(two(x), two(t), two(audio), two(ref), prefix=two(prefix), prefix_keep=two(keep), drop_audio=drop2)
-            v = vv[B:] + cfg_audio * (vv[:B] - vv[B:])
+        v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, beta=beta)
         x = x - (ts[i] - ts[i + 1]) * v
     return x
 
@@ -330,7 +296,7 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
 
 
 class Norm(nn.Module):
-    """Per-column standardisation for the 42-d target and the 63-d canonical keypoints."""
+    """Standardisation of the photo input: its 42-d target and its 63-d canonical keypoints."""
 
     def __init__(self, t_mean, t_std, kp_mean, kp_std):
         super().__init__()
@@ -339,9 +305,6 @@ class Norm(nn.Module):
 
     def target(self, y):
         return (y.float() - self.t_mean) / self.t_std
-
-    def untarget(self, z):
-        return z.float() * self.t_std + self.t_mean
 
     def kp(self, x):
         return (x.float() - self.kp_mean) / self.kp_std
@@ -360,13 +323,11 @@ def build(cfg: dict) -> MotionFlowTransformer:
         dim=cfg.get("dim", 512), depth=cfg.get("layers", 8), heads=cfg.get("heads", 8),
         audio_dim={"wavlm-base": 768, "wavlm-large": 1024}[cfg.get("audio_encoder", "wavlm-large")],
         audio_kernel=cfg.get("audio_kernel", 5), attn_window=cfg.get("attn_window", 0),
-        max_frames=cfg.get("max_frames", 512), dropout=cfg.get("dropout", 0.0), t_dim=t_dim_of(cfg),
-        gft=bool(cfg.get("gft", False)), parts=parts_of(cfg))
+        max_frames=cfg.get("max_frames", 512), dropout=cfg.get("dropout", 0.0), t_dim=int(cfg["latent_k"]))
 
 
 SAMPLER_KEYS = {
-    "g": "audio guidance scale gamma (default: the run's cfg_audio); a GFT model samples with beta = 1/gamma in "
-         "one pass",
+    "g": "audio guidance scale gamma (default: the run's cfg_audio), sampled in one pass at beta = 1/gamma",
     "steps": "Euler steps (default: the run's sample_steps)",
 }
 

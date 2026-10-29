@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Source image + speech -> talking-head mp4 (512x512 face crop), through sang.render.pipeline.Talker.
 
-    python scripts/infer_motion.py --ckpt runs/d1_97h/last.pt --image face.jpg --audio speech.wav --out out.mp4 \
+    python scripts/infer_motion.py --ckpt runs/l42_gft/last.pt --image face.jpg --audio speech.wav --out out.mp4 \
         --sampler g=2,steps=6
 """
 import argparse

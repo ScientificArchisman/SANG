@@ -1,5 +1,5 @@
-"""Motion latents and model spaces (sang.model.latent): ordered codes, exact full-rank PCA, packing, and the map
-between a model's output and 70-d motion. CPU only."""
+"""Motion latents (sang.model.latent): ordered codes, exact full-rank PCA, packing, and the map between codes and
+70-d motion. CPU only."""
 import sys
 from pathlib import Path
 
@@ -7,9 +7,8 @@ import pytest
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from sang.model.flow import Norm
-from sang.model.latent import MotionLatent, Space, curve, fit_pca
-from sang.model.target import M_DIM, T_DIM, to_target, wide
+from sang.model.latent import MotionLatent, curve, fit_pca
+from sang.model.target import M_DIM, wide
 
 
 def deltas(n=3000, seed=0):
@@ -49,20 +48,16 @@ def test_pack_round_trip_old_packs_and_no_autoencoder():
         MotionLatent.unpack({**lat.pack(), "kind": "ae"})
 
 
-def test_space_maps_motion_both_ways():
+def test_codes_map_motion_both_ways():
     m = motion(200)
-    norm = Norm.fit(to_target(m), torch.randn(200, 63))
-    s42 = Space(norm)
-    z = s42.encode(m, m[:1])
-    assert z.shape == (200, T_DIM)
-    back = s42.decode(z, m[:1])
-    assert torch.allclose(to_target(back), to_target(m), atol=1e-4)
     w = wide(m)
     lat = fit_pca(w - w[torch.randint(200, (200,))], K=69)
     assert fit_pca(w[:10] - w[:1]).K == 10
-    sl = Space(norm, lat)
-    u = sl.encode(m, m[:1], 69)
-    assert u.shape == (200, 69) and torch.allclose(sl.decode(u, m[:1])[:, [0, 1, 2, 3, 4, 5]], m[:, :6], atol=1e-3)
-    assert torch.allclose(sl.decode(u, m[:1])[:, 7:], m[:, 7:], atol=1e-3)
-    assert sl.encode(m[:1], m[:1], 8).shape == (1, 8)
-
+    u = lat.from_motion(m, m[:1], 69)
+    back = lat.to_motion(u, m[:1])
+    assert u.shape == (200, 69) and torch.allclose(back[:, :6], m[:, :6], atol=1e-3)
+    assert torch.allclose(back[:, 7:], m[:, 7:], atol=1e-3)
+    assert lat.from_motion(m[:1], m[:1], 8).shape == (1, 8)
+    assert torch.allclose(MotionLatent.of({"latent": lat.pack()}).encode(w[:3], 5), lat.encode(w[:3], 5))
+    with pytest.raises(ValueError):
+        MotionLatent.of({"latent": None})  # a checkpoint of the removed 42-d model

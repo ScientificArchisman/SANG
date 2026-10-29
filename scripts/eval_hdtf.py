@@ -4,8 +4,8 @@ LSE-D (plus PSNR / SSIM), and a merged table with the published numbers (sang/ev
 
     # evaluate (GPU job; ~1 h for 75 clips)
     sbatch --time=16:00:00 bash_scripts/run.sh scripts/eval_hdtf.py \\
-        --ckpt runs/d1_97h/last.pt --data /beegfs/work/$USER/HDTF --list configs/hdtf_test.csv \\
-        --rows sang --sampler g=2,steps=6 --name d1
+        --ckpt runs/l42_gft/last.pt --data /beegfs/work/$USER/HDTF --list configs/hdtf_test.csv \\
+        --rows sang --sampler g=2,steps=6 --name l42_gft
     # the renderer ceiling when the real motion is squeezed through k codes of a motion latent
     sbatch ... scripts/eval_hdtf.py ... --rows gt_motion --gt-latent runs/latent/pca.pt --gt-k 42 --name lat_pca_k42
     # table only: merge any runs with the published numbers -> docs/hdtf_results.md
@@ -19,8 +19,7 @@ Protocol (also written to <out>/protocol.json):
             every run scores the same clips. SANG never trained on HDTF (TalkVid only).
   per clip  first --seconds (default 10 s); source = frame 0; driving audio = the clip's own audio.
   rows      real       the ground-truth clip itself (LSE and CSIM only: the ceiling of each metric)
-            gt_motion  the clip's real LivePortrait motion, reduced to SANG's 42-d target (--gt-target 70:
-                       everything; --gt-latent: through the first --gt-k codes
+            gt_motion  the clip's real LivePortrait motion (--gt-latent: squeezed through the first --gt-k codes
                        of a motion latent) and re-rendered from frame 0 through the same renderer and
                        paste-back (the renderer ceiling: what perfect audio-to-motion would score)
             sang       SANG-M generated from audio, rendered with stitching, pasted back into
@@ -122,9 +121,9 @@ class Evaluator:
                 print(f"no openness readouts ({e}): no blink / lip stats", flush=True)
             print(f"SANG {args.ckpt} (step {self.talker.step}), sampler {self.talker.sampler}", flush=True)
         if args.gt_latent:
-            from sang.model.latent import MotionLatent, Space
-            self.gt_space = Space(None, MotionLatent.unpack(torch.load(args.gt_latent, map_location="cpu",
-                                                                       weights_only=False)).to(self.dev))
+            from sang.model.latent import MotionLatent
+            self.gt_latent = MotionLatent.unpack(torch.load(args.gt_latent, map_location="cpu",
+                                                            weights_only=False)).to(self.dev)
 
     def gen_sang(self, frames, wav):
         """sang.render.pipeline.Talker; the stage times (source, audio, motion, render, paste; CUDA-synchronised) go into
@@ -171,15 +170,12 @@ class Evaluator:
         return out
 
     def gen_gt_motion(self, frames, wav):
-        from sang.model.target import from_target, to_target
         from sang.render.pipeline import GpuPaster
         a = self.args
         d = self.codec.extract(frames)
         m = d["m"].float().to(self.dev)
         if a.gt_latent:
-            m = self.gt_space.decode(self.gt_space.encode(m, m[:1], a.gt_k), m[:1])
-        elif a.gt_target == 42:
-            m = from_target(to_target(m), m[:1])
+            m = self.gt_latent.to_motion(self.gt_latent.from_motion(m, m[:1], a.gt_k), m[:1])
         state = self.codec.source_state(d["crops"][0], precropped=True)
         crops = self.codec.render(None, m.cpu(), relative=False, stitch=a.stitch, state=state, out="torch")
         s0 = d["span"][0]
@@ -319,7 +315,7 @@ def summarise(out: Path, args) -> dict:
 
 
 LABELS = {"real": ("Real video", "-"), "gt_motion": ("Real motion → LivePortrait (ceiling)", "renderer ceiling"),
-          "sang": ("SANG-M", "flow-matching DiT, 42-d"),
+          "sang": ("SANG-M", "flow-matching DiT, 42 PCA codes"),
           "ditto": ("Ditto (re-run, our protocol)", "LivePortrait motion, diffusion")}
 
 
@@ -341,7 +337,7 @@ def ours_rows(summaries: list[dict]) -> list[dict]:
                 continue
             seen.add(label)
             out.append({"source": f"Ours (n={s['rows'][row]['n_clips']}, {p.get('seconds', '?'):g} s)", "method": label,
-                        "family": fam, "params": {"sang": "53.4 M +LP", "ditto": "n/r +LP"}.get(row),
+                        "family": fam, "params": {"sang": "53.9 M +LP", "ditto": "n/r +LP"}.get(row),
                         "m": s["rows"][row]["m"]})
     return out
 
@@ -362,7 +358,7 @@ def table(paths: list[str], write_doc: str | None) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--ckpt", default=str(REPO / "runs/d1_97h/last.pt"))
+    ap.add_argument("--ckpt", default=str(REPO / "runs/l42_gft/last.pt"))
     ap.add_argument("--data", help="HDTF root from scripts/download_hdtf.py (contains crops512/)")
     ap.add_argument("--name", default="sang", help="run name -> results/hdtf/<name>")
     ap.add_argument("--out", default=None)
@@ -378,8 +374,7 @@ def main() -> None:
                                                     "(sang.model.flow.SAMPLER_KEYS); default: the run's guidance and steps")
     ap.add_argument("--real-stats", action="store_true",
                     help="also extract each clip's real motion for the lip / blink / head-rotation stats (~10 s a clip)")
-    ap.add_argument("--gt-target", type=int, default=42, choices=[42, 70],
-                    help="ceiling row: SANG's 42-d target or the full 70-d motion")
+    ap.set_defaults(gt_target=70)  # protocol.json key; older runs saved 42 (the removed hand-picked target)
     ap.add_argument("--gt-latent", default=None, help="ceiling row through a motion latent (scripts/fit_latent.py)")
     ap.add_argument("--gt-k", type=int, default=None, help="--gt-latent: codes kept")
     ap.add_argument("--stitch", action=argparse.BooleanOptionalAction, default=True)

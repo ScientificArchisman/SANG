@@ -5,9 +5,7 @@
 
 Fits a PCA (closed form) over the 69 numbers LivePortrait renders, relative to a random frame of the same clip,
 then prints the fraction of variance kept on held-out VAL speakers
-for k = 1..K codes, overall and per region (rot, brow, eyes, mouth, shape, place), in standardised units. The
-hand-picked 42-d target keeps rot, brow, eyes and mouth and holds shape and place at the photo's: its row is
-printed for comparison.
+for k = 1..K codes, overall and per region (rot, brow, eyes, mouth, shape, place), in standardised units.
 
 Writes <out>/pca.pt (MotionLatent.pack) and <out>/curve.json. Next, the render ceiling per k:
     sbatch ... scripts/eval_hdtf.py ... --rows gt_motion --gt-latent <out>/pca.pt --gt-k <k> --name lat_pca_k<k>
@@ -51,16 +49,12 @@ def main() -> None:
     lat = fit_pca(d_train)
     torch.save(lat.pack(), out / "pca.pt")
     res = {"pca": curve(lat.to(dev), d_val, [k for k in KS if k <= lat.K])}
-    var = (d_val / lat.sd.cpu()).var(0)
-    kept = [i for n in ("rot", "brow", "eyes", "mouth") for i in WIDE_REGIONS[n]]
-    hand = {"k": 42, "r2": float(var[kept].sum() / var.sum()),
-            **{f"r2_{n}": float(n in ("rot", "brow", "eyes", "mouth")) for n in WIDE_REGIONS}}
-    (out / "curve.json").write_text(json.dumps({**res, "hand_picked_42": hand}, indent=1))
+    (out / "curve.json").write_text(json.dumps(res, indent=1))
 
     cols = ["r2"] + [f"r2_{n}" for n in WIDE_REGIONS]
     print("\nfraction of variance kept on val speakers, by codes k")
     print(f"{'latent':<14}{'k':>4}" + "".join(f"{c:>12}" for c in cols))
-    for name, rows in [*res.items(), ("hand-picked", [hand])]:
+    for name, rows in res.items():
         for r in rows:
             print(f"{name:<14}{r['k']:>4}" + "".join(f"{r[c]:>12.3f}" for c in cols))
     print(f"\nwrote {out}/pca.pt, curve.json", flush=True)

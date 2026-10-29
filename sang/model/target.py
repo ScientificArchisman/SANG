@@ -1,11 +1,12 @@
-"""What the model predicts, over LivePortrait's 70-d motion. Pure tensors: training never imports the renderer.
+"""Vectors over LivePortrait's 70-d motion. Pure tensors: training never imports the renderer.
 
     m = [scale, yaw, pitch, roll, t_x, t_y, t_z, exp_1..exp_63]      (KDTalker's layout)
 
-Keypoints: LivePortrait's own expression transfer drives EXPR_KP (13 of 21); the other 8 (SHAPE_KP) carry face
-shape. The 42-d target is the head rotation plus the head-frame expression of EXPR_KP (AVTR-1, arXiv
-2609.22913); `wide` is everything the renderer reads except t_z, the input of a learned motion latent
-(sang.model.latent).
+`wide` is everything the renderer reads except t_z: the 69 numbers the motion latent (sang.model.latent) is fitted
+on, and so what the model generates. `to_target` is a 42-d description, the head rotation plus the head-frame
+expression of the 13 keypoints LivePortrait's expression transfer drives (EXPR_KP; AVTR-1, arXiv 2609.22913). It
+is no longer generated; it describes the photo to the model (sang.model.flow.Norm.ref) and is what the lip / eye
+openness readouts (sang.eval.naturalness) are fitted on. REGIONS are its mouth / eye / brow / rotation columns.
 """
 import torch
 
@@ -83,23 +84,6 @@ def from_wide(w: torch.Tensor, base: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def from_target(y: torch.Tensor, base: torch.Tensor) -> torch.Tensor:
-    """[N,42] target + [N or 1,70] base motion -> [N,70], ready for MotionCodec.render(relative=False).
-
-    Scale, translation and the 24 non-driven expression coordinates (keypoints 0,3,4,5,7,8,9,10) come from `base`
-    (the source frame). The 39 driven coordinates are the target's head-frame expression, rotated into the camera
-    frame by the NEW pose. The non-driven ones keep the source's camera-frame delta, so only x_c rotates with the
-    head: upstream LivePortrait's absolute driving (arXiv 2407.03168 sec. 3.2: rotating delta with the head
-    causes texture flicker; it also warped the background here, docs/research_log.md)."""
-    y, base = y.float(), base.float().expand(y.shape[0], -1)
-    out = base.clone()
-    out[:, 2], out[:, 1], out[:, 3] = y[:, 0], y[:, 1], y[:, 2]
-    exp = base[:, 7:M_DIM].reshape(-1, 21, 3).clone()
-    exp[:, list(EXPR_KP)] = y[:, 3:T_DIM].reshape(-1, len(EXPR_KP), 3) @ _rot(out)
-    out[:, 7:M_DIM] = exp.reshape(-1, EXP_DIM)
-    return out
-
-
 def self_check() -> None:
     assert sorted(i for r in REGIONS.values() for i in r) == list(range(T_DIM)), "regions must partition 42"
     assert [len(REGIONS[k]) for k in ("rot", "brow", "eyes", "mouth")] == [3, 6, 15, 18]
@@ -110,14 +94,10 @@ def self_check() -> None:
     R = _rot(m)
     assert torch.allclose(R @ R.transpose(1, 2), torch.eye(3).expand(5, 3, 3), atol=1e-5), "not orthonormal"
     assert torch.allclose(torch.linalg.det(R), torch.ones(5), atol=1e-5), "not a rotation"
-    assert torch.allclose(from_target(to_target(m), m), m, atol=1e-4), "target round trip broke"
-    y = to_target(m)
-    m2 = from_target(torch.cat([y[:, :3] + 10.0, y[:, 3:]], 1), m)
-    assert torch.allclose(to_target(m2)[:, 3:], y[:, 3:], atol=1e-4), "exp is not pose-invariant"
-    held = [k for k in range(21) if k not in EXPR_KP]
-    cam = lambda v: v[:, 7:M_DIM].reshape(-1, 21, 3)
-    assert torch.allclose(cam(m2)[:, held], cam(m)[:, held]), "the held camera-frame delta must not move"
     assert torch.allclose(from_wide(wide(m), m), m, atol=1e-4), "wide round trip broke"
+    w = wide(m)
+    m2 = from_wide(torch.cat([w[:, :3] + 10.0, w[:, 3:]], 1), m)
+    assert torch.allclose(to_target(m2)[:, 3:], to_target(m)[:, 3:], atol=1e-4), "exp is not pose-invariant"
     assert sorted(i for r in WIDE_REGIONS.values() for i in r) == list(range(WIDE_DIM)), "wide regions must partition 69"
     print("sang/model/target.py self-check ok")
 

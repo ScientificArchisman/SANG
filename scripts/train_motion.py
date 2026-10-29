@@ -3,18 +3,15 @@
 
     sbatch bash_scripts/run.sh scripts/train_motion.py out_dir=runs/<name> [key=value ...]   # configs/train_motion.yaml
 
-Options beyond the yaml's defaults (the d1 recipe):
-  gft=true              Guidance-Free Training: guidance becomes an input, one pass per sampling step
-  latent=<path.pt> latent_k=<k>
-                        generate the first k codes of a motion latent from scripts/fit_latent.py instead of the
-                        hand-picked 42-d target (everything LivePortrait renders, relative to the photo)
+The model generates the first latent_k codes of the motion latent at `latent` (scripts/fit_latent.py): everything
+LivePortrait renders, relative to the photo. Guidance-Free Training: guidance is an input, one pass per sampling step.
 
 Validation is in motion space only -- no renderer in the loop -- and reports the two failure modes
 this architecture is most exposed to, using Motar's (arXiv:2609.10317) rollout ratios, ideal 1.0:
   std_r  generated / GT temporal std     -> << 1 is the static, mean-seeking collapse
   vc_r   generated / GT frame-diff std   -> >> 1 is jitter, << 1 is frozen
 plus audio_gain: mouth error with a DIFFERENT clip's audio over mouth error with the right audio
-(~1.0 = the model ignores audio). A latent run reports them on the decoded 69-d motion.
+(~1.0 = the model ignores audio). All are on the decoded 69-d motion.
 """
 import argparse
 import copy
@@ -42,14 +39,11 @@ from sang.model.target import WIDE_REGIONS
 
 @torch.no_grad()
 def evaluate(model, loader, cfg, dev, max_batches: int, encode, decode) -> dict:
-    """Val flow loss, plus rollout statistics of sampled windows in motion regions (mouth, rot; a latent run also
-    place, on the decoded motion)."""
+    """Val flow loss, plus rollout statistics of sampled windows in the decoded motion's mouth, rot and place."""
     model.eval()
     g = torch.Generator(device=dev).manual_seed(0)
     fm = n = 0.0
-    parts = ({k: WIDE_REGIONS[k] for k in ("mouth", "rot", "place")} if decode is not None else
-             {k: v for k, v in model.parts.items() if k in ("mouth", "rot")})
-    view = decode or (lambda z: z)
+    parts = {k: WIDE_REGIONS[k] for k in ("mouth", "rot", "place")}
     stats = {k: [] for p in parts for k in (f"mse_{p}", f"std_r_{p}", f"vc_r_{p}")}
     stats["audio_gain"] = []
 
@@ -67,10 +61,10 @@ def evaluate(model, loader, cfg, dev, max_batches: int, encode, decode) -> dict:
         L = batch["target"].shape[1]
         kw = dict(prefix=batch["prefix"], steps=cfg["sample_steps"], cfg_audio=cfg["cfg_audio"])
         g.manual_seed(bi)
-        gen = view(sample(model, batch["audio"], batch["ref"], L, generator=g, **kw))
+        gen = decode(sample(model, batch["audio"], batch["ref"], L, generator=g, **kw))
         g.manual_seed(bi)
-        other = view(sample(model, batch["audio"].roll(1, 0), batch["ref"], L, generator=g, **kw))
-        gt = view(batch["target"])
+        other = decode(sample(model, batch["audio"].roll(1, 0), batch["ref"], L, generator=g, **kw))
+        gt = decode(batch["target"])
         e = (gen - gt).pow(2)
         for name, idx in parts.items():
             stats[f"mse_{name}"].append(float(e[..., idx].mean()))
@@ -142,13 +136,14 @@ def main() -> None:
     else:
         norm = fit_norm(train_rows, seed=cfg["seed"])
         torch.save(dict(norm.state_dict()), norm_path)
-    latent = None
-    if cfg.get("latent"):
-        latent = MotionLatent.unpack(torch.load(cfg["latent"], map_location="cpu", weights_only=False)).to(dev)
-        if not 0 < int(cfg["latent_k"]) <= latent.K:
-            raise SystemExit(f"latent_k must be in 1..{latent.K}")
-        print(f"motion latent {cfg['latent']} (PCA, K {latent.K}): the model generates its first "
-              f"{cfg['latent_k']} codes", flush=True)
+    if not Path(cfg["latent"]).exists():
+        raise SystemExit(f"no motion latent at {cfg['latent']}: run scripts/fit_latent.py first")
+    latent = MotionLatent.unpack(torch.load(cfg["latent"], map_location="cpu", weights_only=False)).to(dev)
+    k = int(cfg["latent_k"])
+    if not 0 < k <= latent.K:
+        raise SystemExit(f"latent_k must be in 1..{latent.K}")
+    print(f"motion latent {cfg['latent']} (PCA, K {latent.K}): the model generates its first "
+              f"{k} codes", flush=True)
     shifts = None
     if cfg.get("sync_offsets"):
         so = SyncOffsets.load(cfg["sync_offsets"])
@@ -163,7 +158,7 @@ def main() -> None:
                             key=lambda r: r["path"])
         print(f"train_clips={cfg['train_clips']}: random subset {n_t} -> {len(train_rows)} train clips", flush=True)
     L, P = cfg["frames"], cfg["prefix"]
-    data_kw = {"preload": cfg.get("preload", True), "shifts": shifts, "wide": latent is not None,
+    data_kw = {"preload": cfg.get("preload", True), "shifts": shifts,
                "ref_frame": cfg.get("ref_frame", "random"), "ref_band": cfg.get("ref_band", 0.2)}
     if data_kw["ref_frame"] == "median":
         from sang.eval.naturalness import load_readouts
@@ -186,12 +181,8 @@ def main() -> None:
                          num_workers=min(2, cfg["workers"]), drop_last=True)
         print(f"train_eval: {len(tev_ds.rows)} fixed training clips scored like val at every eval", flush=True)
 
-    k = int(cfg.get("latent_k", 0))
-    if latent is None:
-        encode, decode = (lambda b: b), None
-    else:
-        encode = lambda b: {**b, "target": latent.encode(b["target"], k), "prefix": latent.encode(b["prefix"], k)}
-        decode = latent.decode
+    encode = lambda b: {**b, "target": latent.encode(b["target"], k), "prefix": latent.encode(b["prefix"], k)}
+    decode = latent.decode
 
     model = build(cfg).to(dev)
     ema = copy.deepcopy(model).eval().requires_grad_(False)
@@ -201,7 +192,7 @@ def main() -> None:
                              {"params": no_decay, "weight_decay": 0.0}],
                             lr=cfg["lr"], betas=tuple(cfg["betas"]))
     print(f"MotionFlowTransformer: {sum(p.numel() for p in model.parameters()) / 1e6:.1f} M params, target "
-          f"{model.t_dim}-d, {'GFT' if model.gft else 'CFG'}", flush=True)
+          f"{model.t_dim}-d, GFT", flush=True)
 
     step, best, bad = 0, float("inf"), 0
     if cfg.get("resume"):
@@ -258,7 +249,7 @@ def main() -> None:
                                                                       for k_, v in rt.items()), flush=True)
                 ck = {"model": model.state_dict(), "ema": ema.state_dict(), "opt": opt.state_dict(),
                       "step": step, "best": best, "cfg": cfg, "norm": norm.state_dict(),
-                      "latent": latent.pack() if latent is not None else None}
+                      "latent": latent.pack()}
                 torch.save(ck, out / "last.pt")
                 if r["val_loss"] < best:
                     best = ck["best"] = r["val_loss"]

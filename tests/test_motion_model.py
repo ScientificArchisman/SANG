@@ -1,5 +1,5 @@
-"""Motion track: the LivePortrait port, the 42-d and 69-d motion vectors, the bidirectional flow transformer,
-its objective (logit-normal t, Guidance-Free Training) and latent targets.
+"""Motion track: the LivePortrait port, the 69-d motion vector, the bidirectional flow transformer and its
+objective (logit-normal t, Guidance-Free Training) over latent codes of any width.
 
 Runs on CPU with no LivePortrait install, no weights and no data."""
 import sys
@@ -9,25 +9,23 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from sang.model.flow import (REF_DIM, MotionFlowTransformer, Norm, build, flow_loss, generate, parts_of, sample,
-                             sample_t, t_dim_of)
-from sang.model.target import (REGIONS, T_DIM, WIDE_DIM, WIDE_REGIONS, from_target, from_wide, rotation_matrix,
-                               to_target, wide)
+from sang.model.flow import REF_DIM, MotionFlowTransformer, Norm, build, flow_loss, generate, sample, sample_t
+from sang.model.target import T_DIM, WIDE_DIM, WIDE_REGIONS, from_wide, rotation_matrix, wide
 
-B, L, P, A = 2, 16, 4, 32
+B, L, P, A, K = 2, 16, 4, 32, 12
 
 
 def _model(**kw):
-    kw = {"dim": 32, "depth": 2, "heads": 2, "audio_dim": A, "max_frames": 64, **kw}
+    kw = {"dim": 32, "depth": 2, "heads": 2, "audio_dim": A, "max_frames": 64, "t_dim": K, **kw}
     return MotionFlowTransformer(**kw)
 
 
 def _batch(prefix=True):
     n = (P if prefix else 0) + L
-    b = {"target": torch.randn(B, L, T_DIM), "audio": torch.randn(B, 2 * n, A),
+    b = {"target": torch.randn(B, L, K), "audio": torch.randn(B, 2 * n, A),
          "ref": torch.randn(B, REF_DIM)}
     if prefix:
-        b["prefix"] = torch.randn(B, P, T_DIM)
+        b["prefix"] = torch.randn(B, P, K)
     return b
 
 
@@ -52,13 +50,11 @@ def test_rotation_matches_upstream_formula():
     assert np.allclose(got.numpy(), want, atol=1e-6)
 
 
-def test_target_partition_and_round_trip():
-    assert sorted(i for r in REGIONS.values() for i in r) == list(range(T_DIM)) and T_DIM == 42
+def test_wide_partition_and_round_trip():
     assert sorted(i for r in WIDE_REGIONS.values() for i in r) == list(range(WIDE_DIM)) and WIDE_DIM == 69
     m = torch.randn(7, 70)
     m[:, 0] = 1.2
     m[:, 1:4] = torch.rand(7, 3) * 40 - 20
-    assert torch.allclose(from_target(to_target(m), m), m, atol=1e-4)
     base = m[:1].clone()
     base[:, 6] = 0.3
     back = from_wide(wide(m), base)
@@ -70,10 +66,10 @@ def test_shapes_and_zero_init():
     m = _model()
     b = _batch()
     v = m(b["target"], torch.rand(B), b["audio"], b["ref"], prefix=b["prefix"])
-    assert v.shape == (B, L, T_DIM)
+    assert v.shape == (B, L, K)
     assert v.abs().max() == 0, "adaLN-Zero + zero output layer: v must start at exactly 0"
     v = m(b["target"], torch.rand(B), b["audio"][:, : 2 * L], b["ref"])
-    assert v.shape == (B, L, T_DIM)
+    assert v.shape == (B, L, K)
 
 
 def test_frames_are_coupled_unlike_the_per_token_head():
@@ -126,7 +122,7 @@ def test_overfits_one_batch():
         opt.step()
         first = first if first is not None else float(loss.detach())
     assert loss.item() < 0.5 * first, f"{first:.3f} -> {loss.item():.3f}"
-    assert {"fm_rot", "fm_brow", "fm_eyes", "fm_mouth", "vel"} <= set(parts)
+    assert set(parts) == {"fm", "vel", "loss"}
 
 
 def test_sample_and_long_generation():
@@ -134,10 +130,10 @@ def test_sample_and_long_generation():
     _unzero(m)
     ref = torch.randn(1, REF_DIM)
     y = sample(m, torch.randn(1, 2 * L, A), ref, L, steps=3)
-    assert y.shape == (1, L, T_DIM) and torch.isfinite(y).all()
+    assert y.shape == (1, L, K) and torch.isfinite(y).all()
     n = 37
     y = generate(m, torch.randn(1, 2 * n, A), ref, n, window=L, n_prefix=P, steps=2)
-    assert y.shape == (1, n, T_DIM) and torch.isfinite(y).all()
+    assert y.shape == (1, n, K) and torch.isfinite(y).all()
 
 
 def test_first_window_is_the_training_dropped_prefix_configuration():
@@ -148,7 +144,7 @@ def test_first_window_is_the_training_dropped_prefix_configuration():
     _unzero(m)
     ref, audio = torch.randn(1, REF_DIM), torch.randn(1, 2 * L, A)
     y = generate(m, audio, ref, L, window=L, n_prefix=P, steps=3, generator=torch.Generator().manual_seed(3))
-    junk = torch.randn(1, P, T_DIM)
+    junk = torch.randn(1, P, K)
     want = sample(m, torch.cat([torch.zeros(1, 2 * P, A), audio], 1), ref, L, prefix=junk, steps=3,
                   generator=torch.Generator().manual_seed(3), prefix_keep=torch.zeros(1, dtype=torch.bool))
     assert torch.allclose(y, want, atol=1e-5)
@@ -160,27 +156,16 @@ def test_start_prefix_continues_from_the_given_frames():
     torch.manual_seed(0)
     m = _model().eval()
     _unzero(m)
-    ref, start = torch.randn(1, REF_DIM), torch.randn(1, P, T_DIM)
+    ref, start = torch.randn(1, REF_DIM), torch.randn(1, P, K)
     n = 2 * L + 3
     audio = torch.randn(1, 2 * (P + n), A)
     y = generate(m, audio, ref, n, window=L, n_prefix=P, steps=2, start=start,
                  generator=torch.Generator().manual_seed(5))
-    assert y.shape == (1, n, T_DIM)
+    assert y.shape == (1, n, K)
     g = torch.Generator().manual_seed(5)
     w0 = sample(m, audio[:, : 2 * (P + L)], ref, L, prefix=start, steps=2, generator=g)
     w1 = sample(m, audio[:, 2 * L: 2 * (P + 2 * L)], ref, L, prefix=w0[:, -P:], steps=2, generator=g)
     assert torch.allclose(y[:, :L], w0, atol=1e-5) and torch.allclose(y[:, L:2 * L], w1, atol=1e-5)
-
-
-def test_cfg_step_is_the_guided_velocity():
-    m = _model().eval()
-    _unzero(m)
-    a, ref = torch.randn(1, 2 * L, A), torch.randn(1, REF_DIM)
-    x = torch.randn(1, L, T_DIM, generator=torch.Generator().manual_seed(1))
-    t = torch.ones(1)
-    v_c, v_u = m(x, t, a, ref), m(x, t, a, ref, drop_audio=torch.ones(1, dtype=torch.bool))
-    one = sample(m, a, ref, L, steps=1, cfg_audio=2.0, generator=torch.Generator().manual_seed(1))
-    assert torch.allclose(one, x - (v_u + 2.0 * (v_c - v_u)), atol=1e-5)
 
 
 def test_logit_normal_shift():
@@ -196,7 +181,7 @@ class Counting(torch.nn.Module):
     def __init__(self, m):
         super().__init__()
         self.m, self.calls = m, []
-        self.gft, self.t_dim, self.parts, self.tpf = m.gft, m.t_dim, m.parts, m.tpf
+        self.t_dim, self.tpf = m.t_dim, m.tpf
 
     def forward(self, *a, **kw):
         self.calls.append((kw.get("beta"), kw.get("drop_audio")))
@@ -204,7 +189,7 @@ class Counting(torch.nn.Module):
 
 
 def test_gft_takes_guidance_as_an_input_and_samples_in_one_pass():
-    m = _model(gft=True).eval()
+    m = _model().eval()
     b = _batch(prefix=False)
     t = torch.full((B,), 0.5)
     base = m(b["target"], t, b["audio"], b["ref"])
@@ -222,7 +207,7 @@ def test_gft_takes_guidance_as_an_input_and_samples_in_one_pass():
 
 def test_gft_loss_trains_the_sampling_model_and_not_the_unconditional_pass():
     torch.manual_seed(0)
-    m = _model(gft=True)
+    m = _model()
     _unzero(m)
     b = _batch()
     c = Counting(m)
@@ -241,21 +226,19 @@ def test_gft_loss_trains_the_sampling_model_and_not_the_unconditional_pass():
     assert float(loss.detach()) < 0.5 * first
 
 
-def test_a_latent_target_is_one_region_of_any_width():
+def test_build_generates_latent_k_codes():
     cfg = {"latent": "x.pt", "latent_k": 12, "dim": 32, "layers": 1, "heads": 2, "audio_encoder": "wavlm-base"}
-    assert t_dim_of(cfg) == 12 and parts_of(cfg) == {"latent": list(range(12))}
-    assert t_dim_of({}) == T_DIM and parts_of({}) == REGIONS
     m = build(cfg)
     b = {"target": torch.randn(B, L, 12), "audio": torch.randn(B, 2 * L, 768), "ref": torch.randn(B, REF_DIM)}
     loss, parts = flow_loss(m, b)
-    assert torch.isfinite(loss) and "fm_latent" not in parts and "vel" in parts
+    assert torch.isfinite(loss) and set(parts) == {"fm", "vel", "loss"}
     assert sample(m, b["audio"], b["ref"], L, steps=2).shape == (B, L, 12)
 
 
-def test_norm_round_trip():
+def test_norm_describes_the_photo():
     y, kp = torch.randn(100, T_DIM) * 3 + 1, torch.randn(100, 63)
     n = Norm.fit(y, kp)
-    assert torch.allclose(n.untarget(n.target(y)), y, atol=1e-4)
+    assert torch.allclose(n.target(y).mean(0), torch.zeros(T_DIM), atol=1e-4)
     assert n.ref(kp[:2], y[:2]).shape == (2, REF_DIM)
 
 

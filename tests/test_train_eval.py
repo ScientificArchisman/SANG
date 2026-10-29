@@ -14,7 +14,7 @@ from test_ref_frame import make_cache
 def train(cache: Path, out: Path, *extra: str) -> str:
     over = [f"cache_dir={cache}", f"out_dir={out}", "sync_offsets=", "dim=32", "layers=1", "heads=2", "max_steps=4", "warmup_steps=1",
             "eval_every=2", "log_every=1", "batch_size=2", "workers=0", "eval_batches=1", "sample_steps=2",
-            "val_frac=0.3", "windows_per_clip=2", *extra]
+            "val_frac=0.3", "windows_per_clip=2", f"latent={cache / 'pca.pt'}", *extra]
     log = subprocess.run([sys.executable, str(REPO / "scripts" / "train_motion.py"), *over],
                          capture_output=True, encoding="utf-8", cwd=REPO)
     assert log.returncode == 0, log.stderr[-2000:]

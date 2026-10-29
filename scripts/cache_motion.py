@@ -3,8 +3,8 @@
 
 Run only after scripts/motion_ceiling.py has passed. One file per clip, laid out as
 <out>/<speaker>/<clip>.pt so the speaker-disjoint split works on the cache alone:
-    m      [T, 70]    fp16   raw LivePortrait motion (the 42-d target is derived at load time,
-                             so 42 vs 70 stays an ablation, not a re-cache)
+    m      [T, 70]    fp16   raw LivePortrait motion (training vectors are derived at load time,
+                             so changing them never needs a re-cache)
     kp     [T, 63]    fp16   canonical keypoints x_c, the identity condition
     audio  [2T, 1024] fp16   WavLM-large at 50 Hz = exactly 2 ticks per 25 fps frame
     n      int               frames

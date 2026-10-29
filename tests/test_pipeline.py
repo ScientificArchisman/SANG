@@ -1,4 +1,4 @@
-"""sang.render.pipeline.Talker end to end on CPU: tiny trained SANG runs (42-d, GFT, motion latent), the real MotionCodec
+"""sang.render.pipeline.Talker end to end on CPU: tiny trained SANG runs (latent codes, GFT), the real MotionCodec
 render code with a stand-in LivePortrait (tests/test_render.py), a stand-in WavLM."""
 import json
 import subprocess
@@ -90,7 +90,8 @@ def tiny_cache(tmp_path_factory):
 def train(cache, name, *extra):
     over = [f"cache_dir={cache}", f"out_dir={cache.parent / name}", "sync_offsets=", "dim=32", "layers=1", "heads=2",
             "max_steps=3", "warmup_steps=1", "eval_every=3", "log_every=1", "batch_size=2", "workers=0",
-            "eval_batches=1", "sample_steps=2", "val_frac=0.3", "windows_per_clip=2", *extra]
+            "eval_batches=1", "sample_steps=2", "val_frac=0.3", "windows_per_clip=2", f"latent={cache / 'pca.pt'}",
+            *extra]
     log = subprocess.run([sys.executable, str(REPO / "scripts" / "train_motion.py"), *over],
                          capture_output=True, encoding="utf-8", cwd=REPO)
     assert log.returncode == 0, log.stderr[-2000:]
@@ -117,16 +118,13 @@ def test_talker_detects_the_face_once_pastes_and_times_every_stage(monkeypatch, 
     assert crops.shape == (N, 32, 32, 3) and torch.allclose(m, m2)
 
 
-def test_gft_and_latent_runs_train_and_talk(monkeypatch, tiny_cache):
-    gft, log = train(tiny_cache, "gft", "gft=true")
-    assert "GFT" in log and "EVAL step 3" in log
-    lat, log = train(tiny_cache, "lat", f"latent={tiny_cache / 'pca.pt'}", "latent_k=16", "gft=true")
-    assert "target 16-d" in log and "std_r_place" in log
+def test_a_smaller_latent_trains_and_talks(monkeypatch, tiny_cache):
+    lat, log = train(tiny_cache, "lat", "latent_k=16")
+    assert "target 16-d, GFT" in log and "std_r_place" in log and "EVAL step 3" in log
     codec, _ = fake_codec(monkeypatch)
-    for ckpt in (gft, lat):
-        t = Talker(ckpt, "g=2,steps=3", device="cpu", codec=codec, wavlm=FakeWavLM())
-        frames, m, _ = t.run(SRC, WAV, N, start="source")
-        assert frames.shape == (N, 100, 120, 3) and torch.isfinite(m).all()
+    t = Talker(lat, "g=2,steps=3", device="cpu", codec=codec, wavlm=FakeWavLM())
+    frames, m, _ = t.run(SRC, WAV, N, start="source")
+    assert frames.shape == (N, 100, 120, 3) and torch.isfinite(m).all()
     ck = torch.load(lat, map_location="cpu", weights_only=False)
     assert ck["latent"]["K"] == 69 and ck["cfg"]["latent_k"] == 16
 

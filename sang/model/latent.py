@@ -1,4 +1,4 @@
-"""A learned motion space, and the map between a model's output space and 70-d LivePortrait motion.
+"""The motion latent the model generates in, and its map to and from 70-d LivePortrait motion.
 
 MotionLatent is a PCA over everything LivePortrait renders (sang.model.target.wide, 69 numbers per frame), taken
 RELATIVE to a reference frame (the photo), so identity stays out of the code. Its dimensions come out ordered by
@@ -13,7 +13,7 @@ the raw code space, as in training.
 import torch
 from torch import nn
 
-from sang.model.target import WIDE_DIM, WIDE_REGIONS, from_target, from_wide, to_target, wide
+from sang.model.target import WIDE_DIM, WIDE_REGIONS, from_wide, wide
 
 
 class MotionLatent(nn.Module):
@@ -61,6 +61,22 @@ class MotionLatent(nn.Module):
         lat.load_state_dict(d["state"])
         return lat.eval().requires_grad_(False)
 
+    @classmethod
+    def of(cls, ck: dict) -> "MotionLatent":
+        """The latent a training checkpoint generates in."""
+        if not ck.get("latent"):
+            raise ValueError("this checkpoint predicts the hand-picked 42-d target, removed on 2026-10-29 "
+                             "(its code: commit bbac3a0)")
+        return cls.unpack(ck["latent"])
+
+    def from_motion(self, m: torch.Tensor, m_ref: torch.Tensor, k: int | None = None) -> torch.Tensor:
+        """Motion [n,70] relative to a reference frame [1,70] -> the first k standardised codes [n, k]."""
+        return self.encode(wide(m) - wide(m_ref), k)
+
+    def to_motion(self, u: torch.Tensor, base: torch.Tensor) -> torch.Tensor:
+        """The first k standardised codes [n, k] + the reference frame's motion [1,70] -> motion [n,70]."""
+        return from_wide(wide(base) + self.decode(u), base)
+
 
 def fit_pca(d: torch.Tensor, K: int | None = None) -> MotionLatent:
     """Principal components of the standardised deltas [N, dim], strongest first (at most min(N, dim))."""
@@ -87,28 +103,3 @@ def curve(lat: MotionLatent, d: torch.Tensor, ks: list[int]) -> list[dict]:
         r2 = lambda idx: float(1 - err[idx].sum() / var[idx].sum().clamp_min(1e-12))
         out.append({"k": k, "r2": r2(list(range(d.shape[1]))), **{f"r2_{n}": r2(i) for n, i in WIDE_REGIONS.items()}})
     return out
-
-
-class Space:
-    """A model's output space <-> 70-d motion. Without a latent: the normalised 42-d target. With one: the first k
-    standardised codes of the motion relative to the reference frame."""
-
-    def __init__(self, norm, latent: MotionLatent | None = None):
-        self.norm, self.latent = norm, latent
-
-    @classmethod
-    def of(cls, ck: dict, norm, device: str = "cpu") -> "Space":
-        """The space of a training checkpoint (its 'latent' entry, if any)."""
-        return cls(norm, MotionLatent.unpack(ck["latent"]).to(device) if ck.get("latent") else None)
-
-    def encode(self, m: torch.Tensor, m_ref: torch.Tensor, k: int | None = None) -> torch.Tensor:
-        """Motion [n,70] relative to a reference frame [1,70] -> model space [n, t_dim]."""
-        if self.latent is None:
-            return self.norm.target(to_target(m))
-        return self.latent.encode(wide(m) - wide(m_ref), k)
-
-    def decode(self, z: torch.Tensor, base: torch.Tensor) -> torch.Tensor:
-        """Model space [n, t_dim] + the reference frame's motion [1,70] -> motion [n,70]."""
-        if self.latent is not None:
-            return from_wide(wide(base) + self.latent.decode(z), base)
-        return from_target(self.norm.untarget(z), base)
