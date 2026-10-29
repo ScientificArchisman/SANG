@@ -1,4 +1,4 @@
-"""Audio-video offset correction (sang/sync.py, scripts/sync_offsets.py, the training loader).
+"""Audio-video offset correction (sang/data/sync.py, scripts/sync_offsets.py, the training loader).
 
 CPU only; no SyncNet, video or GPU."""
 import json
@@ -10,7 +10,7 @@ import torch
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from sang.sync import TICK, SyncOffsets, clip_key, merge, pick_clips, shift_ticks, shift_wav
+from sang.data.sync import TICK, SyncOffsets, clip_key, merge, pick_clips, shift_ticks, shift_wav
 
 
 def _row(video, clip, n=200, root="/c"):
@@ -72,8 +72,8 @@ def test_offsets_file_filter_and_shift():
 
 
 def test_training_loader_moves_the_audio(tmp_path):
-    from sang.data import MotionWindows
-    from sang.motion_model import Norm
+    from sang.data.dataset import MotionWindows
+    from sang.model.flow import Norm
     T = 80
     m = torch.zeros(T, 70)
     m[:, 0] = 1.2

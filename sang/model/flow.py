@@ -13,9 +13,9 @@ Long clips follow FLOAT: each window is conditioned on the last P generated fram
 prefix, and that prefix is dropped with p = 0.5 in training so the first window of a clip -- which
 has none -- is in distribution.
 
-The target is a run's choice (`t_dim_of`): the 42-d LivePortrait target, 45-d with head placement, or the
-first k codes of a learned motion latent (sang.latent). `parts_of` names the target's regions; a latent has
-one, so its loss is a plain MSE and its guidance one scale.
+The target is a run's choice (`t_dim_of`): the 42-d LivePortrait target (sang.model.target) or the first k
+codes of a learned motion latent (sang.model.latent). `parts_of` names the target's regions for the
+region-balanced loss; a latent has one, so its loss is a plain MSE.
 
 Guidance-Free Training (GFT, Chen et al., ICML 2025, arXiv 2501.15420), `gft: true`: the network takes a
 guidance temperature beta = 1/gamma as an extra condition and is trained so that
@@ -28,23 +28,19 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from sang.motion import PLACE_DIM, T_DIM, regions
+from sang.model.target import REGIONS, T_DIM
 
 REF_DIM = 63 + T_DIM
 
 
 def t_dim_of(cfg: dict) -> int:
-    """Target width of a run: the latent's `latent_k`, 45 with head placement (`place: true`), else 42."""
-    if cfg.get("latent"):
-        return int(cfg["latent_k"])
-    return T_DIM + PLACE_DIM if cfg.get("place") else T_DIM
+    """Target width of a run: the latent's `latent_k`, else 42."""
+    return int(cfg["latent_k"]) if cfg.get("latent") else T_DIM
 
 
 def parts_of(cfg: dict) -> dict:
-    """The target's regions: rot / brow / eyes / mouth (/ place), or one 'latent' region."""
-    if cfg.get("latent"):
-        return {"latent": list(range(t_dim_of(cfg)))}
-    return regions(t_dim_of(cfg))
+    """The target's regions: rot / brow / eyes / mouth, or one 'latent' region."""
+    return {"latent": list(range(t_dim_of(cfg)))} if cfg.get("latent") else REGIONS
 
 
 class SwiGLU(nn.Module):
@@ -117,7 +113,7 @@ class MotionFlowTransformer(nn.Module):
         if audio_kernel % 2 == 0:
             raise ValueError("audio_kernel must be odd so the window is centred on its frame")
         self.tpf, self.attn_window, self.t_dim, self.gft = ticks_per_frame, attn_window, t_dim, gft
-        self.parts = parts or regions(t_dim)
+        self.parts = parts or REGIONS
         self.in_proj = nn.Linear(t_dim, dim)
         self.pos = nn.Embedding(max_frames, dim)
         self.prefix_tag = nn.Parameter(torch.zeros(dim))
@@ -257,55 +253,30 @@ def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
     return loss, out
 
 
-def guidance_vector(g: float, parts: dict, t_dim: int, **per_region):
-    """Audio-guidance scale per target region: a float when uniform, else a [t_dim] tensor. per_region:
-    e.g. mouth=1.25 (guidance sets mouth AMPLITUDE, job 173799, so the mouth takes a lower scale)."""
-    per = {k: v for k, v in per_region.items() if v is not None and v != g}
-    if not per:
-        return float(g)
-    vec = torch.full((t_dim,), float(g))
-    for name, v in per.items():
-        if name not in parts:
-            raise ValueError(f"'{name}' guidance needs a target with that region; this one has {', '.join(parts)}")
-        vec[parts[name]] = float(v)
-    return vec
-
-
 def flow_times(steps: int) -> list[float]:
     """steps + 1 uniform flow times from 1 (noise) down to 0."""
     return (1.0 - torch.linspace(0.0, 1.0, steps + 1, dtype=torch.float64)).tolist()
 
 
-def _per_dim(g, like: torch.Tensor):
-    return g.to(like).view(1, 1, -1) if isinstance(g, torch.Tensor) else g
-
-
 @torch.no_grad()
 def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps: int = 10,
-           cfg_audio=2.0, generator: torch.Generator | None = None, prefix_keep: torch.Tensor | None = None,
-           noise_scale=None) -> torch.Tensor:
+           cfg_audio: float = 2.0, generator: torch.Generator | None = None,
+           prefix_keep: torch.Tensor | None = None) -> torch.Tensor:
     """Euler from t = 1 (noise) to 0, with classifier-free guidance on the audio:
-    v = v_u + gamma (v_c - v_u), gamma a float or a per-coordinate vector (guidance_vector). The unconditional
+    v = v_u + gamma (v_c - v_u). The unconditional
     branch drops audio and keeps the reference and prefix, so guidance pushes along the audio direction
     rather than away from the speaker's identity. Both branches run as one batch. A GFT model takes
     beta = 1/gamma instead: one pass per step.
 
     prefix_keep [B] bool (optional): False = the prefix slot is present but DROPPED, exactly as
-    flow_loss drops it -- which is how training represents 'no previous frames'.
-    noise_scale: float or [t_dim], scales the starting noise per coordinate (a temperature)."""
+    flow_loss drops it -- which is how training represents 'no previous frames'."""
     B, dev = ref.shape[0], ref.device
     x = torch.randn(B, L, model.t_dim, device=dev, generator=generator)
-    if noise_scale is not None:
-        x = x * _per_dim(noise_scale, x)
     keep = None
     if prefix is not None:
         keep = torch.ones(B, dtype=torch.bool, device=dev) if prefix_keep is None else prefix_keep.to(dev)
-    beta = None
-    if model.gft:
-        if isinstance(cfg_audio, torch.Tensor):
-            raise ValueError("a GFT model takes one guidance scale, not one per region")
-        beta = torch.full((B,), 1.0 / float(cfg_audio), device=dev)
-    plain = model.gft or (not isinstance(cfg_audio, torch.Tensor) and cfg_audio == 1.0)
+    beta = torch.full((B,), 1.0 / float(cfg_audio), device=dev) if model.gft else None
+    plain = model.gft or cfg_audio == 1.0
     two = lambda z: None if z is None else torch.cat([z, z])
     drop2 = torch.cat([torch.zeros(B, dtype=torch.bool, device=dev), torch.ones(B, dtype=torch.bool, device=dev)])
     ts = flow_times(steps)
@@ -315,22 +286,17 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
             v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, beta=beta)
         else:
             vv = model(two(x), two(t), two(audio), two(ref), prefix=two(prefix), prefix_keep=two(keep), drop_audio=drop2)
-            v = vv[B:] + _per_dim(cfg_audio, vv) * (vv[:B] - vv[B:])
+            v = vv[B:] + cfg_audio * (vv[:B] - vv[B:])
         x = x - (ts[i] - ts[i + 1]) * v
     return x
 
 
 @torch.no_grad()
 def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tensor, n_frames: int,
-             window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio=2.0,
-             generator: torch.Generator | None = None, start: torch.Tensor | None = None,
-             mouth_avg: int = 1, noise_scale=None) -> torch.Tensor:
+             window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio: float = 2.0,
+             generator: torch.Generator | None = None, start: torch.Tensor | None = None) -> torch.Tensor:
     """Any length. Windows of `window` NEW frames, each conditioned on the previous `n_prefix`
     generated frames (FLOAT's L'). audio [B, 2*n_frames, 1024] -> [B, n_frames, t_dim].
-
-    mouth_avg = K > 1: draw K whole trajectories and average their mouth coordinates; head, eyes
-    and brows come from the first, so they keep their sample-to-sample variety (lip corr 0.722 one
-    sample, 0.759 mean of 4, job 176834).
 
     How the FIRST window starts (`start`):
       None     the prefix slot is present and dropped, exactly how training shows 'no previous frames'.
@@ -340,16 +306,6 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
                must then carry n_prefix frames BEFORE frame 0 (e.g. WavLM of prepended silence).
     """
     tpf, B, dev = model.tpf, ref.shape[0], ref.device
-    if mouth_avg > 1:
-        if "mouth" not in model.parts:
-            raise ValueError("mouth averaging needs a target with a mouth region")
-        K = int(mouth_avg)
-        rep = lambda z: None if z is None else z.repeat_interleave(K, 0)
-        y = generate(model, rep(audio), rep(ref), n_frames, window, n_prefix, steps, cfg_audio, generator,
-                     rep(start), 1, noise_scale).view(B, K, n_frames, -1)
-        out = y[:, 0].clone()
-        out[..., model.parts["mouth"]] = y[..., model.parts["mouth"]].mean(1)
-        return out
     lead = 0 if start is None else start.shape[1]
     if start is not None and start.shape[1] != n_prefix:
         raise ValueError(f"start has {start.shape[1]} frames, the model chains {n_prefix}")
@@ -367,33 +323,25 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
             a0 = lead + pos - n_prefix
             a = audio[:, a0 * tpf:(lead + pos + window) * tpf]
         y = sample(model, a, ref, window, prefix=prefix, steps=steps, cfg_audio=cfg_audio,
-                   generator=generator, prefix_keep=keep, noise_scale=noise_scale)
+                   generator=generator, prefix_keep=keep)
         out.append(y[:, : n_frames - pos])
         pos += window
     return torch.cat(out, 1)
 
 
 class Norm(nn.Module):
-    """Per-column standardisation for the 42-d (or 45-d) target and the 63-d canonical keypoints.
-    target / untarget accept the first columns only (e.g. a 42-d target under a 45-d Norm)."""
+    """Per-column standardisation for the 42-d target and the 63-d canonical keypoints."""
 
     def __init__(self, t_mean, t_std, kp_mean, kp_std):
         super().__init__()
         for k, v in (("t_mean", t_mean), ("t_std", t_std), ("kp_mean", kp_mean), ("kp_std", kp_std)):
             self.register_buffer(k, torch.as_tensor(v, dtype=torch.float32))
 
-    @property
-    def place(self) -> bool:
-        """True for a head-placement (45-d) normalisation."""
-        return self.t_mean.numel() > T_DIM
-
     def target(self, y):
-        n = y.shape[-1]
-        return (y.float() - self.t_mean[:n]) / self.t_std[:n]
+        return (y.float() - self.t_mean) / self.t_std
 
     def untarget(self, z):
-        n = z.shape[-1]
-        return z.float() * self.t_std[:n] + self.t_mean[:n]
+        return z.float() * self.t_std + self.t_mean
 
     def kp(self, x):
         return (x.float() - self.kp_mean) / self.kp_std
@@ -417,22 +365,14 @@ def build(cfg: dict) -> MotionFlowTransformer:
 
 
 SAMPLER_KEYS = {
-    "g": "audio guidance scale gamma on every region (default: the run's cfg_audio); a GFT model samples with "
-         "beta = 1/gamma in one pass",
-    "mouth": "guidance on the mouth coordinates", "eyes": "guidance on the eyes", "brow": "guidance on the brows",
-    "rot": "guidance on head rotation", "place": "guidance on head placement (place: true models)",
-    "steps": "Euler steps",
-    "tau": "mouth temperature: starting-noise scale on the mouth", "temp": "starting-noise scale on every coordinate",
-    "avg": "average the mouth over this many samples",
-    "pamp": "render time: scale the generated head placement (0 = hold the photo's, 1 = as generated)",
-    "psmooth": "render time: centred moving mean of the head placement over this many frames",
-    "ramp": "render time: scale the head rotation about the photo's pose (1 = as generated)",
+    "g": "audio guidance scale gamma (default: the run's cfg_audio); a GFT model samples with beta = 1/gamma in "
+         "one pass",
+    "steps": "Euler steps (default: the run's sample_steps)",
 }
-RENDER_KEYS = ("pamp", "psmooth", "ramp")
 
 
 def parse_spec(s: str | None) -> dict:
-    """'g=2,mouth=1.25,avg=4' -> {'g': 2.0, 'mouth': 1.25, 'avg': 4.0}. '' or None -> {}."""
+    """'g=2,steps=6' -> {'g': 2.0, 'steps': 6.0}. '' or None -> {}."""
     out = {}
     for kv in (s or "").split(","):
         if not kv.strip():
@@ -446,18 +386,5 @@ def parse_spec(s: str | None) -> dict:
 
 
 def sampler_kwargs(spec: dict, cfg: dict) -> dict:
-    """A parsed spec -> keyword arguments for `generate`. Keys left out keep the run's cfg_audio and
-    sample_steps. The render-time keys (RENDER_KEYS) act after sampling (sang.latent.Space.decode)."""
-    parts, td = parts_of(cfg), t_dim_of(cfg)
-    per = {k: spec.get(k) for k in ("mouth", "eyes", "brow", "rot", "place")}
-    kw = {"cfg_audio": guidance_vector(spec.get("g", cfg["cfg_audio"]), parts, td, **per),
-          "steps": int(spec.get("steps", cfg["sample_steps"])), "mouth_avg": int(spec.get("avg", 1))}
-    if "tau" in spec or "temp" in spec:
-        ns = torch.full((td,), float(spec.get("temp", 1.0)))
-        if "tau" in spec:
-            if "mouth" not in parts:
-                raise ValueError("tau needs a target with a mouth region")
-            ns[parts["mouth"]] = float(spec["tau"])
-        kw["noise_scale"] = ns
-    return kw
-
+    """A parsed spec -> keyword arguments for `generate`; keys left out keep the run's cfg_audio and sample_steps."""
+    return {"cfg_audio": float(spec.get("g", cfg["cfg_audio"])), "steps": int(spec.get("steps", cfg["sample_steps"]))}

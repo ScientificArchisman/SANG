@@ -1,4 +1,4 @@
-"""sang.motion: ONNX Runtime sessions get an explicit thread count (the Slurm affinity failure), the report says
+"""sang.render.liveportrait: ONNX Runtime sessions get an explicit thread count (the Slurm affinity failure), the report says
 where the face models run, and decode_clip serves short requests from long clips. Stand-in onnxruntime and
 video reader, CPU only."""
 import sys
@@ -10,7 +10,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-import sang.motion as motion
+import sang.render.liveportrait as motion
 
 
 def fake_ort():
@@ -83,9 +83,9 @@ def test_decode_clip_serves_short_requests(monkeypatch):
         def get_batch(self, idx):
             return Batch(idx)
 
-    video = type(sys)("sang.video")
+    video = type(sys)("sang.data.video")
     video.open_video = lambda path: Reader(int(path.split(":")[0]), float(path.split(":")[1]))
-    monkeypatch.setitem(sys.modules, "sang.video", video)
+    monkeypatch.setitem(sys.modules, "sang.data.video", video)
     assert motion.decode_clip("2226:25", 1).shape == (1, 2, 2, 3)
     f = motion.decode_clip("600:50", 10, start=100)
     assert f[:, 0, 0, 0].tolist() == list(range(200, 220, 2))

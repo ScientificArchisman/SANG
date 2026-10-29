@@ -91,7 +91,7 @@ def test_ditto_mux_finds_our_ffmpeg_first(tmp_path, monkeypatch):
 
 
 def test_talkvid_metadata_matches_our_clip_names_and_feeds_the_language_tables():
-    from sang import talkvid
+    from sang.data import talkvid
     entries = [{"id": "video--04ZSRBGcsk-scene3", "start-time": 1150.6236, "end-time": 1155.8458,
                 "info": {"Person ID": "17", "Language": "English", "Gender": "Male",
                          "Video Link": "https://www.youtube.com/watch?v=-04ZSRBGcsk"}},

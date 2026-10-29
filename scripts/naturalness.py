@@ -2,8 +2,8 @@
 """Naturalness metrics, REAL vs GENERATED, on unseen validation speakers. Motion space only: no rendering,
 so ~300 clips take minutes. This is where the TalkVid lip-sync numbers (lip corr / CCC) come from.
 
-    sbatch bash_scripts/job.sh scripts/naturalness.py --ckpt runs/d1_97h/last.pt \\
-        --sync-offsets <cache>/sync_offsets_c10.json --variants g=2,mouth=1.25,tau=0.5,avg=4,steps=6
+    sbatch bash_scripts/run.sh scripts/naturalness.py --ckpt runs/d1_97h/last.pt \\
+        --sync-offsets <cache>/sync_offsets_c10.json --variants g=2,steps=6
 
 Needs <cache>/openness.json from scripts/calibrate_openness.py. Every variant (a sampler spec) generates every
 clip once with the same seed, so the columns differ only by the sampler.
@@ -30,17 +30,17 @@ import torch
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.codec import load_wav
-from sang.data import split_by_speaker
-from sang.latent import Space
-from sang.motion import to_target
-from sang.motion_model import RENDER_KEYS, Norm, build, generate, parse_spec, sampler_kwargs
-from sang.naturalness import (FPS, PhonemeRecognizer, audio_onsets, beat_alignment, blink_events, closure_minima,
+from sang.data.audio import load_wav
+from sang.data.dataset import split_by_speaker
+from sang.model.flow import Norm, build, generate, parse_spec, sampler_kwargs
+from sang.model.latent import Space
+from sang.model.target import to_target
+from sang.eval.naturalness import (FPS, PhonemeRecognizer, audio_onsets, beat_alignment, blink_events, closure_minima,
                               closure_offset, energy_db, head_beats, load_readouts, median_frame,
                               pause_near, pauses)
-from sang.paths import load_index, motion_cache
-from sang.sync import SyncOffsets, clip_key, shift_ticks, shift_wav
-from sang.talkvid import clip_languages, filter_langs, parse_langs
+from sang.data.paths import load_index, motion_cache
+from sang.data.sync import SyncOffsets, clip_key, shift_ticks, shift_wav
+from sang.data.talkvid import clip_languages, filter_langs, parse_langs
 
 
 def measure(y_raw: torch.Tensor, c: dict, read: dict, st: dict, real=None) -> dict:
@@ -115,7 +115,7 @@ def main() -> None:
     ap.add_argument("--min-frames", type=int, default=125)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--variants", nargs="+", default=[""],
-                    help="sampler specs, e.g. 'g=2,mouth=1.25,tau=0.5,avg=4,steps=6' (sang.motion_model.SAMPLER_KEYS); "
+                    help="sampler specs, e.g. 'g=2,steps=6' (sang.model.flow.SAMPLER_KEYS); "
                          "default: the run's guidance and steps")
     ap.add_argument("--sync-offsets", default=None,
                     help="<cache>/sync_offsets.json: drop no-sync val clips and move each clip's audio (features and "
@@ -138,10 +138,6 @@ def main() -> None:
     norm = Norm(**ck["norm"]).to(dev)
     space = Space.of(ck, norm, dev)
     specs = [(v, parse_spec(v)) for v in args.variants]
-    for v, spec in specs:
-        sampler_kwargs(spec, cfg)
-        if any(k in spec for k in RENDER_KEYS):
-            raise SystemExit(f"{v}: render-time keys ({', '.join(RENDER_KEYS)}) change nothing in motion space")
     cache = motion_cache(cfg["cache_dir"])
     read = load_readouts(cache / "openness.json")
     for k, r in read.items():

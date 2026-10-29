@@ -8,10 +8,10 @@ import torch
 import yaml
 from torch.utils.data import Dataset
 
-from sang.motion import T_DIM, placement, to_target, wide
-from sang.motion_model import Norm
-from sang.naturalness import typical_frames
-from sang.sync import clip_key, shift_ticks
+from sang.data.sync import clip_key, shift_ticks
+from sang.eval.naturalness import typical_frames
+from sang.model.flow import Norm
+from sang.model.target import to_target, wide
 
 TPF = 2
 
@@ -66,22 +66,9 @@ def fit_norm(rows: list[dict], n_clips: int = 500, seed: int = 0) -> Norm:
     return Norm.fit(torch.cat(ys), torch.cat(kps))
 
 
-def fit_place_norm(rows: list[dict], base: Norm, n_clips: int = 500, seed: int = 0, floor: float = 1e-3) -> Norm:
-    """`base` (the 42-d Norm, kept as it is) + statistics of the 3 head-placement columns: each frame's
-    placement relative to a random frame of its clip, as training draws the reference."""
-    rng = random.Random(seed)
-    ps = []
-    for r in rng.sample(rows, min(n_clips, len(rows))):
-        p = placement(torch.load(r["path"], map_location="cpu", weights_only=True)["m"].float())
-        ps.append(p - p[rng.randrange(len(p))])
-    ps = torch.cat(ps)
-    return Norm(torch.cat([base.t_mean, ps.mean(0)]), torch.cat([base.t_std, ps.std(0).clamp_min(floor)]),
-                base.kp_mean, base.kp_std)
-
-
 def wide_deltas(rows: list[dict], n_clips: int, seed: int = 0) -> torch.Tensor:
-    """sang.motion.wide of every frame minus that of a random frame of the same clip: [N, 69], the deltas a
-    motion latent (sang.latent) is fitted on, drawn as training draws reference frames."""
+    """sang.model.target.wide of every frame minus that of a random frame of the same clip: [N, 69], the deltas a
+    motion latent (sang.model.latent) is fitted on, drawn as training draws reference frames."""
     g = torch.Generator().manual_seed(seed)
     out = []
     for r in random.Random(seed).sample(rows, min(n_clips, len(rows))):
@@ -94,10 +81,9 @@ class MotionWindows(Dataset):
     """Random windows of P prefix + L target frames. The reference is a random frame of the same
     clip (Ditto's choice), which at inference becomes the source image. ref_frame='median': a random
     one of the clip's TYPICAL frames instead (lip opening in the middle `ref_band` of the clip by rank,
-    sang.naturalness.typical_frames).
+    sang.eval.naturalness.typical_frames).
 
-    Targets: the normalised 42-d target; with a 45-d Norm (head placement) also the frames' placement
-    relative to the window's reference frame; with wide=True the raw sang.motion.wide vector minus the
+    Targets: the normalised 42-d target; with wide=True the raw sang.model.target.wide vector minus the
     reference frame's (69-d deltas for a motion latent, which the training loop encodes on the GPU).
 
     preload=True reads every clip once at start-up and keeps it in RAM (~2 MB per 20 s clip): reading
@@ -113,7 +99,6 @@ class MotionWindows(Dataset):
         self.ref_frame, self.lip, self.ref_band, self.wide = ref_frame, lip, ref_band, wide
         self.rows = [r for r in rows if r["n"] >= L + P]
         self.L, self.P, self.norm, self.per_clip = L, P, norm, per_clip
-        self.place = norm.place and not wide
         self.shifts = shifts or {}
         self.fixed = fixed
         if not self.rows:
@@ -136,29 +121,19 @@ class MotionWindows(Dataset):
         audio = shift_ticks(d["audio"], self.shifts.get(clip_key(r), 0))
         cands = (torch.from_numpy(typical_frames(self.lip(y_raw).numpy(), self.ref_band))
                  if self.ref_frame == "median" else None)
-        place = placement(m) if self.place else None
-        return y, ref, audio.half().contiguous(), cands, place
-
-    def _frames(self, y_all, p_all, sl: slice, k: int) -> torch.Tensor:
-        """Target rows `sl` relative to reference frame k where the target is relative."""
-        if self.wide:
-            return y_all[sl] - y_all[k]
-        if p_all is None:
-            return y_all[sl]
-        zp = (p_all[sl] - p_all[k] - self.norm.t_mean[T_DIM:]) / self.norm.t_std[T_DIM:]
-        return torch.cat([y_all[sl], zp], -1)
+        return y, ref, audio.half().contiguous(), cands
 
     def __len__(self):
         return len(self.rows) * self.per_clip
 
     def __getitem__(self, i):
         j = i % len(self.rows)
-        y_all, ref_all, audio, cands, p_all = self.mem[j] if self.mem is not None else self._load(self.rows[j])
+        y_all, ref_all, audio, cands = self.mem[j] if self.mem is not None else self._load(self.rows[j])
         n, span = y_all.shape[0], self.L + self.P
         rng = random.Random(i) if self.fixed else random
         s = rng.randint(0, n - span)
         k = int(cands[rng.randrange(len(cands))]) if cands is not None else rng.randint(0, n - 1)
-        y = self._frames(y_all, p_all, slice(s, s + span), k)
+        y = y_all[s:s + span] - y_all[k] if self.wide else y_all[s:s + span]
         return {"prefix": y[: self.P], "target": y[self.P:], "ref": ref_all[k],
                 "audio": audio[TPF * s: TPF * (s + span)]}
 

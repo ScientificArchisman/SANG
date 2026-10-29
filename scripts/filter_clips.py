@@ -18,7 +18,7 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.video import decode_frames
+from sang.data.video import decode_frames
 
 PROBE_FRAMES = 16
 FPS = 25.0

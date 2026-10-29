@@ -7,7 +7,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.sync import clip_key, merge
+from sang.data.sync import clip_key, merge
 
 
 def so():

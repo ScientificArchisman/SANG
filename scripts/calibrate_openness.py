@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Fit linear lip / eye openness readouts on the 42-d target (needed by sang/naturalness.py).
+"""Fit linear lip / eye openness readouts on the 42-d target (needed by sang/eval/naturalness.py).
 
-    sbatch --time=08:00:00 bash_scripts/job.sh scripts/calibrate_openness.py
+    sbatch --time=08:00:00 bash_scripts/run.sh scripts/calibrate_openness.py
 
 Resumable and saves as it goes: raw (motion, ratio) pairs go to <cache>/openness_pairs.pt and
 openness.json is refitted every --save-every clips, so a timeout keeps what was done and a rerun
@@ -26,9 +26,11 @@ import torch
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.motion import REGIONS, MotionCodec, to_target
-from sang.naturalness import eye_ratio, fit_readout, lip_ratio
-from sang.paths import MOTION_CACHE, load_index
+from sang.model.target import REGIONS, to_target
+
+from sang.data.paths import MOTION_CACHE, load_index
+from sang.eval.naturalness import eye_ratio, fit_readout, lip_ratio
+from sang.render.liveportrait import MotionCodec
 
 
 def main() -> None:
@@ -49,7 +51,7 @@ def main() -> None:
     done = {c for c in st["done"]}
     print(f"{len(done)} clips already done, {len(st['Y'])} frames", flush=True)
 
-    from sang.video import open_video
+    from sang.data.video import open_video
     codec = MotionCodec(device="cuda")
     t0, tm_dec, tm_lmk, new = time.time(), 0.0, 0.0, 0
     for k, r in enumerate(rows):

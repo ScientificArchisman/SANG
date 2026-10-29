@@ -22,7 +22,6 @@ layers: 8
 heads: 8
 dropout: 0.1
 max_frames: 512
-place: false
 gft: false
 latent: ""
 latent_k: 0

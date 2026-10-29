@@ -9,8 +9,8 @@ import numpy as np
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from sang.bench import frechet
-from sang.sota_hdtf import METRICS, SOTA, markdown_table
+from sang.eval.metrics import frechet
+from sang.eval.sota_hdtf import METRICS, SOTA, markdown_table
 
 
 def _load(name):
@@ -48,7 +48,7 @@ def test_test_list_one_clip_per_video_stable_order(tmp_path):
 
 def test_frechet_and_paste_back():
     import torch
-    from sang.pipeline import GpuPaster
+    from sang.render.pipeline import GpuPaster
     r = np.random.default_rng(0)
     a = r.normal(size=(400, 6))
     assert abs(frechet(a, a)) < 1e-3 and abs(frechet(a, a + 1) - 6) < 1e-2
@@ -61,7 +61,7 @@ def test_frechet_and_paste_back():
 def test_lse_survives_non_ascii_syncnet_output(tmp_path, monkeypatch):
     """Every HDTF clip was skipped with UnicodeDecodeError: syncnet's output was decoded with the node's
     ASCII locale. Progress-bar glyphs and even invalid bytes must not stop the three numbers parsing."""
-    import sang.bench as bench
+    import sang.eval.metrics as bench
     fake = tmp_path / "syncnet_python"
     fake.mkdir()
     (fake / "run_pipeline.py").write_text(r"import sys; sys.stderr.buffer.write(b'faces \xe2\x96\x88\xe2\x96\x88 100% \xff\n')")
@@ -79,16 +79,16 @@ def test_tables():
     assert {k for k, _ in METRICS} >= {"FID", "FVD", "CSIM", "LSE-C", "LSE-D"}
     for r in SOTA:
         assert set(r["m"]) <= {k for k, _ in METRICS}, r
-    summary = {"name": "d1", "protocol": {"seconds": 10, "sampler": "g=2,mouth=1.25"},
+    summary = {"name": "d1", "protocol": {"seconds": 10, "sampler": "g=2,steps=6"},
                "rows": {"real": {"n_clips": 75, "m": {"LSE-C": 8.1, "LSE-D": 6.9, "CSIM": 0.85}},
                         "gt_motion": {"n_clips": 75, "m": {"FID": 16.4, "FVD": 31.0}},
                         "sang": {"n_clips": 75, "m": {"FID": 12.0, "FVD": 150.0, "LSE-C": 7.0}}}}
-    lat = {**summary, "name": "lat", "protocol": {"seconds": 10, "gt_latent": "runs/latent/ae.pt", "gt_k": 16}}
+    lat = {**summary, "name": "lat", "protocol": {"seconds": 10, "gt_latent": "runs/latent/pca.pt", "gt_k": 16}}
     rows = ev.ours_rows([summary, summary, lat])
     methods = [r["method"] for r in rows]
     assert methods.count("Real video") == 1 and methods.count("Real motion → LivePortrait (ceiling)") == 1
-    assert "Real motion → LivePortrait (ceiling) through 16 codes of ae.pt" in methods
-    assert "SANG-M (d1: g=2,mouth=1.25)" in methods and "SANG-M (lat: run defaults)" in methods
+    assert "Real motion → LivePortrait (ceiling) through 16 codes of pca.pt" in methods
+    assert "SANG-M (d1: g=2,steps=6)" in methods and "SANG-M (lat: run defaults)" in methods
     md = markdown_table(rows)
     assert md.splitlines()[2].startswith("| Ours (n=75, 10 s) | Real video")
     assert "| KDTalker Tab. 1 | KDTalker |" in md and "9.756" in md

@@ -9,8 +9,8 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from sang.motion import REGIONS, T_DIM
-from sang.naturalness import (HOP, beat_alignment, bilabial_events, blink_events, ccc, closure_minima,
+from sang.model.target import REGIONS, T_DIM
+from sang.eval.naturalness import (HOP, beat_alignment, bilabial_events, blink_events, ccc, closure_minima,
                               closure_offset, energy_db, eye_ratio, fit_readout, is_bilabial, lip_ratio,
                               load_readouts, pause_near, pauses)
 
@@ -32,7 +32,6 @@ def test_readout_recovers_a_linear_map_and_round_trips(tmp_path):
     r = Y @ w + 0.5 + 0.01 * torch.randn(2000, generator=g)
     ro = fit_readout(Y, r, cols, np.arange(2000) // 20)
     assert ro.r2 > 0.99 and torch.allclose(ro.w, w, rtol=0.03, atol=1e-3)
-    assert torch.allclose(ro(torch.cat([Y[:5], torch.randn(5, 3)], 1)), ro(Y[:5]))
     (tmp_path / "openness.json").write_text(json.dumps({"lip": ro.to_dict(), "eye": ro.to_dict()}))
     back = load_readouts(tmp_path / "openness.json")["lip"]
     assert torch.allclose(back(Y[:5]), ro(Y[:5]), atol=1e-5) and abs(back.r2 - ro.r2) < 1e-9

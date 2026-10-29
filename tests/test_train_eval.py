@@ -1,6 +1,4 @@
-"""train_eval: the val score on fixed training clips (EVAL_TRAIN lines) must not change the run, and
-scripts/plot_curves.py must read it. CPU only."""
-import importlib.util
+"""train_eval: the val score on fixed training clips (EVAL_TRAIN lines) must not change the run. CPU only."""
 import subprocess
 import sys
 from pathlib import Path
@@ -23,7 +21,7 @@ def train(cache: Path, out: Path, *extra: str) -> str:
     return log.stdout
 
 
-def test_train_eval_leaves_the_run_bit_identical_and_plots(tmp_path):
+def test_train_eval_leaves_the_run_bit_identical(tmp_path):
     cache = tmp_path / "cache"
     make_cache(cache)
     off = train(cache, tmp_path / "off", "train_eval=false")
@@ -38,18 +36,6 @@ def test_train_eval_leaves_the_run_bit_identical_and_plots(tmp_path):
     for part in ("model", "ema"):
         assert all(torch.equal(a[part][k], b[part][k]) for k in a[part])
 
-    spec = importlib.util.spec_from_file_location("plot_curves", REPO / "scripts" / "plot_curves.py")
-    pc = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(pc)
-    r = pc.parse(on)
-    assert [s for s, _ in r["val"]] == [s for s, _ in r["train"]] == [2, 4]
-    assert len(r["batches"]) == 4 and all("loss" in d for _, d in r["train"])
-    log = tmp_path / "on.log"
-    log.write_text(on)
-    res = subprocess.run([sys.executable, str(REPO / "scripts" / "plot_curves.py"), str(log), "--name", "t",
-                          "--out", str(tmp_path / "curves")], capture_output=True, encoding="utf-8", cwd=REPO)
-    assert res.returncode == 0, res.stderr[-2000:]
-    assert (tmp_path / "curves" / "t.png").stat().st_size > 0 and (tmp_path / "curves" / "t.pdf").exists()
 
 
 def test_init_seed_changes_the_weights_not_the_split(tmp_path):

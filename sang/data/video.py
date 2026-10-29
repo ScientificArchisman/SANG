@@ -1,4 +1,4 @@
-"""Video decoding shared by the motion codec (sang.motion.decode_clip) and the clip filter."""
+"""Video decoding shared by the motion codec (sang.render.liveportrait.decode_clip) and the clip filter."""
 from decord import VideoReader
 
 MAX_DECODE_HEIGHT = 1080

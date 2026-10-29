@@ -1,8 +1,8 @@
-"""Source photo + speech -> frames, with stage timings: the one generation path that scripts/eval_hdtf.py,
-infer_motion.py and demo_motion.py all run, so a demo is exactly what the benchmark scores.
+"""Source photo + speech -> frames, with stage timings: the one generation path that scripts/eval_hdtf.py and
+infer_motion.py both run, so a demo is exactly what the benchmark scores.
 
 Stages: source (face crop and the photo's motion, detected once), audio (WavLM), motion (the flow model and
-the map back to 70-d motion, sang.latent.Space), render (LivePortrait, `batch` frames per call, FP16 with
+the map back to 70-d motion, sang.model.latent.Space), render (LivePortrait, `batch` frames per call, FP16 with
 `half`) and paste (back into the photo with LivePortrait's feathered crop mask, GpuPaster).
 
 GpuPaster is LivePortrait's paste-back (cv2.warpAffine of the crop over the full frame, then a float blend)
@@ -19,7 +19,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from sang.motion import LP, as3x3
+from sang.render.liveportrait import LP, as3x3
 
 SR, FPS = 16000, 25
 HOP = SR // FPS
@@ -98,12 +98,12 @@ class GpuPaster:
 
 class Talker:
     def __init__(self, ckpt: str, sampler: str | None = None, device: str = "cuda", codec=None, wavlm=None):
-        """sampler: a spec such as 'g=2,mouth=1.25,avg=4' (sang.motion_model.SAMPLER_KEYS); without one, the
-        run's cfg_audio and sample_steps."""
-        from sang.codec import load_wavlm
-        from sang.latent import Space
-        from sang.motion import MotionCodec
-        from sang.motion_model import RENDER_KEYS, Norm, build, parse_spec, sampler_kwargs
+        """sampler: a spec such as 'g=2,steps=6' (sang.model.flow.SAMPLER_KEYS); without one, the run's cfg_audio
+        and sample_steps."""
+        from sang.data.audio import load_wavlm
+        from sang.model.flow import Norm, build, parse_spec, sampler_kwargs
+        from sang.model.latent import Space
+        from sang.render.liveportrait import MotionCodec
         ck = torch.load(ckpt, map_location=device, weights_only=False)
         spec = parse_spec(sampler)
         self.cfg, self.step, self.dev = ck["cfg"], ck["step"], device
@@ -111,22 +111,18 @@ class Talker:
         self.model.load_state_dict(ck["ema"])
         self.norm = Norm(**ck["norm"]).to(device)
         self.space = Space.of(ck, self.norm, device)
-        self.render_kw = {k: spec[k] for k in RENDER_KEYS if k in spec}
         self.sampler = sampler_kwargs(spec, self.cfg)
         self.codec = codec or MotionCodec(device=device)
         self.wavlm = wavlm or load_wavlm(self.cfg.get("audio_encoder", "wavlm-large"), device=device)
-        self.sampled = None
 
     @torch.no_grad()
-    def run(self, src: np.ndarray, wav: torch.Tensor, n_frames: int, seed: int = 0, held: str = "camera",
-            stitch: bool = True, paste: bool = True, start: str = "null", batch: int = 16, half: bool = True,
+    def run(self, src: np.ndarray, wav: torch.Tensor, n_frames: int, seed: int = 0, stitch: bool = True, paste: bool = True, start: str = "null", batch: int = 16, half: bool = True,
             timer: Timer | None = None):
         """src [H,W,3] uint8, wav [N] 16 kHz -> (frames [n,H,W,3] or, with paste=False, crops [n,512,512,3] uint8,
         motion [n,70], timer). start='source': the first window continues from the photo's own motion after
-        `prefix` frames of silence (the HDTF protocol's default); 'null': the dropped-prefix start training uses.
-        self.sampled keeps the motion before the render-time controls (ramp, pamp, psmooth)."""
-        from sang.motion import to_target
-        from sang.motion_model import generate
+        `prefix` frames of silence (the HDTF protocol's default); 'null': the dropped-prefix start training uses."""
+        from sang.model.flow import generate
+        from sang.model.target import to_target
         timer = timer or Timer()
         codec = self.codec
         with timer("source"):
@@ -142,8 +138,7 @@ class Talker:
             g = torch.Generator(device=self.dev).manual_seed(seed)
             z = generate(self.model, audio, ref, n_frames, window=self.cfg["frames"], n_prefix=self.cfg["prefix"],
                          generator=g, start=first, **self.sampler)[0]
-            self.sampled = self.space.decode(z, m_src, held=held)
-            m = self.space.decode(z, m_src, held=held, **self.render_kw) if self.render_kw else self.sampled
+            m = self.space.decode(z, m_src)
         with timer("render"):
             state = codec.source_state(crop["img_crop_256x256"], precropped=True)
             it = codec.render_iter(state, m.cpu(), relative=False, stitch=stitch, batch=batch, half=half)

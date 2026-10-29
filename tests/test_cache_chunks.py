@@ -11,7 +11,7 @@ import torch
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.talkvid import clip_times
+from sang.data.talkvid import clip_times
 
 
 def cm():
@@ -96,10 +96,10 @@ def test_main_writes_chunks_resumes_from_any_index(tmp_path, monkeypatch):
         def encode(self, x):
             return torch.zeros(1, x.shape[-1] // 320, 1024)
 
-    codec_mod = type(sys)("sang.codec")
+    codec_mod = type(sys)("sang.data.audio")
     codec_mod.load_wavlm = lambda name, device: WavLM()
     codec_mod.load_wav = lambda path, s, n: torch.zeros(n * 640)
-    monkeypatch.setitem(sys.modules, "sang.codec", codec_mod)
+    monkeypatch.setitem(sys.modules, "sang.data.audio", codec_mod)
     monkeypatch.setattr(m, "MotionCodec", Codec)
     monkeypatch.setattr(torch.Tensor, "cuda", lambda self, *a, **k: self)
     monkeypatch.delenv("SLURM_ARRAY_TASK_ID", raising=False)

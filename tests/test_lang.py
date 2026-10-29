@@ -1,4 +1,4 @@
-"""--lang: train and validate on a subset of languages (sang/talkvid.py, scripts/train_motion.py,
+"""--lang: train and validate on a subset of languages (sang/data/talkvid.py, scripts/train_motion.py,
 scripts/naturalness.py). CPU only."""
 import json
 import subprocess
@@ -10,7 +10,7 @@ import torch
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang import talkvid
+from sang.data import talkvid
 
 
 def test_parse_langs_accepts_names_codes_commas_and_all():
@@ -37,8 +37,8 @@ def test_clip_language_is_talkvid_else_whisper(tmp_path):
 
 
 def test_training_with_lang_filters_train_and_val_and_records_it(tmp_path):
-    from sang.data import split_by_speaker
-    from sang.paths import load_index
+    from sang.data.dataset import split_by_speaker
+    from sang.data.paths import load_index
     cache = tmp_path / "cache"
     rows, g = [], torch.Generator().manual_seed(0)
     for s in range(6):

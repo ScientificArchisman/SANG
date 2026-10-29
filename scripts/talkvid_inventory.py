@@ -5,7 +5,7 @@
     python scripts/talkvid_inventory.py --target-hours 100 --select <list.json>  # + a download list
     # -> results/talkvid_inventory/inventory.json (+ a printed report)
 
-Inputs (defaults from sang/paths.py):
+Inputs (defaults from sang/data/paths.py):
   --meta   TalkVid's full metadata, one entry per clip: YouTube link, start/end time, size, fps, quality
            scores and labels (<DATA_ROOT>/talkvid/metadata/filtered_video_clips.json)
   --clips  the clips on disk, <video id>/<video id>_<n>_<start>_<end>.mp4 + .m4a (TalkVid's downloader layout)
@@ -54,9 +54,9 @@ import yaml
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.data import split_by_speaker
-from sang.paths import DATA_ROOT, MOTION_CACHE, TALKVID_CLIPS, load_index
-from sang.talkvid import clip_times, video_id
+from sang.data.dataset import split_by_speaker
+from sang.data.paths import DATA_ROOT, MOTION_CACHE, TALKVID_CLIPS, load_index
+from sang.data.talkvid import clip_times, video_id
 
 FPS = 25
 LENGTH_BINS = [(0, 5), (5, 10), (10, 15), (15, 20), (20, 30), (30, 10 ** 9)]

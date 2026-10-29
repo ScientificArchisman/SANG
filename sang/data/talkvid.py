@@ -83,7 +83,7 @@ def parse_langs(values) -> list[str] | None:
 def filter_langs(rows: list[dict], langs: list[str] | None, lang_of: dict) -> tuple[list[dict], dict]:
     """Rows whose clip language is in langs (None = keep all) -> (kept, {language: dropped clips})."""
     from collections import Counter
-    from sang.sync import clip_key
+    from sang.data.sync import clip_key
     if langs is None:
         return rows, {}
     keep, dropped = [], Counter()

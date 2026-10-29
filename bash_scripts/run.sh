@@ -1,13 +1,16 @@
 #!/bin/bash
-#SBATCH --job-name=sang_job
+# Every SANG job, training and evaluation alike:
+#   sbatch [--time=.. --job-name=..] bash_scripts/run.sh scripts/<script>.py [args]
+#   SANG_ENV=ditto sbatch bash_scripts/run.sh scripts/ditto_hdtf.py ...     # another conda env
+#SBATCH --job-name=sang
 #SBATCH --partition=ifn
 #SBATCH --account=ifn
 #SBATCH --qos=normal
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=8
 #SBATCH --comment=force_cpus
 #SBATCH --mem=64gb
-#SBATCH --time=04:00:00
+#SBATCH --time=24:00:00
 #SBATCH --gres=gpu:a100_80gb:1
 #SBATCH --output=slurm_logs/%x_%j.out
 #SBATCH --error=slurm_logs/%x_%j.err

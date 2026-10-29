@@ -10,7 +10,7 @@ Run only after scripts/motion_ceiling.py has passed. One file per clip, laid out
     n      int               frames
 
 Sharded, resumable, one bad clip never kills the job:
-    sbatch --array=0-7 bash_scripts/job.sh scripts/cache_motion.py --nshards 8
+    sbatch --array=0-7 bash_scripts/run.sh scripts/cache_motion.py --nshards 8
     (each task reads SLURM_ARRAY_TASK_ID as its shard)
 
 Then `index_<tag>_<shard>.jsonl` per shard lists what landed; train_motion.py reads all index_*.jsonl.
@@ -34,16 +34,16 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "third_party"))
 
-from sang.motion import MotionCodec, decode_clip
-from sang.paths import MOTION_CACHE
-from sang.talkvid import clip_times
+from sang.data.paths import MOTION_CACHE
+from sang.data.talkvid import clip_times
+from sang.render.liveportrait import MotionCodec, decode_clip
 
 SR, FPS, TPF = 16000, 25, 2
 
 
 def chunk_stem(stem: str, k: int) -> str:
     """File name of chunk k of a clip: the clip's own name for k = 0, else '<video>_<n>_c<k>_<start>_<end>', so
-    sang.talkvid.clip_times still reads the clip's TalkVid start/end and its labels still match."""
+    sang.data.talkvid.clip_times still reads the clip's TalkVid start/end and its labels still match."""
     if k == 0:
         return stem
     head, s, e = stem.rsplit("_", 2) if stem.count("_") >= 2 else (stem, "", "")
@@ -117,7 +117,7 @@ def main() -> None:
           f"(up to {args.chunks} chunk{'s' if args.chunks > 1 else ''} of {args.max_frames} frames) -> {index.name}",
           flush=True)
 
-    from sang.codec import load_wav, load_wavlm
+    from sang.data.audio import load_wav, load_wavlm
     codec = MotionCodec(device="cuda")
     wavlm = load_wavlm(args.audio_encoder, device="cuda")
 

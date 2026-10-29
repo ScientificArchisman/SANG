@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Measure the audio-video offset of the motion cache with SyncNet, then merge into one file that
-training and evaluation read (sang/sync.py has the convention and the merge rule).
+training and evaluation read (sang/data/sync.py has the convention and the merge rule).
 
     # 1. measure: 2 clips per source video, 3 array tasks, 4 SyncNet runs at a time per GPU (resumable)
-    sbatch --array=0-2 --time=12:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/sync_offsets.py --nshards 3
+    sbatch --array=0-2 --time=12:00:00 bash_scripts/run.sh scripts/sync_offsets.py --nshards 3
     # 2. merge (CPU, seconds) -> <cache>/sync_offsets.json
     python scripts/sync_offsets.py --merge
 
@@ -26,8 +26,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.paths import MOTION_CACHE, load_index
-from sang.sync import FPS, clip_key, merge, pick_clips, real_clip_mp4, video_of
+from sang.data.paths import MOTION_CACHE, load_index
+from sang.data.sync import FPS, clip_key, merge, pick_clips, real_clip_mp4, video_of
 
 
 def read_measured(cache: Path) -> list[dict]:
@@ -51,9 +51,9 @@ def to_measure(rows: list[dict], measured: list[dict], per_video: int, min_frame
 
 
 def measure(args, cache: Path) -> None:
-    from sang.bench import SYNCNET, lse
+    from sang.eval.metrics import SYNCNET, lse
     if not (SYNCNET / "run_syncnet.py").exists():
-        sys.exit(f"no syncnet_python at {SYNCNET} (bash_scripts/install_motion.sh)")
+        sys.exit(f"no syncnet_python at {SYNCNET} (bash bash_scripts/env.sh install)")
     rows = load_index(cache)
     measured = read_measured(cache)
     picks = to_measure(rows, measured, args.per_video, args.min_frames)

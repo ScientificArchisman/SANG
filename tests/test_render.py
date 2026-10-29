@@ -1,4 +1,4 @@
-"""Rendering and paste-back (MotionCodec.render, sang.pipeline.GpuPaster). CPU only: the renderer's networks are
+"""Rendering and paste-back (MotionCodec.render, sang.render.pipeline.GpuPaster). CPU only: the renderer's networks are
 replaced by small deterministic stand-ins with LivePortrait's call signatures."""
 import sys
 from pathlib import Path
@@ -12,8 +12,10 @@ sys.path.insert(0, str(REPO))
 
 cv2 = pytest.importorskip("cv2")
 
-from sang.motion import M_DIM, as3x3
-from sang.pipeline import GpuPaster, Timer, crop_mask
+from sang.model.target import M_DIM, rotation_matrix
+
+from sang.render.liveportrait import as3x3
+from sang.render.pipeline import GpuPaster, Timer, crop_mask
 
 
 def cv2_paste(frames, M_c2o, background, mask):
@@ -61,10 +63,10 @@ class FakeLP:
 
 
 def fake_codec(monkeypatch):
-    from sang import motion
+    from sang.render import liveportrait as motion
 
     camera = type(sys)("src.utils.camera")
-    camera.get_rotation_matrix = lambda p, y, r: motion.rotation_matrix(p, y, r)
+    camera.get_rotation_matrix = lambda p, y, r: rotation_matrix(p, y, r)
     for name in ("src", "src.utils"):
         monkeypatch.setitem(sys.modules, name, type(sys)(name))
     monkeypatch.setitem(sys.modules, "src.utils.camera", camera)
@@ -73,7 +75,7 @@ def fake_codec(monkeypatch):
     g = torch.Generator().manual_seed(0)
     info = {"exp": torch.randn(1, 21, 3, generator=g) * 0.02, "scale": torch.tensor([[1.1]]),
             "t": torch.randn(1, 3, generator=g) * 0.01, "kp": torch.randn(1, 21, 3, generator=g)}
-    state = {"info": info, "R_s": motion.rotation_matrix(torch.tensor([3.0]), torch.tensor([-5.0]), torch.tensor([1.0])),
+    state = {"info": info, "R_s": rotation_matrix(torch.tensor([3.0]), torch.tensor([-5.0]), torch.tensor([1.0])),
              "f_s": torch.randn(1, 2, 2, 2, 2, generator=g), "x_s": torch.randn(1, 21, 3, generator=g),
              "x_c": info["kp"]}
     m = torch.randn(10, M_DIM, generator=g) * 0.05
@@ -95,7 +97,7 @@ def test_render_does_not_depend_on_the_batch_size(monkeypatch, relative):
 def test_relative_driving_starts_at_the_source_pose(monkeypatch):
     codec, state, m = fake_codec(monkeypatch)
     x = codec.driving_keypoints(state, m, relative=True)
-    from sang.motion import vec_to_kp_info
+    from sang.render.liveportrait import vec_to_kp_info
     s = state["info"]
     want = s["scale"] * (state["x_c"] @ state["R_s"] + s["exp"]) + s["t"] * torch.tensor([1.0, 1.0, 0.0])
     assert torch.allclose(x[:1], want, atol=1e-5)

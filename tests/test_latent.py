@@ -1,5 +1,5 @@
-"""Motion latents and model spaces (sang.latent): ordered codes, exact full-rank PCA, nested-dropout training,
-packing, and the map between a model's output and 70-d motion. CPU only."""
+"""Motion latents and model spaces (sang.model.latent): ordered codes, exact full-rank PCA, packing, and the map
+between a model's output and 70-d motion. CPU only."""
 import sys
 from pathlib import Path
 
@@ -7,9 +7,9 @@ import pytest
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from sang.latent import MotionLatent, Space, curve, fit_ae, fit_pca
-from sang.motion import M_DIM, T_DIM, to_target, wide
-from sang.motion_model import Norm
+from sang.model.flow import Norm
+from sang.model.latent import MotionLatent, Space, curve, fit_pca
+from sang.model.target import M_DIM, T_DIM, to_target, wide
 
 
 def deltas(n=3000, seed=0):
@@ -38,21 +38,15 @@ def test_pca_is_ordered_and_exact_at_full_rank():
     assert torch.allclose(u.mean(0), torch.zeros(69), atol=1e-3) and torch.allclose(u.std(0), torch.ones(69), atol=1e-3)
 
 
-def test_nested_dropout_orders_the_autoencoder():
-    torch.manual_seed(0)
-    d = deltas()
-    lat = fit_ae(d, K=8, hidden=64, steps=600, batch=512, device="cpu", log_every=0)
-    r = {c["k"]: c["r2"] for c in curve(lat, d, [1, 2, 4, 8])}
-    assert r[1] < r[2] < r[4] and r[4] > 0.8, r
-
-
-def test_pack_round_trip_and_bad_kind():
+def test_pack_round_trip_old_packs_and_no_autoencoder():
     lat = fit_pca(deltas(), K=12)
     back = MotionLatent.unpack(lat.pack())
     d = deltas(50, seed=1)
     assert torch.allclose(back.encode(d, 5), lat.encode(d, 5)) and not back.training
+    old = MotionLatent.unpack({**lat.pack(), "hidden": 512})  # pca.pt and checkpoints written before the cleanup
+    assert torch.allclose(old.encode(d, 5), lat.encode(d, 5))
     with pytest.raises(ValueError):
-        MotionLatent(8, "vae")
+        MotionLatent.unpack({**lat.pack(), "kind": "ae"})
 
 
 def test_space_maps_motion_both_ways():
@@ -71,6 +65,4 @@ def test_space_maps_motion_both_ways():
     assert u.shape == (200, 69) and torch.allclose(sl.decode(u, m[:1])[:, [0, 1, 2, 3, 4, 5]], m[:, :6], atol=1e-3)
     assert torch.allclose(sl.decode(u, m[:1])[:, 7:], m[:, 7:], atol=1e-3)
     assert sl.encode(m[:1], m[:1], 8).shape == (1, 8)
-    with pytest.raises(ValueError):
-        sl.decode(u, m[:1], ramp=1.5)
 

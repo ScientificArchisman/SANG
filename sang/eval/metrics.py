@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 SYNCNET = REPO / "third_party" / "syncnet_python"
 
 
@@ -49,12 +49,12 @@ class ArcFace:
 
     def __init__(self, root: str | None = None, device: str = "cuda"):
         """The FULL buffalo_l pack. LivePortrait's HF upload ships only det_10g + 2d106det, no
-        recognition model, so CSIM from that folder is nan on every frame. install_motion.sh
+        recognition model, so CSIM from that folder is nan on every frame. `bash bash_scripts/env.sh install`
         downloads the full pack to third_party/insightface_full on the login node."""
         from insightface.app import FaceAnalysis
         root = root or str(REPO / "third_party" / "insightface_full")
         if not (Path(root) / "models" / "buffalo_l" / "w600k_r50.onnx").exists():
-            raise FileNotFoundError(f"no ArcFace recognition model under {root}; run bash_scripts/install_motion.sh")
+            raise FileNotFoundError(f"no ArcFace recognition model under {root}; run bash bash_scripts/env.sh install")
         providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if device == "cuda" else ["CPUExecutionProvider"]
         self.app = FaceAnalysis(name="buffalo_l", root=root, providers=providers,
                                 allowed_modules=["detection", "recognition"])
@@ -112,7 +112,7 @@ def lse(video: Path, workdir: Path | None = None, ref: str = "sang", verbose: bo
     NOTE: parsed from stdout + stderr (results moved to stderr upstream in 2026-04). Check the format ONCE against your checkout (`sh download_model.sh`
     then run it on a known clip) before trusting a sweep -- upstream has changed the wording."""
     if not (SYNCNET / "run_syncnet.py").exists():
-        raise FileNotFoundError(f"syncnet_python not at {SYNCNET}; see bash_scripts/install_motion.sh")
+        raise FileNotFoundError(f"syncnet_python not at {SYNCNET}; see bash bash_scripts/env.sh install")
     own = workdir is None
     tmp = Path(workdir or tempfile.mkdtemp(prefix="lse_"))
     (tmp / "work").mkdir(parents=True, exist_ok=True)
@@ -194,12 +194,12 @@ class I3DFeats:
     `clip_len`-frame clips (FVD-16 by default); each is resized so the short side is 224,
     centre-cropped to 224x224, scaled to [-1, 1], and mapped to a 400-d feature
     (rescale=False, resize=True, return_features=True). Download once on the login node:
-    bash bash_scripts/install_eval.sh."""
+    bash bash_scripts/env.sh install."""
 
     def __init__(self, device: str = "cuda", path: Path = I3D_PATH):
         import torch
         if not Path(path).exists():
-            raise FileNotFoundError(f"I3D weights not at {path}; run bash bash_scripts/install_eval.sh")
+            raise FileNotFoundError(f"I3D weights not at {path}; run bash bash_scripts/env.sh install")
         self.m, self.device = torch.jit.load(str(path)).eval().to(device), device
 
     def __call__(self, video: np.ndarray, clip_len: int = 16, batch: int = 8) -> np.ndarray:
@@ -231,32 +231,6 @@ def frechet(a: np.ndarray, b: np.ndarray) -> float:
     return _frechet(a.mean(0), np.cov(a, rowvar=False), b.mean(0), np.cov(b, rowvar=False))
 
 
-def background_motion(real: np.ndarray, gen: np.ndarray, quiet_pct: float = 40.0,
-                      texture_pct: float = 70.0, eps: float = 0.05) -> dict:
-    """How much the BACKGROUND moves in `gen` compared with `real` ([T,H,W,3] uint8, same size, frames
-    aligned). Pixels are chosen where warping is visible and real video is still: off a central head
-    box (rows 10-80%, cols 20-80%), among the quietest `quiet_pct`% of the real video's pixels, and
-    textured (spatial gradient above the `texture_pct` percentile there) -- warping a flat wall moves
-    nothing visible. Motion = mean |frame-to-frame difference| in gray levels on those pixels.
-    Returns {bg_real, bg_gen, bg_ratio}; ratio ~1 = as still as the real video (eps floors a
-    perfectly static real background, e.g. a studio backdrop, so the ratio stays finite)."""
-    w = np.array([0.299, 0.587, 0.114], np.float32)
-    n = min(len(real), len(gen))
-    g = [x[:n].astype(np.float32) @ w for x in (real, gen)]
-    m = [np.abs(np.diff(x, axis=0)).mean(0) for x in g]
-    H, W = m[0].shape
-    head = np.zeros((H, W), bool)
-    head[int(.1 * H):int(.8 * H), int(.2 * W):int(.8 * W)] = True
-    static = (m[0] <= np.percentile(m[0], quiet_pct)) & ~head
-    gy, gx = np.gradient(g[0][0])
-    grad = gx ** 2 + gy ** 2
-    if not static.any():
-        return {"bg_real": float("nan"), "bg_gen": float("nan"), "bg_ratio": float("nan")}
-    tex = static & (grad > np.percentile(grad[static], texture_pct))
-    bg_real, bg_gen = float(m[0][tex].mean()), float(m[1][tex].mean())
-    return {"bg_real": bg_real, "bg_gen": bg_gen, "bg_ratio": bg_gen / max(bg_real, eps)}
-
-
 def self_check() -> None:
     a = (np.random.default_rng(0).random((4, 32, 32, 3)) * 255).astype(np.uint8)
     assert psnr(a, a) == float("inf")
@@ -267,17 +241,12 @@ def self_check() -> None:
     assert abs(_frechet(mu, cov, mu, cov)) < 1e-4
     assert abs(_frechet(mu, cov, mu + 1, cov) - 4.0) < 1e-4
     assert abs(ssim(a, a) - 1.0) < 1e-5 and ssim(a, np.clip(b, 0, 255).astype(np.uint8)) < 1.0
-    rng = np.random.default_rng(1)
-    still = np.broadcast_to((rng.random((1, 64, 64, 3)) * 255).astype(np.uint8), (10, 64, 64, 3))
-    shaky = np.stack([np.roll(still[0], i % 2, axis=1) for i in range(10)])
-    r = background_motion(still, shaky)
-    assert r["bg_real"] == 0.0 and r["bg_gen"] > 10 and background_motion(still, still)["bg_ratio"] == 0.0
     log = ("2026-09-30 10:12:33,512 - INFO - AV offset: \t3\n"
            "2026-09-30 10:12:33,513 - INFO - Min dist: \t5.353\n"
            "2026-09-30 10:12:33,513 - INFO - Confidence: \t10.021\n")
     assert parse_syncnet(log)[0] == (3.0, 5.353, 10.021), parse_syncnet(log)
     assert parse_syncnet("AV offset: \t-2\nMin dist: \t7.1\nConfidence: \t6.5")[0] == (-2.0, 7.1, 6.5)
-    print("sang/bench.py self-check ok")
+    print("sang/eval/metrics.py self-check ok")
 
 
 if __name__ == "__main__":

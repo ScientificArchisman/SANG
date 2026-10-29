@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from sang.motion import T_DIM
+from sang.model.target import T_DIM
 
 FPS, SR, TPF = 25, 16000, 2
 HOP = SR // FPS
@@ -36,17 +36,13 @@ def eye_ratio(lmk: np.ndarray) -> np.ndarray:
 
 
 class Readout:
-    """r = w . y + b on the RAW 42-d target (w is zero outside its region, and on a 45-d target's placement)."""
+    """r = w . y + b on the RAW 42-d target (w is zero outside its region)."""
 
     def __init__(self, w, b: float, r2: float = float("nan")):
         self.w, self.b, self.r2 = torch.as_tensor(w, dtype=torch.float32), float(b), float(r2)
 
-    def _wide(self, n: int, device) -> torch.Tensor:
-        """w for an n-column target: zero on columns past the 42 (head placement)."""
-        return torch.nn.functional.pad(self.w, (0, n - len(self.w))).to(device)
-
     def __call__(self, y_raw: torch.Tensor) -> torch.Tensor:
-        return y_raw.float() @ self._wide(y_raw.shape[-1], y_raw.device) + self.b
+        return y_raw.float() @ self.w.to(y_raw.device) + self.b
 
     def to_dict(self) -> dict:
         return {"w": self.w.tolist(), "b": self.b, "r2": self.r2}

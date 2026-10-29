@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Train the bidirectional MotionFlowTransformer on the motion cache.
 
-    sbatch bash_scripts/train_motion.sh out_dir=runs/<name> [key=value ...]     # configs/train_motion.yaml
+    sbatch bash_scripts/run.sh scripts/train_motion.py out_dir=runs/<name> [key=value ...]   # configs/train_motion.yaml
 
 Options beyond the yaml's defaults (the d1 recipe):
-  place=true            also generate the head placement (45-d target)
   gft=true              Guidance-Free Training: guidance becomes an input, one pass per sampling step
   latent=<path.pt> latent_k=<k>
                         generate the first k codes of a motion latent from scripts/fit_latent.py instead of the
@@ -32,23 +31,24 @@ from torch.utils.data import DataLoader
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.data import MotionWindows, fit_norm, fit_place_norm, load_cfg, split_by_speaker
-from sang.latent import MotionLatent
-from sang.motion import WIDE_REGIONS
-from sang.motion_model import Norm, build, flow_loss, sample
-from sang.paths import load_index
-from sang.sync import SyncOffsets, clip_key
-from sang.talkvid import clip_languages, filter_langs, parse_langs
+from sang.data.dataset import MotionWindows, fit_norm, load_cfg, split_by_speaker
+from sang.data.paths import load_index
+from sang.data.sync import SyncOffsets, clip_key
+from sang.data.talkvid import clip_languages, filter_langs, parse_langs
+from sang.model.flow import Norm, build, flow_loss, sample
+from sang.model.latent import MotionLatent
+from sang.model.target import WIDE_REGIONS
 
 
 @torch.no_grad()
 def evaluate(model, loader, cfg, dev, max_batches: int, encode, decode) -> dict:
-    """Val flow loss, plus rollout statistics of sampled windows in motion regions (mouth, rot[, place])."""
+    """Val flow loss, plus rollout statistics of sampled windows in motion regions (mouth, rot; a latent run also
+    place, on the decoded motion)."""
     model.eval()
     g = torch.Generator(device=dev).manual_seed(0)
     fm = n = 0.0
     parts = ({k: WIDE_REGIONS[k] for k in ("mouth", "rot", "place")} if decode is not None else
-             {k: v for k, v in model.parts.items() if k in ("mouth", "rot", "place")})
+             {k: v for k, v in model.parts.items() if k in ("mouth", "rot")})
     view = decode or (lambda z: z)
     stats = {k: [] for p in parts for k in (f"mse_{p}", f"std_r_{p}", f"vc_r_{p}")}
     stats["audio_gain"] = []
@@ -142,20 +142,12 @@ def main() -> None:
     else:
         norm = fit_norm(train_rows, seed=cfg["seed"])
         torch.save(dict(norm.state_dict()), norm_path)
-    if cfg.get("place") and not cfg.get("latent"):
-        place_path = cache / "norm45.pt"
-        if place_path.exists():
-            norm = Norm(**torch.load(place_path, weights_only=True))
-        else:
-            norm = fit_place_norm(train_rows, norm, seed=cfg["seed"])
-            torch.save(dict(norm.state_dict()), place_path)
-        print("head placement: 45-d target; val loss has a fifth region, not comparable with 42-d runs", flush=True)
     latent = None
     if cfg.get("latent"):
         latent = MotionLatent.unpack(torch.load(cfg["latent"], map_location="cpu", weights_only=False)).to(dev)
         if not 0 < int(cfg["latent_k"]) <= latent.K:
             raise SystemExit(f"latent_k must be in 1..{latent.K}")
-        print(f"motion latent {cfg['latent']} ({latent.kind}, K {latent.K}): the model generates its first "
+        print(f"motion latent {cfg['latent']} (PCA, K {latent.K}): the model generates its first "
               f"{cfg['latent_k']} codes", flush=True)
     shifts = None
     if cfg.get("sync_offsets"):
@@ -174,7 +166,7 @@ def main() -> None:
     data_kw = {"preload": cfg.get("preload", True), "shifts": shifts, "wide": latent is not None,
                "ref_frame": cfg.get("ref_frame", "random"), "ref_band": cfg.get("ref_band", 0.2)}
     if data_kw["ref_frame"] == "median":
-        from sang.naturalness import load_readouts
+        from sang.eval.naturalness import load_readouts
         data_kw["lip"] = load_readouts(cache / "openness.json")["lip"]
         print(f"reference frame: a typical one per clip (middle {data_kw['ref_band']:.0%} by lip opening)", flush=True)
     train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], **data_kw)

@@ -24,8 +24,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.paths import MOTION_CACHE
-from sang.sync import clip_key
+from sang.data.paths import MOTION_CACHE
+from sang.data.sync import clip_key
 
 FPS = 25
 

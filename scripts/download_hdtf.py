@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Download and process HDTF (Zhang et al., CVPR 2021; CC BY 4.0) the way its authors describe.
 
-    pip install yt-dlp          # once (bash_scripts/install_eval.sh does it)
+    pip install yt-dlp          # once (bash bash_scripts/env.sh install does it)
     python scripts/download_hdtf.py --out /beegfs/work/$USER/HDTF --workers 4
     # rerun the same line to resume; failures are listed in <out>/failed.tsv
 

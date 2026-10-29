@@ -9,11 +9,10 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import pytest
-
-from sang.motion import REGIONS, T_DIM, WIDE_DIM, WIDE_REGIONS, from_target, from_wide, rotation_matrix, to_target, wide
-from sang.motion_model import (REF_DIM, MotionFlowTransformer, Norm, build, flow_loss, generate, guidance_vector,
-                               parts_of, sample, sample_t, t_dim_of)
+from sang.model.flow import (REF_DIM, MotionFlowTransformer, Norm, build, flow_loss, generate, parts_of, sample,
+                             sample_t, t_dim_of)
+from sang.model.target import (REGIONS, T_DIM, WIDE_DIM, WIDE_REGIONS, from_target, from_wide, rotation_matrix,
+                               to_target, wide)
 
 B, L, P, A = 2, 16, 4, 32
 
@@ -173,19 +172,10 @@ def test_start_prefix_continues_from_the_given_frames():
     assert torch.allclose(y[:, :L], w0, atol=1e-5) and torch.allclose(y[:, L:2 * L], w1, atol=1e-5)
 
 
-def test_per_region_guidance():
-    assert guidance_vector(2.0, REGIONS, T_DIM) == 2.0 and guidance_vector(2.0, REGIONS, T_DIM, mouth=2.0) == 2.0
-    vec = guidance_vector(2.0, REGIONS, T_DIM, mouth=1.5)
-    assert vec.shape == (T_DIM,) and torch.all(vec[REGIONS["mouth"]] == 1.5)
-    assert torch.all(vec[REGIONS["rot"] + REGIONS["eyes"] + REGIONS["brow"]] == 2.0)
-    with pytest.raises(ValueError):
-        guidance_vector(2.0, {"latent": list(range(8))}, 8, mouth=1.5)
+def test_cfg_step_is_the_guided_velocity():
     m = _model().eval()
     _unzero(m)
     a, ref = torch.randn(1, 2 * L, A), torch.randn(1, REF_DIM)
-    y1 = sample(m, a, ref, L, steps=3, cfg_audio=2.0, generator=torch.Generator().manual_seed(1))
-    y2 = sample(m, a, ref, L, steps=3, cfg_audio=torch.full((T_DIM,), 2.0), generator=torch.Generator().manual_seed(1))
-    assert torch.allclose(y1, y2, atol=1e-5)
     x = torch.randn(1, L, T_DIM, generator=torch.Generator().manual_seed(1))
     t = torch.ones(1)
     v_c, v_u = m(x, t, a, ref), m(x, t, a, ref, drop_audio=torch.ones(1, dtype=torch.bool))
@@ -228,8 +218,6 @@ def test_gft_takes_guidance_as_an_input_and_samples_in_one_pass():
     c = Counting(m)
     sample(c, b["audio"], b["ref"], L, steps=3, cfg_audio=2.0)
     assert len(c.calls) == 3 and all(torch.allclose(beta, torch.full((B,), 0.5)) and d is None for beta, d in c.calls)
-    with pytest.raises(ValueError):
-        sample(m, b["audio"], b["ref"], L, steps=2, cfg_audio=torch.full((T_DIM,), 2.0))
 
 
 def test_gft_loss_trains_the_sampling_model_and_not_the_unconditional_pass():
@@ -256,14 +244,12 @@ def test_gft_loss_trains_the_sampling_model_and_not_the_unconditional_pass():
 def test_a_latent_target_is_one_region_of_any_width():
     cfg = {"latent": "x.pt", "latent_k": 12, "dim": 32, "layers": 1, "heads": 2, "audio_encoder": "wavlm-base"}
     assert t_dim_of(cfg) == 12 and parts_of(cfg) == {"latent": list(range(12))}
-    assert t_dim_of({"place": True}) == 45 and set(parts_of({"place": True})) == {"rot", "brow", "eyes", "mouth", "place"}
+    assert t_dim_of({}) == T_DIM and parts_of({}) == REGIONS
     m = build(cfg)
     b = {"target": torch.randn(B, L, 12), "audio": torch.randn(B, 2 * L, 768), "ref": torch.randn(B, REF_DIM)}
     loss, parts = flow_loss(m, b)
     assert torch.isfinite(loss) and "fm_latent" not in parts and "vel" in parts
     assert sample(m, b["audio"], b["ref"], L, steps=2).shape == (B, L, 12)
-    with pytest.raises(ValueError):
-        generate(m, b["audio"], b["ref"], L, window=L, n_prefix=0, steps=2, mouth_avg=2)
 
 
 def test_norm_round_trip():

@@ -6,11 +6,11 @@ Ditto = antgroup/ditto-talkinghead (ACM MM 2025, arXiv 2411.19509, Apache-2.0): 
 diffusion over LivePortrait motion -> LivePortrait renderer, i.e. the closest published system to
 SANG. (github.com/megagonlabs/ditto is an unrelated entity-matching model.)
 
-Runs in Ditto's own conda env (bash_scripts/install_ditto.sh), on a GPU node:
-    SANG_ENV=ditto sbatch --time=08:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/ditto_hdtf.py \\
+Runs in Ditto's own conda env (bash bash_scripts/env.sh ditto), on a GPU node:
+    SANG_ENV=ditto sbatch --time=08:00:00 bash_scripts/run.sh scripts/ditto_hdtf.py \\
         --data /beegfs/work/$USER/HDTF --list configs/hdtf_test.csv
     # then score it (avcodec env, like every other row):
-    sbatch --time=08:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/eval_hdtf.py \\
+    sbatch --time=08:00:00 bash_scripts/run.sh scripts/eval_hdtf.py \\
         --data /beegfs/work/$USER/HDTF --list configs/hdtf_test.csv --name ditto --rows ditto
 
 Per clip: source = the clip's frame 0 (as SANG), audio = the clip's first --seconds (16 kHz mono),
@@ -98,7 +98,7 @@ def main() -> None:
     cfg_pkl = Path(args.cfg_pkl or root / "checkpoints" / "ditto_cfg" / "v0.4_hubert_cfg_pytorch.pkl")
     for p in (root / "inference.py", model_dir, cfg_pkl):
         if not p.exists():
-            sys.exit(f"missing {p}: run bash_scripts/install_ditto.sh on the login node")
+            sys.exit(f"missing {p}: run bash bash_scripts/env.sh ditto on the login node")
     sys.path.insert(0, str(root))
     from inference import run
     from stream_pipeline_offline import StreamSDK

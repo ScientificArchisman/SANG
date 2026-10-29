@@ -1,4 +1,4 @@
-"""ref_frame=median training: the reference is one of the clip's typical-opening frames (sang.naturalness.
+"""ref_frame=median training: the reference is one of the clip's typical-opening frames (sang.eval.naturalness.
 typical_frames, scripts/train_motion.MotionWindows). CPU only."""
 import json
 import subprocess
@@ -12,9 +12,9 @@ import torch
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.motion import REGIONS, T_DIM, to_target
-from sang.motion_model import Norm
-from sang.naturalness import Readout, median_frame, typical_frames
+from sang.eval.naturalness import Readout, median_frame, typical_frames
+from sang.model.flow import Norm
+from sang.model.target import REGIONS, T_DIM, to_target
 
 
 def test_typical_frames_are_the_middle_band_by_rank():
@@ -47,7 +47,7 @@ def make_cache(root: Path, n_spk: int = 6, T: int = 90) -> list[dict]:
 
 
 def test_dataset_draws_the_reference_from_typical_frames(tmp_path):
-    import sang.data as tm
+    import sang.data.dataset as tm
     rows = make_cache(tmp_path)
     ys = [to_target(torch.load(r["path"], weights_only=True)["m"].float()) for r in rows]
     kps = [torch.load(r["path"], weights_only=True)["kp"].float() for r in rows]

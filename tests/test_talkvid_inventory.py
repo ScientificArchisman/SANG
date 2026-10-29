@@ -8,7 +8,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from sang.data import split_by_speaker
+from sang.data.dataset import split_by_speaker
 
 
 def make(tmp: Path, n_vid: int = 40, per_vid: int = 6):

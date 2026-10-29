@@ -3,12 +3,12 @@
 reports and slides: clips, hours, source videos (= speakers), clips per video, clip lengths,
 spoken language, audio-video offsets, and TalkVid's own labels (language, person, gender, ethnicity, age).
 
-    sbatch --time=02:00:00 --cpus-per-task=8 bash_scripts/job.sh scripts/data_stats.py
+    sbatch --time=02:00:00 bash_scripts/run.sh scripts/data_stats.py
     # -> results/data_stats/data_stats.json (+ a printed summary)
     python scripts/data_stats.py      # login node is enough once <cache>/lang_lid.json covers every clip
 
 Two language labels per clip: TalkVid's own (metadata/filtered_video_clips.json, matched by video id and
-start/end time, sang/talkvid.py; also written to <cache>/talkvid_meta.json for later filtering) and
+start/end time, sang/data/talkvid.py; also written to <cache>/talkvid_meta.json for later filtering) and
 Whisper's (below). Percentages are printed for both, by clips and by hours.
 
 Splits are exactly training's: speaker-disjoint hash split (val_frac, seed from the config), then the
@@ -35,10 +35,10 @@ from tqdm import tqdm
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.data import split_by_speaker
-from sang.paths import DATA_ROOT, load_index, motion_cache
-from sang.talkvid import WHISPER_NAMES, build_lookup, match
-from sang.sync import SyncOffsets, clip_key, video_of
+from sang.data.dataset import split_by_speaker
+from sang.data.paths import DATA_ROOT, load_index, motion_cache
+from sang.data.sync import SyncOffsets, clip_key, video_of
+from sang.data.talkvid import WHISPER_NAMES, build_lookup, match
 
 FPS = 25
 CLIPS_PER_VIDEO_BINS = [(1, 1), (2, 2), (3, 5), (6, 10), (11, 20), (21, 50), (51, 10 ** 9)]
@@ -155,7 +155,7 @@ class WhisperLID:
 
 
 def label_languages(rows: list[dict], cache: Path, whisper: str, dev: str, batch: int, workers: int) -> dict:
-    from sang.codec import load_wav
+    from sang.data.audio import load_wav
     path = cache / "lang_lid.json"
     langs = json.loads(path.read_text()) if path.exists() else {}
     todo = [r for r in rows if clip_key(r) not in langs]

@@ -1,13 +1,7 @@
 """LivePortrait as a frozen motion codec: frames -> 70-d motion vectors -> frames.
 
-    m = [scale, yaw, pitch, roll, t_x, t_y, t_z, exp_1..exp_63]      (KDTalker's layout)
-
-This is the only representation SANG-M predicts. Appearance never enters the model: it is
+This is the only representation SANG-M predicts (sang.model.target). Appearance never enters the model: it is
 carried by the source frame's `f_s` / `x_s` tensors, which stay inside the frozen renderer.
-
-Keypoints: LivePortrait's own expression transfer drives EXPR_KP (13 of 21); the other 8 (SHAPE_KP) carry face
-shape. The 42-d target is the head rotation plus the head-frame expression of EXPR_KP (AVTR-1, arXiv
-2609.22913); `wide` is everything the renderer reads except t_z.
 
 Crops: every clip is cropped with ONE fixed box (upstream's driving convention, DRIVE, averaged over landmark
 boxes, no rotation), truncated at the first shot cut (CUT_JUMP / CUT_SCALE / MAX_WANDER, in median box sides).
@@ -24,145 +18,11 @@ from pathlib import Path
 import numpy as np
 import torch
 
-REPO = Path(__file__).resolve().parents[1]
+from sang.model.target import EXP_DIM, M_DIM
+
+REPO = Path(__file__).resolve().parents[2]
 LP = REPO / "third_party" / "LivePortrait"
-
-M_DIM = 70
-EXP_DIM = 63
 WEIGHTS = LP / "pretrained_weights"
-
-LIP_KP = (6, 12, 14, 17, 19, 20)
-EYE_KP = (11, 13, 15, 16, 18)
-EXPR_KP = (1, 2, 6, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
-BROW_KP = tuple(k for k in EXPR_KP if k not in LIP_KP and k not in EYE_KP)
-
-T_DIM = 3 + 3 * len(EXPR_KP)
-
-
-def _span(kps: tuple[int, ...]) -> list[int]:
-    """Target-vector columns of the given keypoints (after the 3 rotation columns)."""
-    pos = {k: i for i, k in enumerate(EXPR_KP)}
-    return [3 + 3 * pos[k] + a for k in kps for a in range(3)]
-
-
-REGIONS = {"rot": [0, 1, 2], "brow": _span(BROW_KP), "eyes": _span(EYE_KP), "mouth": _span(LIP_KP)}
-
-PLACE_DIM = 3
-PLACE = list(range(T_DIM, T_DIM + PLACE_DIM))
-
-
-def regions(t_dim: int = T_DIM) -> dict:
-    """The target's regions: REGIONS, plus 'place' for a 45-d (placement) target."""
-    if t_dim not in (T_DIM, T_DIM + PLACE_DIM):
-        raise ValueError(f"target width must be {T_DIM} or {T_DIM + PLACE_DIM}, got {t_dim}")
-    return REGIONS if t_dim == T_DIM else {**REGIONS, "place": PLACE}
-
-
-SHAPE_KP = tuple(k for k in range(21) if k not in EXPR_KP)
-WIDE_DIM = 3 + EXP_DIM + PLACE_DIM
-WIDE_REGIONS = {"rot": [0, 1, 2], **{name: [3 + 3 * k + a for k in kps for a in range(3)]
-                                     for name, kps in (("brow", BROW_KP), ("eyes", EYE_KP), ("mouth", LIP_KP),
-                                                       ("shape", SHAPE_KP))},
-                "place": list(range(3 + EXP_DIM, WIDE_DIM))}
-
-
-def rotation_matrix(pitch: torch.Tensor, yaw: torch.Tensor, roll: torch.Tensor) -> torch.Tensor:
-    """Degrees [N] -> [N,3,3], LivePortrait's convention: (Rz @ Ry @ Rx) transposed, row vectors.
-
-    Ported from upstream src/utils/camera.py so training never imports the renderer."""
-    x, y, z = (a.reshape(-1).float() * (torch.pi / 180.0) for a in (pitch, yaw, roll))
-    o, n = torch.ones_like(x), torch.zeros_like(x)
-    rx = torch.stack([o, n, n, n, x.cos(), -x.sin(), n, x.sin(), x.cos()], 1).view(-1, 3, 3)
-    ry = torch.stack([y.cos(), n, y.sin(), n, o, n, -y.sin(), n, y.cos()], 1).view(-1, 3, 3)
-    rz = torch.stack([z.cos(), -z.sin(), n, z.sin(), z.cos(), n, n, n, o], 1).view(-1, 3, 3)
-    return (rz @ ry @ rx).transpose(1, 2)
-
-
-def _rot(m: torch.Tensor) -> torch.Tensor:
-    return rotation_matrix(m[:, 2], m[:, 1], m[:, 3])
-
-
-def placement(m: torch.Tensor) -> torch.Tensor:
-    """[N,70] motion -> [N,3] absolute head placement (t_x, t_y, log scale)."""
-    m = m.float()
-    return torch.stack([m[:, 4], m[:, 5], m[:, 0].clamp_min(1e-6).log()], 1)
-
-
-def to_target(m: torch.Tensor, ref: torch.Tensor | None = None) -> torch.Tensor:
-    """[N,70] motion -> [N,42] target: (pitch, yaw, roll) + head-frame exp of EXPR_KP.
-    With `ref` ([1 or N, 70], the reference frame's motion): [N,45], the placement relative to it appended."""
-    m = m.float()
-    exp_head = m[:, 7:M_DIM].reshape(-1, 21, 3) @ _rot(m).transpose(1, 2)
-    y = torch.cat([m[:, [2, 1, 3]], exp_head[:, list(EXPR_KP)].reshape(-1, 3 * len(EXPR_KP))], 1)
-    return y if ref is None else torch.cat([y, placement(m) - placement(ref)], 1)
-
-
-def wide(m: torch.Tensor) -> torch.Tensor:
-    """[N,70] motion -> [N,69]: everything LivePortrait renders except t_z, which it zeroes. (pitch, yaw, roll),
-    the head-frame exp of all 21 keypoints, and the absolute placement (t_x, t_y, log scale). Nothing is held from
-    the photo, so a model over this vector (sang.latent) decides for itself which numbers matter."""
-    m = m.float()
-    exp_head = m[:, 7:M_DIM].reshape(-1, 21, 3) @ _rot(m).transpose(1, 2)
-    return torch.cat([m[:, [2, 1, 3]], exp_head.reshape(-1, EXP_DIM), placement(m)], 1)
-
-
-def from_wide(w: torch.Tensor, base: torch.Tensor) -> torch.Tensor:
-    """Inverse of `wide`: [N,69] + [N or 1,70] base -> [N,70]. Only t_z comes from `base`."""
-    w, out = w.float(), base.float().expand(w.shape[0], -1).clone()
-    out[:, 2], out[:, 1], out[:, 3] = w[:, 0], w[:, 1], w[:, 2]
-    out[:, 7:M_DIM] = (w[:, 3:3 + EXP_DIM].reshape(-1, 21, 3) @ _rot(out)).reshape(-1, EXP_DIM)
-    out[:, 4], out[:, 5], out[:, 0] = w[:, -3], w[:, -2], w[:, -1].exp()
-    return out
-
-
-def smooth_placement(y: torch.Tensor, amp: float = 1.0, k: int = 1) -> torch.Tensor:
-    """Render-time control of a RAW [N,45] target's placement columns: scale them by `amp` (0 = hold the
-    photo's placement, as a 42-d model does) and take a centred moving mean over `k` frames (Ditto
-    smooths scale and translation over 3). A [N,42] target is returned unchanged."""
-    if y.shape[1] == T_DIM or (amp == 1.0 and k <= 1):
-        return y
-    y = y.clone()
-    p = y[:, PLACE] * amp
-    if k > 1:
-        h = k // 2
-        pad = torch.cat([p[:1].expand(h, -1), p, p[-1:].expand(h, -1)])
-        p = pad.unfold(0, 2 * h + 1, 1).mean(-1)
-    y[:, PLACE] = p
-    return y
-
-
-def from_target(y: torch.Tensor, base: torch.Tensor, held: str = "camera") -> torch.Tensor:
-    """[N,42 or 45] target + [N or 1,70] base motion -> [N,70], ready for MotionCodec.render(relative=False).
-
-    Scale, translation and the 24 non-driven expression coordinates (keypoints 0,3,4,5,7,8,9,10)
-    come from `base` (the source frame); a 45-d target moves t_x, t_y and the scale by its placement
-    columns, relative to `base` (t_z stays held). The 39 driven coordinates are the target's head-frame
-    expression, rotated into the camera frame by the NEW pose. `held` sets how the non-driven ones
-    follow a pose change:
-      'camera' (default) -- their delta stays the source's camera-frame delta and only x_c rotates,
-               x = s(x_c R + delta) + t. This is upstream LivePortrait's absolute driving, and the
-               paper (arXiv 2407.03168 sec. 3.2) reports that rotating delta with the head "leads to
-               overly flexible learned expressions delta, causing texture flickering".
-      'head'   -- their delta is held in the HEAD frame, so it rotates rigidly with the pose. SANG's
-               original choice; its error is 0 at the source pose and grows with every rotation away
-               from it -- the suspected cause of the background warping (docs/research_log.md)."""
-    if held not in ("camera", "head"):
-        raise ValueError(f"held must be 'camera' or 'head', got {held!r}")
-    y, base = y.float(), base.float().expand(y.shape[0], -1)
-    out = base.clone()
-    out[:, 2], out[:, 1], out[:, 3] = y[:, 0], y[:, 1], y[:, 2]
-    R_new = _rot(out)
-    exp = base[:, 7:M_DIM].reshape(-1, 21, 3)
-    exp = exp @ _rot(base).transpose(1, 2) @ R_new if held == "head" else exp.clone()
-    exp[:, list(EXPR_KP)] = y[:, 3:T_DIM].reshape(-1, len(EXPR_KP), 3) @ R_new
-    out[:, 7:M_DIM] = exp.reshape(-1, EXP_DIM)
-    if y.shape[1] > T_DIM:
-        regions(y.shape[1])
-        d = y[:, PLACE]
-        out[:, 4], out[:, 5] = base[:, 4] + d[:, 0], base[:, 5] + d[:, 1]
-        out[:, 0] = base[:, 0] * d[:, 2].exp()
-    return out
-
 
 CROP = dict(dsize=512, scale=2.3, vx_ratio=0.0, vy_ratio=-0.125)
 DRIVE = dict(dsize=512, scale=2.2, vx_ratio=0.0, vy_ratio=-0.1)
@@ -176,7 +36,7 @@ def _require_repo() -> None:
     if not (LP / "src" / "live_portrait_wrapper.py").exists():
         raise FileNotFoundError(
             f"LivePortrait is not installed at {LP}.\n"
-            "Run:  bash bash_scripts/install_motion.sh"
+            "Run:  bash bash_scripts/env.sh install"
         )
     if str(LP) not in sys.path:
         sys.path.insert(0, str(LP))
@@ -231,7 +91,7 @@ def decode_clip(path: str, max_frames: int, fps: float = 25.0, start: int = 0) -
     """Up to `max_frames` frames of a clip resampled to `fps`, from frame `start` on -> [T,H,W,3] uint8.
     Frame f sits at container time f / fps, which is the clock the cached WavLM ticks use (2 ticks per
     frame)."""
-    from sang.video import open_video
+    from sang.data.video import open_video
     vr = open_video(path)
     stride = vr.get_avg_fps() / fps
     n = min(max_frames, int(len(vr) / stride) - start)
@@ -289,7 +149,7 @@ def ort_report(cropper, threads: int) -> str:
     prov = {k: s.get_providers()[0].replace("ExecutionProvider", "") for k, s in used.items() if s is not None}
     gpu = all(v != "CPU" for v in prov.values())
     return (f"ONNX Runtime {ver}, {threads} CPU threads: " + ", ".join(f"{k} on {v}" for k, v in prov.items())
-            + ("" if gpu else "  <- face models on the CPU (slow): install onnxruntime-gpu, bash_scripts/install_motion.sh"))
+            + ("" if gpu else "  <- face models on the CPU (slow): install onnxruntime-gpu, bash bash_scripts/env.sh install"))
 
 
 class MotionCodec:
@@ -317,7 +177,7 @@ class MotionCodec:
         cfg.device_id = 0
         for p in (cfg.checkpoint_F, cfg.checkpoint_M, cfg.checkpoint_G, cfg.checkpoint_W, cfg.checkpoint_S):
             if not Path(p).exists():
-                raise FileNotFoundError(f"missing renderer weight {p}; see bash_scripts/install_motion.sh")
+                raise FileNotFoundError(f"missing renderer weight {p}; see bash bash_scripts/env.sh install")
 
         self.lp = LivePortraitWrapper(inference_cfg=cfg)
         crop_cfg = CropConfig()
@@ -541,7 +401,7 @@ def api_check(codec: "MotionCodec") -> None:
     if missing:
         raise AttributeError(
             "LivePortrait API moved; these are gone: " + ", ".join(missing) +
-            "\nFix the names in sang/motion.py (NEEDED) against the installed src/.")
+            "\nFix the names in sang/render/liveportrait.py (NEEDED) against the installed src/.")
 
 
 def self_check() -> None:
@@ -554,35 +414,8 @@ def self_check() -> None:
     for k in kp:
         assert torch.allclose(kp[k], back[k]), f"round trip broke on {k}"
 
-    assert sorted(i for r in REGIONS.values() for i in r) == list(range(T_DIM)), "regions must partition 42"
-    assert [len(REGIONS[k]) for k in ("rot", "brow", "eyes", "mouth")] == [3, 6, 15, 18]
-
-    g = torch.Generator().manual_seed(0)
-    m = torch.randn(5, M_DIM, generator=g)
-    m[:, 0] = 1.0 + 0.1 * m[:, 0].abs()
-    m[:, 1:4] = 30.0 * torch.rand(5, 3, generator=g) - 15
-    R = _rot(m)
-    assert torch.allclose(R @ R.transpose(1, 2), torch.eye(3).expand(5, 3, 3), atol=1e-5), "not orthonormal"
-    assert torch.allclose(torch.linalg.det(R), torch.ones(5), atol=1e-5), "not a rotation"
-    assert torch.allclose(from_target(to_target(m), m), m, atol=1e-4), "target round trip broke"
-    y = to_target(m)
-    m2 = from_target(torch.cat([y[:, :3] + 10.0, y[:, 3:]], 1), m)
-    assert torch.allclose(to_target(m2)[:, 3:], y[:, 3:], atol=1e-4), "exp is not pose-invariant"
-    assert torch.allclose(from_target(y, m, held="head"), m, atol=1e-4), "head-held round trip broke"
-    held_kp = [k for k in range(21) if k not in EXPR_KP]
-    mh = from_target(torch.cat([y[:, :3] + 10.0, y[:, 3:]], 1), m, held="head")
-    mc = from_target(torch.cat([y[:, :3] + 10.0, y[:, 3:]], 1), m, held="camera")
-    cam = lambda v: v[:, 7:M_DIM].reshape(-1, 21, 3)
-    assert torch.allclose(cam(mc)[:, held_kp], cam(m)[:, held_kp]), "camera-held delta must not move"
-    assert torch.allclose(cam(mc)[:, list(EXPR_KP)], cam(mh)[:, list(EXPR_KP)], atol=1e-5), "driven kps differ"
-    assert not torch.allclose(cam(mc)[:, held_kp], cam(mh)[:, held_kp], atol=1e-3), "conventions identical?"
-
     A = np.array([[0.5, 0.1, 30.0], [-0.1, 0.5, 40.0], [0.0, 0.0, 1.0]])
     assert np.allclose(o2c(A), np.linalg.inv(A)[:2]) and np.allclose(o2c(A[:2]), o2c(A)), "o2c"
-
-    w = from_wide(wide(m), m)
-    assert torch.allclose(w, m, atol=1e-4), "wide round trip broke"
-    assert sorted(i for r in WIDE_REGIONS.values() for i in r) == list(range(WIDE_DIM)), "wide regions must partition 69"
 
     steady = np.array([[100 + i, 100, 300 + i, 300] for i in range(10)], float)
     assert first_cut(steady) == 10, "slow head motion is not a cut"
@@ -590,7 +423,7 @@ def self_check() -> None:
     assert first_cut(cut) == 6, first_cut(cut)
     zoom = np.vstack([steady[:4], [[50, 50, 350, 350]] * 3])
     assert first_cut(zoom) == 4, first_cut(zoom)
-    print("sang/motion.py self-check ok")
+    print("sang/render/liveportrait.py self-check ok")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
-"""Audio: loading at 16 kHz and the frozen WavLM encoder."""
+"""Audio: loading and saving at 16 kHz, and the frozen WavLM encoder."""
 from pathlib import Path
 
+import numpy as np
 import torch
 
 SR, FPS = 16000, 25
@@ -16,6 +17,19 @@ def load_wav(path: str | Path, start_frame: int = 0, n_frames: int | None = None
     hop = sr // FPS
     wav = wav[start_frame * hop:(start_frame + n_frames) * hop]
     return torch.nn.functional.pad(wav, (0, max(0, n_frames * hop - len(wav))))
+
+
+def save_wav(wav: torch.Tensor, path: str | Path, sr: int = SR) -> Path:
+    """[N] float in [-1, 1] -> 16-bit PCM mono wav (stdlib only)."""
+    import wave
+    path = Path(path)
+    pcm = (wav.detach().float().clamp(-1, 1).cpu().numpy() * 32767).astype(np.int16)
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(pcm.tobytes())
+    return path
 
 
 WAVLM = {"wavlm-base": "microsoft/wavlm-base-plus", "wavlm-large": "microsoft/wavlm-large"}
