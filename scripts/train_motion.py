@@ -247,11 +247,11 @@ def main() -> None:
 
             if step % cfg["eval_every"] == 0 or step == cfg["max_steps"]:
                 r = evaluate(ema, vdl, cfg, dev, cfg["eval_batches"], encode, decode, w)
-                print("EVAL step {} ".format(step) + " ".join(f"{k_} {v:.4f}" for k_, v in r.items()), flush=True)
+                print("EVAL step {} ".format(step) + " ".join(f"{k_} {v:.4g}" for k_, v in r.items()), flush=True)
                 if tdl is not None:
                     with torch.random.fork_rng(devices=[torch.cuda.current_device()] if dev == "cuda" else []):
                         rt = evaluate(ema, tdl, cfg, dev, cfg["eval_batches"], encode, decode, w)
-                    print("EVAL_TRAIN step {} ".format(step) + " ".join(f"{k_.removeprefix('val_')} {v:.4f}"
+                    print("EVAL_TRAIN step {} ".format(step) + " ".join(f"{k_.removeprefix('val_')} {v:.4g}"
                                                                       for k_, v in rt.items()), flush=True)
                 ck = {"model": model.state_dict(), "ema": ema.state_dict(), "opt": opt.state_dict(),
                       "step": step, "best": best, "cfg": cfg, "norm": norm.state_dict(),

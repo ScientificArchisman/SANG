@@ -378,9 +378,9 @@ def main() -> None:
     ap.add_argument("--gt-latent", default=None, help="ceiling row through a motion latent (scripts/fit_latent.py)")
     ap.add_argument("--gt-k", type=int, default=None, help="--gt-latent: codes kept")
     ap.add_argument("--stitch", action=argparse.BooleanOptionalAction, default=True)
-    ap.add_argument("--normalize-lip", action=argparse.BooleanOptionalAction, default=True,
+    ap.add_argument("--normalize-lip", action=argparse.BooleanOptionalAction, default=False,
                     help="close the photo's lips before generating (LivePortrait's flag_normalize_lip); "
-                         "--no-normalize-lip keeps them as training references are")
+                         "off by default: training references keep their lips (HDTF runs before 2026-10-29 evening had it on)")
     ap.add_argument("--paste-back", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--lse", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--save-videos", action=argparse.BooleanOptionalAction, default=True)

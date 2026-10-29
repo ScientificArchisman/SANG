@@ -117,11 +117,12 @@ class Talker:
 
     @torch.no_grad()
     def run(self, src: np.ndarray, wav: torch.Tensor, n_frames: int, seed: int = 0, stitch: bool = True, paste: bool = True, start: str = "null", batch: int = 16, half: bool = True,
-            timer: Timer | None = None, normalize_lip: bool = True):
+            timer: Timer | None = None, normalize_lip: bool = False):
         """src [H,W,3] uint8, wav [N] 16 kHz -> (frames [n,H,W,3] or, with paste=False, crops [n,512,512,3] uint8,
         motion [n,70], timer). start='source': the first window continues from the photo's own motion after
         `prefix` frames of silence (the HDTF protocol's default); 'null': the dropped-prefix start training uses.
-        normalize_lip=False: keep the photo's own lips (training references are raw frames) instead of closing them."""
+        The photo keeps its own lips, as training references do (HDTF FVD 37.6 vs 45.0 with them closed,
+        docs/research_log.md 3.23); normalize_lip=True closes them first (LivePortrait's flag_normalize_lip)."""
         from sang.model.flow import generate
         timer = timer or Timer()
         codec = self.codec
