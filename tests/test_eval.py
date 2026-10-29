@@ -70,6 +70,9 @@ def test_lse_survives_non_ascii_syncnet_output(tmp_path, monkeypatch):
         r"2026-10-07 10:01:02 INFO Min dist: \t7.25\n2026-10-07 10:01:02 INFO Confidence: \t6.50\n')")
     monkeypatch.setattr(bench, "SYNCNET", fake)
     assert bench.lse(tmp_path / "clip.mp4", tmp_path / "work") == (-1.0, 7.25, 6.5)
+    made = tmp_path / "lse_auto"
+    monkeypatch.setattr(bench.tempfile, "mkdtemp", lambda prefix: str(made))
+    assert bench.lse(tmp_path / "clip.mp4") == (-1.0, 7.25, 6.5) and not made.exists()
 
 
 def test_tables():

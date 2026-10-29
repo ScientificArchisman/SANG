@@ -5,6 +5,7 @@ one paper and 71.95 in another), so nothing is comparable until the baselines ar
 through THIS module.
 """
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -112,6 +113,7 @@ def lse(video: Path, workdir: Path | None = None, ref: str = "sang", verbose: bo
     then run it on a known clip) before trusting a sweep -- upstream has changed the wording."""
     if not (SYNCNET / "run_syncnet.py").exists():
         raise FileNotFoundError(f"syncnet_python not at {SYNCNET}; see bash_scripts/install_motion.sh")
+    own = workdir is None
     tmp = Path(workdir or tempfile.mkdtemp(prefix="lse_"))
     (tmp / "work").mkdir(parents=True, exist_ok=True)
     common = ["--data_dir", str(tmp / "work"), "--reference", ref, "--videofile", str(Path(video).resolve())]
@@ -125,6 +127,9 @@ def lse(video: Path, workdir: Path | None = None, ref: str = "sang", verbose: bo
         tail = ((getattr(e, "stderr", "") or "") + (getattr(e, "stdout", "") or ""))[-800:]
         print(f"  [lse] syncnet_python failed on {Path(video).name}: {type(e).__name__}\n{tail}", flush=True)
         return float("nan"), float("nan"), float("nan")
+    finally:
+        if own:
+            shutil.rmtree(tmp, ignore_errors=True)
 
     res, lines = parse_syncnet(out)
     if verbose:
