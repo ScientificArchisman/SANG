@@ -203,6 +203,10 @@ def test_gft_takes_guidance_as_an_input_and_samples_in_one_pass():
     c = Counting(m)
     sample(c, b["audio"], b["ref"], L, steps=3, cfg_audio=2.0)
     assert len(c.calls) == 3 and all(torch.allclose(beta, torch.full((B,), 0.5)) and d is None for beta, d in c.calls)
+    for lo, hi, want in ((0.5, 1.0, [0.5, 0.5, 1.0, 1.0]), (0.0, 0.5, [1.0, 1.0, 0.5, 0.5])):  # t = 1, .75, .5, .25
+        c = Counting(m)
+        sample(c, b["audio"], b["ref"], L, steps=4, cfg_audio=2.0, g_interval=(lo, hi))
+        assert [float(beta[0]) for beta, _ in c.calls] == want
 
 
 def test_gft_loss_trains_the_sampling_model_and_not_the_unconditional_pass():
@@ -233,25 +237,6 @@ def test_build_generates_latent_k_codes():
     loss, parts = flow_loss(m, b)
     assert torch.isfinite(loss) and set(parts) == {"fm", "vel", "loss"}
     assert sample(m, b["audio"], b["ref"], L, steps=2).shape == (B, L, 12)
-    wide_photo = build({**cfg, "photo": "wide"})
-    assert wide_photo.ref[0].in_features == 63 + WIDE_DIM and m.ref[0].in_features == REF_DIM
-
-
-def test_code_weights_scale_each_codes_error():
-    class Zero(torch.nn.Module):  # v = 0, so the loss is the weighted error of the targets alone
-        def forward(self, x_t, *a, **kw):
-            return torch.zeros_like(x_t)
-
-    b = _batch()
-    w = torch.zeros(K)
-    w[0] = K
-    b2 = {**b, "target": b["target"].clone()}
-    b2["target"][..., 1:] += 5.0  # only codes with zero weight
-    losses = []
-    for batch, weight in ((b, w), (b2, w), (b2, None)):
-        torch.manual_seed(1)
-        losses.append(flow_loss(Zero(), batch, w=weight)[0])
-    assert torch.allclose(losses[0], losses[1]) and losses[2] > 2 * losses[1]
 
 
 def test_norm_describes_the_photo():
@@ -259,8 +244,6 @@ def test_norm_describes_the_photo():
     n = Norm.fit(to_target(m), kp)
     assert torch.allclose(n.target(to_target(m)).mean(0), torch.zeros(T_DIM), atol=1e-4)
     assert n.ref(kp[:2], m[:2]).shape == (2, REF_DIM)
-    nw = Norm.fit(wide(m), kp)
-    assert torch.allclose(nw.ref(kp, m)[:, 63:].mean(0), torch.zeros(WIDE_DIM), atol=1e-4)
 
 
 def test_default_size():

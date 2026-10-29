@@ -24,8 +24,6 @@ dropout: 0.1
 max_frames: 512
 latent: runs/latent/pca.pt
 latent_k: 42
-photo: target
-code_weight: equal
 
 lam_vel: 1.0
 p_audio: 0.1

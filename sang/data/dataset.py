@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 from sang.data.sync import clip_key, shift_ticks
 from sang.eval.naturalness import typical_frames
 from sang.model.flow import Norm
-from sang.model.target import describe, to_target, wide
+from sang.model.target import to_target, wide
 
 TPF = 2
 
@@ -56,13 +56,13 @@ def val_clips(rows: list[dict], min_frames: int) -> list[str]:
     return out
 
 
-def fit_norm(rows: list[dict], width: int = 42, n_clips: int = 500, seed: int = 0) -> Norm:
-    """Statistics of the photo input (sang.model.flow.Norm, `width` = 42 or 69) over random frames of n_clips clips."""
+def fit_norm(rows: list[dict], n_clips: int = 500, seed: int = 0) -> Norm:
+    """Statistics of the photo input (sang.model.flow.Norm) over random frames of n_clips clips."""
     pick = random.Random(seed).sample(rows, min(n_clips, len(rows)))
     ys, kps = [], []
     for r in pick:
         d = torch.load(r["path"], map_location="cpu", weights_only=True)
-        ys.append(describe(d["m"].float(), width))
+        ys.append(to_target(d["m"].float()))
         kps.append(d["kp"].float())
     return Norm.fit(torch.cat(ys), torch.cat(kps))
 

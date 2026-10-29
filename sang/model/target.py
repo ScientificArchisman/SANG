@@ -7,7 +7,6 @@ on, and so what the model generates. `to_target` is a 42-d description, the head
 expression of the 13 keypoints LivePortrait's expression transfer drives (EXPR_KP; AVTR-1, arXiv 2609.22913). It
 is no longer generated; it describes the photo to the model (sang.model.flow.Norm.ref) and is what the lip / eye
 openness readouts (sang.eval.naturalness) are fitted on. REGIONS are its mouth / eye / brow / rotation columns.
-`describe` picks which of the two describes the photo.
 """
 import torch
 
@@ -83,11 +82,6 @@ def from_wide(w: torch.Tensor, base: torch.Tensor) -> torch.Tensor:
     out[:, 7:M_DIM] = (w[:, 3:3 + EXP_DIM].reshape(-1, 21, 3) @ _rot(out)).reshape(-1, EXP_DIM)
     out[:, 4], out[:, 5], out[:, 0] = w[:, -3], w[:, -2], w[:, -1].exp()
     return out
-
-
-def describe(m: torch.Tensor, width: int) -> torch.Tensor:
-    """The photo as the model reads it: `wide` (69, cfg photo=wide) or `to_target` (42, the default)."""
-    return {WIDE_DIM: wide, T_DIM: to_target}[width](m)
 
 
 def self_check() -> None:

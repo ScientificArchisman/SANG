@@ -14,9 +14,9 @@ prefix, and that prefix is dropped with p = 0.5 in training so the first window 
 has none -- is in distribution.
 
 The target is the first `latent_k` codes of the PCA motion latent (sang.model.latent): everything LivePortrait
-renders, relative to the photo. The loss is an MSE over the codes, optionally weighted per code
-(cfg code_weight=spread: sang.model.latent.MotionLatent.spread). The photo is described by its x_c and either its
-42-d target or (cfg photo=wide) its 69 wide numbers (sang.model.target.describe).
+renders, relative to the photo. The loss is a plain MSE over the codes. The photo is described by its x_c and its
+42-d target (sang.model.target.to_target; describing it by its 69 wide numbers, or weighting codes by their
+variance, did no better on HDTF: docs/research_log.md 3.24).
 
 Guidance is trained in (Guidance-Free Training, GFT, Chen et al., ICML 2025, arXiv 2501.15420): the network takes
 a guidance temperature beta = 1/gamma as an extra condition and is trained so that
@@ -30,9 +30,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from sang.model.target import T_DIM, WIDE_DIM, describe
+from sang.model.target import T_DIM, to_target
 
-PHOTO_DIM = {"target": T_DIM, "wide": WIDE_DIM}
 REF_DIM = 63 + T_DIM
 
 
@@ -94,7 +93,7 @@ class MotionFlowTransformer(nn.Module):
     x_t    [B, L, t_dim]       noisy latent codes
     t      [B]                 flow time; 0 = clean, 1 = noise
     audio  [B, 2(P+L), 1024]   WavLM ticks at 50 Hz covering prefix + target frames
-    ref    [B, ref_dim]        the photo: Norm.ref, normalised [x_c, describe(its motion)]
+    ref    [B, REF_DIM]        the photo: Norm.ref, normalised [x_c, its 42-d target]
     prefix [B, P, t_dim] | None  clean previous frames (FLOAT's L'); None = no prefix at all
     beta   [B] | None          guidance temperature 1/gamma (None = 1, no guidance)
     -> v   [B, L, t_dim]
@@ -102,7 +101,7 @@ class MotionFlowTransformer(nn.Module):
 
     def __init__(self, dim: int = 512, depth: int = 8, heads: int = 8, audio_dim: int = 1024,
                  ticks_per_frame: int = 2, audio_kernel: int = 5, attn_window: int = 0,
-                 max_frames: int = 512, dropout: float = 0.0, t_dim: int = 42, ref_dim: int = REF_DIM):
+                 max_frames: int = 512, dropout: float = 0.0, t_dim: int = 42):
         super().__init__()
         if audio_kernel % 2 == 0:
             raise ValueError("audio_kernel must be odd so the window is centred on its frame")
@@ -114,7 +113,7 @@ class MotionFlowTransformer(nn.Module):
         self.audio = nn.Sequential(
             nn.Conv1d(audio_dim * ticks_per_frame, dim, audio_kernel, padding=audio_kernel // 2),
             nn.SiLU(), nn.Conv1d(dim, dim, 1))
-        self.ref = nn.Sequential(nn.Linear(ref_dim, dim), nn.SiLU(), nn.Linear(dim, dim))
+        self.ref = nn.Sequential(nn.Linear(REF_DIM, dim), nn.SiLU(), nn.Linear(dim, dim))
         self.time = nn.Sequential(Sinusoidal(dim), nn.Linear(dim, dim), nn.SiLU(), nn.Linear(dim, dim))
         self.beta = nn.Sequential(Sinusoidal(dim), nn.Linear(dim, dim), nn.SiLU(), nn.Linear(dim, dim))
         nn.init.zeros_(self.beta[-1].weight)
@@ -195,10 +194,8 @@ def sample_t(B: int, device, dist: str = "uniform", mean: float = 0.0, scale: fl
 
 def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
               p_audio: float = 0.1, p_ref: float = 0.1, p_prefix: float = 0.5,
-              t_dist: str = "uniform", t_mean: float = 0.0, t_scale: float = 1.0,
-              w: torch.Tensor | None = None) -> tuple[torch.Tensor, dict]:
-    """batch: target [B,L,t_dim], audio [B,2(P+L),1024], ref [B,ref_dim], prefix [B,P,t_dim] (optional).
-    w [t_dim]: per-code weights of both MSEs (None = equal).
+              t_dist: str = "uniform", t_mean: float = 0.0, t_scale: float = 1.0) -> tuple[torch.Tensor, dict]:
+    """batch: target [B,L,t_dim], audio [B,2(P+L),1024], ref [B,REF_DIM], prefix [B,P,t_dim] (optional).
 
     Rectified flow (MSE), plus lam_vel times the same loss on frame-to-frame differences of the one-step clean
     estimate (FLOAT). Condition dropout rates are FLOAT's: audio 0.1, reference 0.1, previous-window context 0.5.
@@ -223,7 +220,7 @@ def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
         v_u = model(x_t, t, batch["audio"], batch["ref"], drop_audio=torch.ones_like(drop), **kw)
     model.train(training)
     v = beta.view(B, 1, 1) * v + (1 - beta.view(B, 1, 1)) * v_u
-    mse = lambda a, b: (a.float() - b.float()).pow(2).mul(1.0 if w is None else w).mean()
+    mse = lambda a, b: F.mse_loss(a.float(), b.float())
     loss = mse(v, eps - x0)
     out = {"fm": loss.detach()}
     if lam_vel > 0:
@@ -243,9 +240,11 @@ def flow_times(steps: int) -> list[float]:
 @torch.no_grad()
 def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps: int = 10,
            cfg_audio: float = 2.0, generator: torch.Generator | None = None,
-           prefix_keep: torch.Tensor | None = None) -> torch.Tensor:
+           prefix_keep: torch.Tensor | None = None, g_interval: tuple = (0.0, 1.0)) -> torch.Tensor:
     """Euler from t = 1 (noise) to 0, one pass per step at beta = 1/cfg_audio: the guided velocity
     v_u + gamma (v_c - v_u), whose unconditional branch drops the audio and keeps the photo and the prefix.
+    Guidance only at steps with lo < t <= hi (g_interval; Kynkaanniemi et al., NeurIPS 2024, arXiv 2404.07724);
+    other steps take the plain conditional velocity (beta = 1).
 
     prefix_keep [B] bool (optional): False = the prefix slot is present but DROPPED, exactly as
     flow_loss drops it -- which is how training represents 'no previous frames'."""
@@ -254,10 +253,12 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
     keep = None
     if prefix is not None:
         keep = torch.ones(B, dtype=torch.bool, device=dev) if prefix_keep is None else prefix_keep.to(dev)
-    beta = torch.full((B,), 1.0 / float(cfg_audio), device=dev)
+    guided, plain = torch.full((B,), 1.0 / float(cfg_audio), device=dev), torch.ones(B, device=dev)
+    lo, hi = g_interval
     ts = flow_times(steps)
     for i in range(steps):
         t = torch.full((B,), ts[i], device=dev)
+        beta = guided if lo < ts[i] <= hi else plain
         v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, beta=beta)
         x = x - (ts[i] - ts[i + 1]) * v
     return x
@@ -266,7 +267,8 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
 @torch.no_grad()
 def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tensor, n_frames: int,
              window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio: float = 2.0,
-             generator: torch.Generator | None = None, start: torch.Tensor | None = None) -> torch.Tensor:
+             generator: torch.Generator | None = None, start: torch.Tensor | None = None,
+             g_interval: tuple = (0.0, 1.0)) -> torch.Tensor:
     """Any length. Windows of `window` NEW frames, each conditioned on the previous `n_prefix`
     generated frames (FLOAT's L'). audio [B, 2*n_frames, 1024] -> [B, n_frames, t_dim].
 
@@ -295,15 +297,14 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
             a0 = lead + pos - n_prefix
             a = audio[:, a0 * tpf:(lead + pos + window) * tpf]
         y = sample(model, a, ref, window, prefix=prefix, steps=steps, cfg_audio=cfg_audio,
-                   generator=generator, prefix_keep=keep)
+                   generator=generator, prefix_keep=keep, g_interval=g_interval)
         out.append(y[:, : n_frames - pos])
         pos += window
     return torch.cat(out, 1)
 
 
 class Norm(nn.Module):
-    """Standardisation of the photo input: describe(its motion) (42 or 69 numbers: the width of t_mean) and its 63-d
-    canonical keypoints."""
+    """Standardisation of the photo input: its 42-d target and its 63-d canonical keypoints."""
 
     def __init__(self, t_mean, t_std, kp_mean, kp_std):
         super().__init__()
@@ -317,8 +318,8 @@ class Norm(nn.Module):
         return (x.float() - self.kp_mean) / self.kp_std
 
     def ref(self, kp: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
-        """Raw x_c [N,63] + the photo's raw motion [N,70] -> normalised [N, 63 + width]."""
-        return torch.cat([self.kp(kp), self.target(describe(m, self.t_mean.numel()))], -1)
+        """Raw x_c [N,63] + the photo's raw motion [N,70] -> normalised [N, REF_DIM]."""
+        return torch.cat([self.kp(kp), self.target(to_target(m))], -1)
 
     @classmethod
     def fit(cls, targets: torch.Tensor, kps: torch.Tensor, floor: float = 1e-3) -> "Norm":
@@ -330,13 +331,14 @@ def build(cfg: dict) -> MotionFlowTransformer:
         dim=cfg.get("dim", 512), depth=cfg.get("layers", 8), heads=cfg.get("heads", 8),
         audio_dim={"wavlm-base": 768, "wavlm-large": 1024}[cfg.get("audio_encoder", "wavlm-large")],
         audio_kernel=cfg.get("audio_kernel", 5), attn_window=cfg.get("attn_window", 0),
-        max_frames=cfg.get("max_frames", 512), dropout=cfg.get("dropout", 0.0), t_dim=int(cfg["latent_k"]),
-        ref_dim=63 + PHOTO_DIM[cfg.get("photo", "target")])
+        max_frames=cfg.get("max_frames", 512), dropout=cfg.get("dropout", 0.0), t_dim=int(cfg["latent_k"]))
 
 
 SAMPLER_KEYS = {
     "g": "audio guidance scale gamma (default: the run's cfg_audio), sampled in one pass at beta = 1/gamma",
     "steps": "Euler steps (default: the run's sample_steps)",
+    "glo": "guide only steps with flow time t > glo (t = 1 is noise; default 0: every step)",
+    "ghi": "guide only steps with flow time t <= ghi (default 1: every step)",
 }
 
 
@@ -356,4 +358,5 @@ def parse_spec(s: str | None) -> dict:
 
 def sampler_kwargs(spec: dict, cfg: dict) -> dict:
     """A parsed spec -> keyword arguments for `generate`; keys left out keep the run's cfg_audio and sample_steps."""
-    return {"cfg_audio": float(spec.get("g", cfg["cfg_audio"])), "steps": int(spec.get("steps", cfg["sample_steps"]))}
+    return {"cfg_audio": float(spec.get("g", cfg["cfg_audio"])), "steps": int(spec.get("steps", cfg["sample_steps"])),
+            "g_interval": (float(spec.get("glo", 0.0)), float(spec.get("ghi", 1.0)))}

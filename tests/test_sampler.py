@@ -19,5 +19,6 @@ def test_specs():
     for bad in ("g=2,mouht=1.25", "mouth=1.25", "tau=0.5", "avg=4", "ramp=1.5"):
         with pytest.raises(ValueError):
             parse_spec(bad)
-    assert sampler_kwargs(parse_spec("g=3,steps=6"), CFG) == {"cfg_audio": 3.0, "steps": 6}
-    assert sampler_kwargs({}, CFG) == {"cfg_audio": 2.0, "steps": 4}
+    assert sampler_kwargs(parse_spec("g=3,steps=6"), CFG) == {"cfg_audio": 3.0, "steps": 6, "g_interval": (0.0, 1.0)}
+    assert sampler_kwargs({}, CFG) == {"cfg_audio": 2.0, "steps": 4, "g_interval": (0.0, 1.0)}
+    assert sampler_kwargs(parse_spec("glo=0.5,ghi=0.9"), CFG)["g_interval"] == (0.5, 0.9)
