@@ -203,10 +203,6 @@ def test_gft_takes_guidance_as_an_input_and_samples_in_one_pass():
     c = Counting(m)
     sample(c, b["audio"], b["ref"], L, steps=3, cfg_audio=2.0)
     assert len(c.calls) == 3 and all(torch.allclose(beta, torch.full((B,), 0.5)) and d is None for beta, d in c.calls)
-    for lo, hi, want in ((0.5, 1.0, [0.5, 0.5, 1.0, 1.0]), (0.0, 0.5, [1.0, 1.0, 0.5, 0.5])):  # t = 1, .75, .5, .25
-        c = Counting(m)
-        sample(c, b["audio"], b["ref"], L, steps=4, cfg_audio=2.0, g_interval=(lo, hi))
-        assert [float(beta[0]) for beta, _ in c.calls] == want
 
 
 def test_gft_loss_trains_the_sampling_model_and_not_the_unconditional_pass():

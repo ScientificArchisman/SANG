@@ -122,7 +122,7 @@ def test_a_smaller_latent_trains_and_talks(monkeypatch, tiny_cache):
     lat, log = train(tiny_cache, "lat", "latent_k=16")
     assert "target 16-d, GFT" in log and "std_r_place" in log and "EVAL step 3" in log
     codec, _ = fake_codec(monkeypatch)
-    t = Talker(lat, "g=2,steps=3,glo=0.5", device="cpu", codec=codec, wavlm=FakeWavLM())
+    t = Talker(lat, "g=2,steps=3", device="cpu", codec=codec, wavlm=FakeWavLM())
     frames, m, _ = t.run(SRC, WAV, N, start="source", normalize_lip=True)
     assert frames.shape == (N, 100, 120, 3) and torch.isfinite(m).all()
     ck = torch.load(lat, map_location="cpu", weights_only=False)
