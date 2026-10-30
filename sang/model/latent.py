@@ -2,10 +2,8 @@
 
 MotionLatent is a PCA over everything LivePortrait renders (sang.model.target.wide, 69 numbers per frame), taken
 RELATIVE to a reference frame (the photo), so identity stays out of the code. Its dimensions come out ordered by
-how much variance they keep, so every prefix of k codes decodes. How many codes the generator uses is read off a
-measured curve (scripts/fit_latent.py in motion space, the eval_hdtf.py ceiling row with --gt-latent in pixels),
-not chosen by hand: nothing is held from the photo and no keypoints are hand-picked. (An ordered autoencoder
-matched the PCA at every k and was worse at 64, docs/research_log.md 3.22; its code is in commit a4d5a0c.)
+how much variance they keep, so every prefix of k codes decodes. The generator uses 42: the smallest k whose
+render ceiling (eval_hdtf.py --gt-latent) matches the full motion's (docs/research_log.md 3.26).
 
 Codes are standardised per dimension so the flow model sees unit-scale targets; a dropped dimension is zero in
 the raw code space, as in training.
@@ -13,7 +11,7 @@ the raw code space, as in training.
 import torch
 from torch import nn
 
-from sang.model.target import WIDE_DIM, WIDE_REGIONS, from_wide, wide
+from sang.model.target import WIDE_DIM, from_wide, wide
 
 
 class MotionLatent(nn.Module):
@@ -55,8 +53,6 @@ class MotionLatent(nn.Module):
 
     @classmethod
     def unpack(cls, d: dict) -> "MotionLatent":
-        if d.get("kind", "pca") != "pca":
-            raise ValueError(f"only PCA latents load; this one is {d['kind']!r} (autoencoder code: commit a4d5a0c)")
         lat = cls(d["K"], d["dim"])
         lat.load_state_dict(d["state"])
         return lat.eval().requires_grad_(False)
@@ -64,9 +60,6 @@ class MotionLatent(nn.Module):
     @classmethod
     def of(cls, ck: dict) -> "MotionLatent":
         """The latent a training checkpoint generates in."""
-        if not ck.get("latent"):
-            raise ValueError("this checkpoint predicts the hand-picked 42-d target, removed on 2026-10-29 "
-                             "(its code: commit bbac3a0)")
         return cls.unpack(ck["latent"])
 
     def from_motion(self, m: torch.Tensor, m_ref: torch.Tensor, k: int | None = None) -> torch.Tensor:
@@ -90,16 +83,3 @@ def fit_pca(d: torch.Tensor, K: int | None = None) -> MotionLatent:
     lat.dec.weight.data.copy_(w.T)
     return lat.set_code_stats(d).eval().requires_grad_(False)
 
-
-@torch.no_grad()
-def curve(lat: MotionLatent, d: torch.Tensor, ks: list[int]) -> list[dict]:
-    """Fraction of variance kept (R^2) of deltas [N, dim] decoded from the first k codes, overall and per region,
-    in the latent's standardised units (raw degrees of rotation would otherwise outweigh every keypoint)."""
-    d = d.to(lat.mu.device)
-    var = (d / lat.sd).var(0)
-    out = []
-    for k in ks:
-        err = ((lat.recon(lat.code(d)[:, :k]) - d) / lat.sd).pow(2).mean(0)
-        r2 = lambda idx: float(1 - err[idx].sum() / var[idx].sum().clamp_min(1e-12))
-        out.append({"k": k, "r2": r2(list(range(d.shape[1]))), **{f"r2_{n}": r2(i) for n, i in WIDE_REGIONS.items()}})
-    return out

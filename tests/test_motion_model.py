@@ -85,16 +85,6 @@ def test_frames_are_coupled_unlike_the_per_token_head():
     assert others[[i for i in range(L) if i != 3]].sum() > 0, "frames do not interact"
 
 
-def test_attention_window_limits_reach():
-    m = _model(depth=1, attn_window=2)
-    _unzero(m)
-    b = _batch(prefix=False)
-    x = b["target"].clone().requires_grad_(True)
-    m(x, torch.full((B,), 0.5), b["audio"], b["ref"])[0, 8].sum().backward()
-    reach = x.grad[0].abs().sum(-1)
-    assert reach[6:11].sum() > 0 and reach[:6].sum() == 0 and reach[11:].sum() == 0
-
-
 def test_audio_dropout_and_prefix_dropout_change_the_output():
     m = _model()
     _unzero(m)
@@ -227,9 +217,9 @@ def test_gft_loss_trains_the_sampling_model_and_not_the_unconditional_pass():
 
 
 def test_build_generates_latent_k_codes():
-    cfg = {"latent": "x.pt", "latent_k": 12, "dim": 32, "layers": 1, "heads": 2, "audio_encoder": "wavlm-base"}
+    cfg = {"latent": "x.pt", "latent_k": 12, "dim": 32, "layers": 1, "heads": 2}
     m = build(cfg)
-    b = {"target": torch.randn(B, L, 12), "audio": torch.randn(B, 2 * L, 768), "ref": torch.randn(B, REF_DIM)}
+    b = {"target": torch.randn(B, L, 12), "audio": torch.randn(B, 2 * L, 1024), "ref": torch.randn(B, REF_DIM)}
     loss, parts = flow_loss(m, b)
     assert torch.isfinite(loss) and set(parts) == {"fm", "vel", "loss"}
     assert sample(m, b["audio"], b["ref"], L, steps=2).shape == (B, L, 12)

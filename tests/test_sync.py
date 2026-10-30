@@ -67,7 +67,6 @@ def test_offsets_file_filter_and_shift():
     so = SyncOffsets({"clips": {"A/a0": {"keep": True, "shift_ticks": -3}, "A/a1": {"keep": False, "why": "no sync"}}})
     kept, why = so.filter(rows)
     assert [clip_key(r) for r in kept] == ["A/a0"] and why == {"no sync": 1, "not in offsets file": 1}
-    assert len(so.filter(rows, keep_unknown=True)[0]) == 2
     assert so.shift(rows[0]) == -3 and so.shift(rows[1]) == 0 and so.shift(rows[2]) == 0
 
 

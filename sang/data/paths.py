@@ -3,26 +3,14 @@
     <DATA_ROOT>/talkvid/clips/<video>/<clip>.mp4 + .m4a   segmented TalkVid clips (video and audio)
     <DATA_ROOT>/talkvid/preprocessed/                    scripts/cache_motion.py: per clip LivePortrait motion,
                                                          keypoints and WavLM features, index_*.jsonl, and the
-                                                         derived files (sync_offsets.json, lang_lid.json,
-                                                         openness.json, naturalness_stats.json)
+                                                         derived files (sync_offsets.json, openness.json, norm42.pt)
 """
 import json
 import os
 from pathlib import Path
 
 DATA_ROOT = Path(os.environ.get("SANG_DATA", "/beegfs/work_fast/shared/li_shared/archi_data"))
-TALKVID_CLIPS = DATA_ROOT / "talkvid" / "clips"
 MOTION_CACHE = DATA_ROOT / "talkvid" / "preprocessed"
-
-
-def motion_cache(path=None) -> Path:
-    """A config's cache_dir, or MOTION_CACHE when that path does not exist: checkpoints trained before
-    the move store the old relative 'cache/motion_lp'."""
-    p = Path(path) if path else MOTION_CACHE
-    if p.exists():
-        return p
-    print(f"cache {p} not found, using {MOTION_CACHE}", flush=True)
-    return MOTION_CACHE
 
 
 def load_index(cache_dir: Path) -> list[dict]:

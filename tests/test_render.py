@@ -73,35 +73,20 @@ def fake_codec(monkeypatch):
     codec = object.__new__(motion.MotionCodec)
     codec.lp, codec.device = FakeLP(), "cpu"
     g = torch.Generator().manual_seed(0)
-    info = {"exp": torch.randn(1, 21, 3, generator=g) * 0.02, "scale": torch.tensor([[1.1]]),
-            "t": torch.randn(1, 3, generator=g) * 0.01, "kp": torch.randn(1, 21, 3, generator=g)}
-    state = {"info": info, "R_s": rotation_matrix(torch.tensor([3.0]), torch.tensor([-5.0]), torch.tensor([1.0])),
-             "f_s": torch.randn(1, 2, 2, 2, 2, generator=g), "x_s": torch.randn(1, 21, 3, generator=g),
-             "x_c": info["kp"]}
+    state = {"f_s": torch.randn(1, 2, 2, 2, 2, generator=g), "x_s": torch.randn(1, 21, 3, generator=g),
+             "x_c": torch.randn(1, 21, 3, generator=g)}
     m = torch.randn(10, M_DIM, generator=g) * 0.05
     m[:, 0] = 1.2
     m[:, 1:4] = torch.randn(10, 3, generator=g) * 5
     return codec, state, m
 
 
-@pytest.mark.parametrize("relative", [False, True])
-def test_render_does_not_depend_on_the_batch_size(monkeypatch, relative):
+def test_render_does_not_depend_on_the_batch_size(monkeypatch):
     codec, state, m = fake_codec(monkeypatch)
-    one = codec.render(None, m, relative=relative, stitch=True, state=state, batch=1)
+    one = codec.render(state, m, batch=1)
+    assert isinstance(one, torch.Tensor) and one.dtype == torch.uint8 and one.shape == (10, 32, 32, 3)
     for batch in (4, 16):
-        assert np.array_equal(codec.render(None, m, relative=relative, stitch=True, state=state, batch=batch), one)
-    gpu = codec.render(None, m, relative=relative, stitch=True, state=state, batch=4, out="torch")
-    assert isinstance(gpu, torch.Tensor) and gpu.dtype == torch.uint8 and gpu.shape == one.shape
-
-
-def test_relative_driving_starts_at_the_source_pose(monkeypatch):
-    codec, state, m = fake_codec(monkeypatch)
-    x = codec.driving_keypoints(state, m, relative=True)
-    from sang.render.liveportrait import vec_to_kp_info
-    s = state["info"]
-    want = s["scale"] * (state["x_c"] @ state["R_s"] + s["exp"]) + s["t"] * torch.tensor([1.0, 1.0, 0.0])
-    assert torch.allclose(x[:1], want, atol=1e-5)
-    assert vec_to_kp_info(m)["exp"].shape == (10, 21, 3)
+        assert torch.equal(codec.render(state, m, batch=batch), one)
 
 
 def test_timer_adds_up():

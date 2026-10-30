@@ -1,6 +1,7 @@
-"""HDTF download parsing, test-set selection, metric plumbing and the results table.
-
-CPU only; no network, weights, decord or data."""
+"""HDTF eval plumbing: the frozen test list, metrics and the results table. CPU only; no network, weights, decord
+or data."""
+import argparse
+import hashlib
 import importlib.util
 import sys
 from pathlib import Path
@@ -10,7 +11,6 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 from sang.eval.metrics import frechet
-from sang.eval.sota_hdtf import METRICS, SOTA, markdown_table
 
 
 def _load(name):
@@ -20,30 +20,26 @@ def _load(name):
     return mod
 
 
-dl, ev = _load("download_hdtf"), _load("eval_hdtf")
+ev = _load("eval_hdtf")
 
 
-def test_time_and_crop_parsing(tmp_path):
-    assert dl.to_seconds("01:35") == 95.0 and dl.to_seconds("1:02:03") == 3723.0
-    ann = tmp_path
-    (ann / "RD_video_url.txt").write_text("﻿Radio11 https://www.youtube.com/watch?v=x\nRadio24 https://y\n")
-    (ann / "RD_resolution.txt").write_text("Radio11.mp4 720\n")
-    (ann / "RD_annotion_time.txt").write_text("Radio11.mp4 00:30-01:00 01:30-02:30\n")
-    (ann / "RD_crop_wh.txt").write_text("Radio11_0.mp4 412 599 0 599\nRadio11_1.mp4 557 478 0 478\n")
-    v = {x["name"]: x for x in dl.parse_annotations(ann, ("RD",))}
-    assert v["Radio11"]["clips"] == [(30.0, 60.0), (90.0, 150.0)]
-    assert v["Radio11"]["crops"] == {0: (412, 599, 0, 599), 1: (557, 478, 0, 478)}
-    assert v["Radio24"]["clips"] == []
-    assert dl.crop_filter((412, 599, 0, 599), 720, 1280, 720) == "crop=598:598:412:0,scale=512:512:flags=lanczos"
-    assert dl.crop_filter((483, 390, 0, 390), 720, 1920, 1080).startswith("crop=584:584:724:0")
+def test_read_list_flags_missing_and_changed_files(tmp_path, capsys):
+    (tmp_path / "crops512").mkdir()
+    for s in ("X_0", "Y_0"):
+        (tmp_path / "crops512" / f"{s}.mp4").write_bytes(s.encode())
+    lines = ["clip,crop_rel,md5"] + [f"{s},crops512/{s}.mp4,{hashlib.md5(s.encode()).hexdigest()}" for s in ("X_0", "Y_0")]
+    (tmp_path / "t.csv").write_text("\n".join(lines) + "\n")
+    clips = ev.read_list(str(tmp_path / "t.csv"), tmp_path)
+    assert [c.name for c in clips] == ["X_0.mp4", "Y_0.mp4"] and "WARNING" not in capsys.readouterr().out
+    (tmp_path / "crops512" / "Y_0.mp4").write_bytes(b"changed")
+    ev.read_list(str(tmp_path / "t.csv"), tmp_path)
+    assert "1 changed" in capsys.readouterr().out
 
 
-def test_test_list_one_clip_per_video_stable_order(tmp_path):
-    for n in ("A_0", "A_1", "B_1", "B_0", "C_0", "D_2"):
-        (tmp_path / f"{n}.mp4").write_bytes(b"")
-    picked = ev.test_list(tmp_path, 10)
-    assert sorted(p.stem for p in picked) == ["A_0", "B_0", "C_0", "D_2"]
-    assert [p.stem for p in ev.test_list(tmp_path, 2)] == [p.stem for p in picked[:2]]
+def test_the_shipped_test_list_has_75_clips_one_per_video():
+    import csv
+    rows = list(csv.DictReader(open(REPO / "configs/hdtf_test.csv", encoding="utf-8")))
+    assert len(rows) == 75 and len({r["video"] for r in rows}) == 75
 
 
 def test_frechet_and_paste_back():
@@ -75,21 +71,13 @@ def test_lse_survives_non_ascii_syncnet_output(tmp_path, monkeypatch):
     assert bench.lse(tmp_path / "clip.mp4") == (-1.0, 7.25, 6.5) and not made.exists()
 
 
-def test_tables():
-    assert {k for k, _ in METRICS} >= {"FID", "FVD", "CSIM", "LSE-C", "LSE-D"}
-    for r in SOTA:
-        assert set(r["m"]) <= {k for k, _ in METRICS}, r
-    summary = {"name": "d1", "protocol": {"seconds": 10, "sampler": "g=2,steps=6"},
-               "rows": {"real": {"n_clips": 75, "m": {"LSE-C": 8.1, "LSE-D": 6.9, "CSIM": 0.85}},
-                        "gt_motion": {"n_clips": 75, "m": {"FID": 16.4, "FVD": 31.0}},
-                        "sang": {"n_clips": 75, "m": {"FID": 12.0, "FVD": 150.0, "LSE-C": 7.0}}}}
-    lat = {**summary, "name": "lat", "protocol": {"seconds": 10, "gt_latent": "runs/latent/pca.pt", "gt_k": 16}}
-    rows = ev.ours_rows([summary, summary, lat])
-    methods = [r["method"] for r in rows]
-    assert methods.count("Real video") == 1 and methods.count("Real motion → LivePortrait (ceiling)") == 1
-    assert "Real motion → LivePortrait (ceiling) through 16 codes of pca.pt" in methods
-    assert "SANG-M (d1: g=2,steps=6)" in methods and "SANG-M (lat: run defaults)" in methods
-    md = markdown_table(rows)
-    assert md.splitlines()[2].startswith("| Ours (n=75, 10 s) | Real video")
-    assert "| KDTalker Tab. 1 | KDTalker |" in md and "9.756" in md
-
+def test_table():
+    args = argparse.Namespace(name="l42", sampler="g=2,steps=6", gt_latent="runs/latent/pca.pt", gt_k=16)
+    rows = {"real": {"n_clips": 75, "m": {"LSE-C": 7.161, "CSIM": 0.9}},
+            "gt_motion": {"n_clips": 75, "m": {"FID": 16.1, "FVD": 28.0}},
+            "sang": {"n_clips": 75, "m": {"FID": 17.466, "FVD": 37.607, "LSE-C": 7.454}}}
+    md = ev.markdown(rows, args).splitlines()
+    assert md[0].startswith("| Method | n | FID | FVD | CSIM | LSE-C") and len(md) == 5
+    assert md[2] == "| Real video | 75 | – | – | 0.900 | 7.161 | – | – | – |"
+    assert md[3].startswith("| Real motion → LivePortrait (ceiling) through 16 codes | 75 | 16.100 | 28.000")
+    assert md[4].startswith("| SANG-M (l42: g=2,steps=6) | 75 | 17.466 | 37.607 | – | 7.454")

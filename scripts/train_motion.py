@@ -31,7 +31,6 @@ sys.path.insert(0, str(REPO))
 from sang.data.dataset import MotionWindows, fit_norm, load_cfg, split_by_speaker
 from sang.data.paths import load_index
 from sang.data.sync import SyncOffsets, clip_key
-from sang.data.talkvid import clip_languages, filter_langs, parse_langs
 from sang.model.flow import Norm, build, flow_loss, sample
 from sang.model.latent import MotionLatent
 from sang.model.target import WIDE_REGIONS
@@ -86,23 +85,9 @@ def lr_at(step, cfg):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=str(REPO / "configs/train_motion.yaml"))
-    ap.add_argument("--lang", nargs="+", default=None,
-                    help="train AND validate on these languages only: TalkVid names or Whisper codes, e.g. "
-                         "--lang English, --lang en zh; 'all' (default) = every language")
-    ap.add_argument("--train-clips", type=int, default=None,
-                    help="random subset of N training clips after the language filter (seeded)")
     ap.add_argument("overrides", nargs="*", help="key=value, parsed as YAML")
     args = ap.parse_args()
-    if args.lang:
-        args.overrides = [v for v in args.lang if "=" in v] + args.overrides
-        args.lang = [v for v in args.lang if "=" not in v] or None
     cfg = load_cfg(args.config, args.overrides)
-    if args.lang is not None:
-        cfg["lang"] = args.lang
-    if args.train_clips is not None:
-        cfg["train_clips"] = args.train_clips
-    langs = parse_langs(cfg.get("lang"))
-    cfg["lang"] = langs or "all"
 
     init = cfg["seed"] if cfg.get("init_seed") is None else int(cfg["init_seed"])
     torch.manual_seed(init)
@@ -118,18 +103,6 @@ def main() -> None:
 
     rows = load_index(cache)
     train_rows, val_rows = split_by_speaker(rows, cfg["val_frac"], cfg["seed"])
-    if langs is not None:
-        lang_of = clip_languages(cache)
-        n_t, n_v = len(train_rows), len(val_rows)
-        train_rows, drop_t = filter_langs(train_rows, langs, lang_of)
-        val_rows, drop_v = filter_langs(val_rows, langs, lang_of)
-        have = {lang_of.get(clip_key(r)) for r in rows}
-        missing = [l for l in langs if l not in have]
-        if missing or not train_rows or not val_rows:
-            raise SystemExit(f"--lang {langs}: no clips for {missing or langs} "
-                             f"(languages in the cache: {sorted(l for l in have if l)})")
-        print(f"languages {langs}: train {n_t} -> {len(train_rows)} clips, val {n_v} -> {len(val_rows)} clips; "
-              f"dropped train {drop_t}, val {drop_v}", flush=True)
     norm_path = cache / "norm42.pt"
     if norm_path.exists():
         norm = Norm(**torch.load(norm_path, weights_only=True))
@@ -144,26 +117,14 @@ def main() -> None:
         raise SystemExit(f"latent_k must be in 1..{latent.K}")
     print(f"motion latent {cfg['latent']} (PCA, K {latent.K}): the model generates its first "
               f"{k} codes", flush=True)
-    shifts = None
-    if cfg.get("sync_offsets"):
-        so = SyncOffsets.load(cfg["sync_offsets"])
-        train_rows, why_t = so.filter(train_rows)
-        val_rows, why_v = so.filter(val_rows)
-        shifts = {clip_key(r): so.shift(r) for r in train_rows + val_rows}
-        print(f"sync offsets {cfg['sync_offsets']}: audio moved in {sum(s != 0 for s in shifts.values())}/"
-              f"{len(shifts)} clips; dropped train {why_t}, val {why_v}", flush=True)
-    if cfg.get("train_clips"):
-        n_t = len(train_rows)
-        train_rows = sorted(random.Random(cfg["seed"]).sample(train_rows, min(int(cfg["train_clips"]), n_t)),
-                            key=lambda r: r["path"])
-        print(f"train_clips={cfg['train_clips']}: random subset {n_t} -> {len(train_rows)} train clips", flush=True)
+    so = SyncOffsets.load(cfg["sync_offsets"])
+    train_rows, why_t = so.filter(train_rows)
+    val_rows, why_v = so.filter(val_rows)
+    shifts = {clip_key(r): so.shift(r) for r in train_rows + val_rows}
+    print(f"sync offsets {cfg['sync_offsets']}: audio moved in {sum(s != 0 for s in shifts.values())}/"
+          f"{len(shifts)} clips; dropped train {why_t}, val {why_v}", flush=True)
     L, P = cfg["frames"], cfg["prefix"]
-    data_kw = {"preload": cfg.get("preload", True), "shifts": shifts,
-               "ref_frame": cfg.get("ref_frame", "random"), "ref_band": cfg.get("ref_band", 0.2)}
-    if data_kw["ref_frame"] == "median":
-        from sang.eval.naturalness import load_readouts
-        data_kw["lip"] = load_readouts(cache / "openness.json")["lip"]
-        print(f"reference frame: a typical one per clip (middle {data_kw['ref_band']:.0%} by lip opening)", flush=True)
+    data_kw = {"preload": cfg.get("preload", True), "shifts": shifts}
     train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], **data_kw)
     val_ds = MotionWindows(val_rows, L, P, norm, cfg.get("val_windows_per_clip", 4), fixed=True, **data_kw)
     print(f"{len(train_ds.rows)} train / {len(val_ds.rows)} val clips "
@@ -194,14 +155,7 @@ def main() -> None:
     print(f"MotionFlowTransformer: {sum(p.numel() for p in model.parameters()) / 1e6:.1f} M params, target "
           f"{model.t_dim}-d, GFT", flush=True)
 
-    step, best, bad = 0, float("inf"), 0
-    if cfg.get("resume"):
-        ck = torch.load(cfg["resume"], map_location=dev, weights_only=False)
-        model.load_state_dict(ck["model"])
-        ema.load_state_dict(ck["ema"])
-        opt.load_state_dict(ck["opt"])
-        step, best = ck["step"], ck.get("best", best)
-        print(f"resumed at step {step}", flush=True)
+    step, best = 0, float("inf")
 
     kw = {k_: cfg[k_] for k_ in ("lam_vel", "p_audio", "p_ref", "p_prefix", "t_dist")}
     kw.update(t_mean=cfg.get("t_mean", 0.0), t_scale=cfg.get("t_scale", 1.0))
@@ -253,14 +207,8 @@ def main() -> None:
                 torch.save(ck, out / "last.pt")
                 if r["val_loss"] < best:
                     best = ck["best"] = r["val_loss"]
-                    bad = 0
                     torch.save(ck, out / "best.pt")
                     (out / "best.json").write_text(json.dumps({"step": step, **r}, indent=1))
-                else:
-                    bad += 1
-                if cfg.get("patience", 0) and bad >= cfg["patience"]:
-                    print(f"early stop at step {step}: no val improvement for {bad} evals (best {best:.4f})", flush=True)
-                    step = cfg["max_steps"]
             t_prev = time.perf_counter()
             if step >= cfg["max_steps"]:
                 break

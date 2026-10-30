@@ -66,11 +66,6 @@ def as3x3(M: np.ndarray) -> np.ndarray:
     return M if M.shape == (3, 3) else np.vstack([M[:2], [0.0, 0.0, 1.0]])
 
 
-def o2c(M_c2o: np.ndarray) -> np.ndarray:
-    """Crop->original affine -> the original->crop affine cv2.warpAffine wants (2x3)."""
-    return np.linalg.inv(as3x3(M_c2o))[:2]
-
-
 def first_cut(B: np.ndarray) -> int:
     """[K,4] boxes sampled along a clip -> number of leading samples that one fixed box can serve.
 
@@ -158,7 +153,7 @@ class MotionCodec:
     Nothing here trains. Instantiate once per process: it holds five networks plus an
     InsightFace detector (~1.8 GB of VRAM measured on the 4090 in the upstream repo)."""
 
-    def __init__(self, device: str = "cuda", weights: Path = WEIGHTS, half: bool = False):
+    def __init__(self, device: str = "cuda", weights: Path = WEIGHTS):
         _require_repo()
         from src.config.crop_config import CropConfig
         from src.config.inference_config import InferenceConfig
@@ -172,7 +167,7 @@ class MotionCodec:
         cfg.checkpoint_G = str(base / "base_models" / "spade_generator.pth")
         cfg.checkpoint_W = str(base / "base_models" / "warping_module.pth")
         cfg.checkpoint_S = str(base / "retargeting_models" / "stitching_retargeting_module.pth")
-        cfg.flag_use_half_precision = bool(half)
+        cfg.flag_use_half_precision = False
         cfg.flag_force_cpu = device == "cpu"
         cfg.device_id = 0
         for p in (cfg.checkpoint_F, cfg.checkpoint_M, cfg.checkpoint_G, cfg.checkpoint_W, cfg.checkpoint_S):
@@ -227,12 +222,12 @@ class MotionCodec:
         return (out[0] if single else out), M
 
     def crop_image(self, frame: np.ndarray) -> dict:
-        """A single source photo, cropped by the same convention as the clips -> crop, M_c2o, lmk."""
+        """A single source photo, cropped by the same convention as the clips -> crop, M_c2o."""
         lmk = self.landmarks(frame)
         if lmk is None:
             raise ValueError("no face found")
         crop, M = self.crop_with_box(frame, self._box(lmk))
-        return {"img_crop_256x256": crop, "M_c2o": M, "lmk": lmk}
+        return {"img_crop_256x256": crop, "M_c2o": M}
 
     def clip_box(self, frames: np.ndarray, every: int = 5) -> tuple[np.ndarray, int, dict]:
         """One box for the clip. Returns (box, usable_frames, stats).
@@ -302,87 +297,47 @@ class MotionCodec:
         return {"m": m.half(), "kp": kp.half(), "M_c2o": torch.from_numpy(M), "crops": crops, "span": span}
 
     @torch.no_grad()
-    def source_motion(self, source: np.ndarray, normalize_lip: bool = True, crop: dict | None = None) -> dict:
-        """One source image -> {'m': [1,70], 'kp': [1,63]}, optionally with the lips closed.
-
-        LivePortrait's own flag_normalize_lip (upstream live_portrait_pipeline.py): a reference
-        photo caught mid-vowel otherwise biases every frame of the animation. The retarget module
-        returns a keypoint offset d; since x = s(x_c R + delta) + t, the same offset in expression
-        space is d / s, applied in the camera frame where delta lives."""
+    def source_motion(self, source: np.ndarray, crop: dict | None = None) -> dict:
+        """One source image -> {'m': [1,70], 'kp': [1,63]}. The photo keeps its own lips, as training references
+        do (LivePortrait's lip normalisation cost FVD 45.0 vs 37.6, docs/research_log.md 3.23)."""
         c = crop or self.crop_image(np.ascontiguousarray(source))
         m, kp = self.motion_from_crops(c["img_crop_256x256"][None])
-        if normalize_lip:
-            src = self.lp.prepare_source(c["img_crop_256x256"])
-            x_s = self.lp.transform_keypoint(self.lp.get_kp_info(src))
-            ratio = self.lp.calc_combined_lip_ratio([0.0], c["lmk"])
-            thresh = getattr(self.lp.inference_cfg, "lip_normalize_threshold", 0.03)
-            if float(ratio[0][0]) >= thresh:
-                d = self.lp.retarget_lip(x_s, ratio).reshape(1, 21, 3).float().cpu()
-                m = m.clone()
-                m[:, 7:M_DIM] += (d / m[:, 0:1].reshape(1, 1, 1)).reshape(1, EXP_DIM)
         return {"m": m, "kp": kp}
 
     @torch.no_grad()
-    def source_state(self, source: np.ndarray, precropped: bool = False) -> dict:
-        """Source RGB frame -> everything the renderer needs that does not depend on the audio.
-        precropped=True: `source` is already a 256x256 crop made by crop_with_box / crop_clip."""
-        from src.utils.camera import get_rotation_matrix
-
-        c = ({"img_crop_256x256": source, "M_c2o": None} if precropped
-             else self.crop_image(np.ascontiguousarray(source)))
-        src = self.lp.prepare_source(c["img_crop_256x256"])
+    def source_state(self, crop: np.ndarray) -> dict:
+        """The source's 256x256 crop (crop_image / crop_clip) -> everything the renderer needs that does not depend
+        on the audio."""
+        src = self.lp.prepare_source(crop)
         info = self.lp.get_kp_info(src)
-        return {"info": info,
-                "R_s": get_rotation_matrix(info["pitch"], info["yaw"], info["roll"]),
-                "f_s": self.lp.extract_feature_3d(src),
-                "x_s": self.lp.transform_keypoint(info),
-                "x_c": info["kp"],
-                "M_c2o": c["M_c2o"]}
+        return {"f_s": self.lp.extract_feature_3d(src), "x_s": self.lp.transform_keypoint(info), "x_c": info["kp"]}
 
     @torch.no_grad()
-    def render(self, source: np.ndarray | None, m: torch.Tensor, relative: bool = True,
-               stitch: bool = True, state: dict | None = None, batch: int = 16, half: bool = False,
-               out: str = "numpy"):
-        """source [H,W,3] uint8 + motion [T,70] -> [T,512,512,3] uint8 crops (a GPU tensor with out='torch').
+    def render(self, state: dict, m: torch.Tensor, batch: int = 16, half: bool = False) -> torch.Tensor:
+        """source_state + absolute motion [T,70] -> [T,512,512,3] uint8 crops (GPU). The source is forced into the
+        driving pose, which SANG's motion (relative to the photo, decoded to absolute) and the ceiling need.
+        `batch` frames per renderer call; half = FP16 autocast around the warping module and decoder."""
+        return torch.cat(list(self.render_iter(state, m, batch, half)))
 
-        `relative=True` is KDTalker's / LivePortrait's retargeting: the driving trajectory is
-        applied as a delta from its own first frame onto the source pose, so the source keeps its
-        identity and rest pose. With `relative=False` the source is forced into the driving pose,
-        which is what SANG's absolute targets and the representation ceiling need. `batch` frames
-        per renderer call; half = FP16 autocast around the warping module and decoder."""
-        frames = torch.cat(list(self.render_iter(state or self.source_state(source), m, relative, stitch, batch, half)))
-        return frames if out == "torch" else frames.cpu().numpy()
-
-    def driving_keypoints(self, s: dict, m: torch.Tensor, relative: bool = True) -> torch.Tensor:
-        """The per-frame loop of `render` for all T frames at once -> x_d [T, 21, 3] (before stitching)."""
+    def driving_keypoints(self, s: dict, m: torch.Tensor) -> torch.Tensor:
+        """x_d [T, 21, 3] (before stitching) of absolute motion [T,70]."""
         from src.utils.camera import get_rotation_matrix
-        mm = m.float().to(self.device)
-        d = vec_to_kp_info(mm)
+        d = vec_to_kp_info(m.float().to(self.device))
         R_d = get_rotation_matrix(d["pitch"], d["yaw"], d["roll"])
-        if relative:
-            d0 = vec_to_kp_info(mm[:1])
-            R_d0 = get_rotation_matrix(d0["pitch"], d0["yaw"], d0["roll"])
-            R_new = (R_d @ R_d0.permute(0, 2, 1)) @ s["R_s"]
-            delta = s["info"]["exp"] + (d["exp"] - d0["exp"])
-            scale = s["info"]["scale"] * (d["scale"] / d0["scale"])
-            t = s["info"]["t"] + (d["t"] - d0["t"])
-        else:
-            R_new, delta, scale, t = R_d, d["exp"], d["scale"], d["t"]
-        t = t.clone()
+        t = d["t"].clone()
         t[:, 2] = 0.0
-        return scale.reshape(-1, 1, 1) * (s["x_c"] @ R_new + delta) + t.reshape(-1, 1, 3)
+        return d["scale"].reshape(-1, 1, 1) * (s["x_c"] @ R_d + d["exp"]) + t.reshape(-1, 1, 3)
 
     @torch.no_grad()
-    def render_iter(self, s: dict, m: torch.Tensor, relative: bool = True, stitch: bool = True,
-                    batch: int = 16, half: bool = False):
-        """Yields [b, 512, 512, 3] uint8 GPU frames, `batch` at a time (see `render`)."""
-        x_d_all = self.driving_keypoints(s, m, relative)
+    def render_iter(self, s: dict, m: torch.Tensor, batch: int = 16, half: bool = False):
+        """Yields [b, 512, 512, 3] uint8 GPU frames, `batch` at a time (see `render`). Stitching keeps the background
+        still."""
+        x_d_all = self.driving_keypoints(s, m)
         for i in range(0, len(x_d_all), batch):
             x_d = x_d_all[i:i + batch]
             b = len(x_d)
             x_s = s["x_s"].expand(b, -1, -1)
-            if stitch:
-                x_d = self.lp.stitching(x_s, x_d)
+            x_d = self.lp.stitching(x_s, x_d)
             with torch.autocast("cuda", dtype=torch.float16, enabled=half and self.device != "cpu"):
                 w = self.lp.warping_module(s["f_s"].expand(b, *s["f_s"].shape[1:]), kp_source=x_s, kp_driving=x_d)
                 img = self.lp.spade_generator(feature=w["out"])
@@ -390,7 +345,7 @@ class MotionCodec:
 
 
 NEEDED = {"lp": ("get_kp_info", "extract_feature_3d", "transform_keypoint", "stitching", "prepare_source",
-                 "calc_combined_lip_ratio", "retarget_lip", "warping_module", "spade_generator"),
+                 "warping_module", "spade_generator"),
           "cropper": ("face_analysis_wrapper", "human_landmark_runner")}
 
 
@@ -413,9 +368,6 @@ def self_check() -> None:
     back = vec_to_kp_info(v)
     for k in kp:
         assert torch.allclose(kp[k], back[k]), f"round trip broke on {k}"
-
-    A = np.array([[0.5, 0.1, 30.0], [-0.1, 0.5, 40.0], [0.0, 0.0, 1.0]])
-    assert np.allclose(o2c(A), np.linalg.inv(A)[:2]) and np.allclose(o2c(A[:2]), o2c(A)), "o2c"
 
     steady = np.array([[100 + i, 100, 300 + i, 300] for i in range(10)], float)
     assert first_cut(steady) == 10, "slow head motion is not a cut"

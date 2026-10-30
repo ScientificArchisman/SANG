@@ -180,16 +180,13 @@ class SyncOffsets:
         rec = self.get(row)
         return int(rec["shift_ticks"]) if rec and rec.get("keep") else 0
 
-    def filter(self, rows: list[dict], keep_unknown: bool = False) -> tuple[list[dict], dict]:
+    def filter(self, rows: list[dict]) -> tuple[list[dict], dict]:
         """Rows to keep, plus counts of what was dropped and why."""
         out, why = [], Counter()
         for r in rows:
             rec = self.get(r)
             if rec is None:
-                if keep_unknown:
-                    out.append(r)
-                else:
-                    why["not in offsets file"] += 1
+                why["not in offsets file"] += 1
             elif rec.get("keep"):
                 out.append(r)
             else:

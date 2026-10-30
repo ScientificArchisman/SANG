@@ -2,7 +2,6 @@
 # The SANG environment.
 #   source bash_scripts/env.sh          activate it (run.sh does this for every job); SANG_ENV picks the conda env
 #   bash bash_scripts/env.sh install    one-time setup of the avcodec env: LivePortrait, SyncNet, ArcFace, I3D, tests
-#   bash bash_scripts/env.sh ditto      one-time setup of the Ditto baseline in its own env (SANG_ENV=ditto to use it)
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 cd "$REPO_ROOT"
 mkdir -p slurm_logs
@@ -16,7 +15,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 install() {
     [ -d third_party/LivePortrait ] || git clone --depth 1 https://github.com/KwaiVGI/LivePortrait third_party/LivePortrait
-    pip install insightface tyro pykalman scikit-image "imageio[ffmpeg]" pytorch-fid scipy yt-dlp \
+    pip install insightface tyro pykalman scikit-image "imageio[ffmpeg]" pytorch-fid scipy \
                 python_speech_features scenedetect
     pip uninstall -y onnxruntime onnxruntime-gpu || true
     rm -rf "$(python -c 'import site; print(site.getsitepackages()[0])')/onnxruntime"
@@ -60,38 +59,11 @@ install() {
     fi
 }
 
-ditto() {
-    local DITTO=third_party/ditto-talkinghead
-    [ -d "$DITTO/.git" ] || git clone --depth 1 https://github.com/antgroup/ditto-talkinghead "$DITTO"
-    echo "ditto commit: $(git -C "$DITTO" rev-parse --short HEAD)"
-    conda env list | grep -qE "^ditto\s" || conda create -y -n ditto python=3.10
-    conda activate ditto
-    pip install "torch==2.5.1" --index-url https://download.pytorch.org/whl/cu121
-    pip install librosa tqdm filetype imageio imageio-ffmpeg opencv-python-headless scikit-image cython colored \
-                einops mediapipe "numpy<2.1" onnxruntime-gpu "huggingface_hub[cli]"
-    pip uninstall -y opencv-contrib-python opencv-python || true
-    pip install --force-reinstall --no-deps opencv-python-headless
-    python - "$DITTO/checkpoints" <<'EOF'
-import sys
-from huggingface_hub import snapshot_download
-snapshot_download("digital-avatar/ditto-talkinghead", allow_patterns=["ditto_pytorch/*", "ditto_cfg/*"],
-                  local_dir=sys.argv[1])
-EOF
-    ls "$DITTO/checkpoints/ditto_pytorch/models" "$DITTO/checkpoints/ditto_cfg"
-    python -c "
-import torch, onnxruntime, librosa, cv2, einops, numpy, mediapipe
-from mediapipe.tasks.python import vision, BaseOptions
-print('torch', torch.__version__, '| ort', onnxruntime.__version__, '| mediapipe', mediapipe.__version__,
-      '| cv2', cv2.__version__, '| numpy', numpy.__version__)"
-    echo "ditto install ok (test it on a GPU node with scripts/ditto_hdtf.py)"
-}
-
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     set -euo pipefail
     case "${1:-}" in
         install) install ;;
-        ditto) ditto ;;
-        *) echo "usage: source bash_scripts/env.sh | bash bash_scripts/env.sh install | bash bash_scripts/env.sh ditto" >&2
+        *) echo "usage: source bash_scripts/env.sh | bash bash_scripts/env.sh install" >&2
            exit 1 ;;
     esac
 fi

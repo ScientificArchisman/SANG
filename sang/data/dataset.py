@@ -9,7 +9,6 @@ import yaml
 from torch.utils.data import Dataset
 
 from sang.data.sync import clip_key, shift_ticks
-from sang.eval.naturalness import typical_frames
 from sang.model.flow import Norm
 from sang.model.target import to_target, wide
 
@@ -45,17 +44,6 @@ def split_by_speaker(rows: list[dict], val_frac: float, seed: int):
             [r for r in rows if Path(r["path"]).parent.name in val])
 
 
-def val_clips(rows: list[dict], min_frames: int) -> list[str]:
-    """One clip per val speaker (the first by name that starts at frame 0 and is long enough), for demos."""
-    seen, out = set(), []
-    for r in sorted(rows, key=lambda r: r["clip"]):
-        spk = Path(r["path"]).parent.name
-        if spk not in seen and r["n"] >= min_frames and r.get("start", 0) == 0:
-            seen.add(spk)
-            out.append(r["clip"])
-    return out
-
-
 def fit_norm(rows: list[dict], n_clips: int = 500, seed: int = 0) -> Norm:
     """Statistics of the photo input (sang.model.flow.Norm) over random frames of n_clips clips."""
     pick = random.Random(seed).sample(rows, min(n_clips, len(rows)))
@@ -80,9 +68,7 @@ def wide_deltas(rows: list[dict], n_clips: int, seed: int = 0) -> torch.Tensor:
 
 class MotionWindows(Dataset):
     """Random windows of P prefix + L target frames. The reference is a random frame of the same
-    clip (Ditto's choice), which at inference becomes the source image. ref_frame='median': a random
-    one of the clip's TYPICAL frames instead (lip opening in the middle `ref_band` of the clip by rank,
-    sang.eval.naturalness.typical_frames).
+    clip (Ditto's choice), which at inference becomes the source image.
 
     Targets: the raw sang.model.target.wide vector minus the reference frame's, 69-d deltas that the training loop
     encodes into latent codes on the GPU. The reference is described to the model as Norm.ref of its x_c and
@@ -92,13 +78,7 @@ class MotionWindows(Dataset):
     one .pt per SAMPLE from BeeGFS capped the first run at ~1.4 it/s."""
 
     def __init__(self, rows, L: int, P: int, norm: Norm, per_clip: int, fixed: bool = False,
-                 preload: bool = True, threads: int = 16, shifts: dict | None = None,
-                 ref_frame: str = "random", lip=None, ref_band: float = 0.2):
-        if ref_frame not in ("random", "median"):
-            raise ValueError(f"ref_frame must be 'random' or 'median', got {ref_frame!r}")
-        if ref_frame == "median" and lip is None:
-            raise ValueError("ref_frame='median' needs the lip-opening readout (openness.json)")
-        self.ref_frame, self.lip, self.ref_band = ref_frame, lip, ref_band
+                 preload: bool = True, threads: int = 16, shifts: dict | None = None):
         self.rows = [r for r in rows if r["n"] >= L + P]
         self.L, self.P, self.norm, self.per_clip = L, P, norm, per_clip
         self.shifts = shifts or {}
@@ -120,20 +100,18 @@ class MotionWindows(Dataset):
         y = wide(m)
         ref = self.norm.ref(d["kp"].float(), m)
         audio = shift_ticks(d["audio"], self.shifts.get(clip_key(r), 0))
-        cands = (torch.from_numpy(typical_frames(self.lip(to_target(m)).numpy(), self.ref_band))
-                 if self.ref_frame == "median" else None)
-        return y, ref, audio.half().contiguous(), cands
+        return y, ref, audio.half().contiguous()
 
     def __len__(self):
         return len(self.rows) * self.per_clip
 
     def __getitem__(self, i):
         j = i % len(self.rows)
-        y_all, ref_all, audio, cands = self.mem[j] if self.mem is not None else self._load(self.rows[j])
+        y_all, ref_all, audio = self.mem[j] if self.mem is not None else self._load(self.rows[j])
         n, span = y_all.shape[0], self.L + self.P
         rng = random.Random(i) if self.fixed else random
         s = rng.randint(0, n - span)
-        k = int(cands[rng.randrange(len(cands))]) if cands is not None else rng.randint(0, n - 1)
+        k = rng.randint(0, n - 1)
         y = y_all[s:s + span] - y_all[k]
         return {"prefix": y[: self.P], "target": y[self.P:], "ref": ref_all[k],
                 "audio": audio[TPF * s: TPF * (s + span)]}

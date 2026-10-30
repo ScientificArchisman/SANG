@@ -1,4 +1,4 @@
-"""Benchmark metrics: PSNR, SSIM, CSIM, LSE-C/LSE-D, FID, FVD, and background motion in demos.
+"""Benchmark metrics: PSNR, SSIM, CSIM, LSE-C/LSE-D, FID, FVD.
 
 Nothing here is differentiable and nothing is used in a training loop. Every published number in this field is protocol-dependent (SadTalker's HDTF FID is 21.58 in
 one paper and 71.95 in another), so nothing is comparable until the baselines are re-run

@@ -1,1 +1,1 @@
-"""Evaluation: HDTF metrics, motion naturalness and published SOTA numbers."""
+"""Evaluation: HDTF metrics and motion naturalness."""

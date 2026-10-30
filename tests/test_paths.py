@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sang.data import paths
 
 
-def test_index_paths_follow_the_cache_and_missing_cache_falls_back(tmp_path, monkeypatch):
+def test_index_paths_follow_the_cache(tmp_path):
     new = tmp_path / "archi_data" / "talkvid" / "preprocessed"
     new.mkdir(parents=True)
     old = "/beegfs/work/someone/SANG/cache/motion_lp"
@@ -18,8 +18,4 @@ def test_index_paths_follow_the_cache_and_missing_cache_falls_back(tmp_path, mon
     got = paths.load_index(new)
     assert [r["path"] for r in got] == [str(new / "vidA" / "c0.pt"), str(new / "vidB" / "c3.pt")]
     assert [r["clip"] for r in got] == [r["clip"] for r in rows]
-
-    monkeypatch.setattr(paths, "MOTION_CACHE", new)
-    assert paths.motion_cache("cache/motion_lp_gone") == new
-    assert paths.motion_cache(str(new)) == new and paths.motion_cache(None) == new
 

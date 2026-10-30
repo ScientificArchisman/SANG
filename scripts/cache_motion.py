@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Motion cache: every clip -> LivePortrait motion + canonical keypoints + WavLM features.
 
-Run only after scripts/motion_ceiling.py has passed. One file per clip, laid out as
+One file per clip, laid out as
 <out>/<speaker>/<clip>.pt so the speaker-disjoint split works on the cache alone:
     m      [T, 70]    fp16   raw LivePortrait motion (training vectors are derived at load time,
                              so changing them never needs a re-cache)
@@ -35,19 +35,22 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.data.paths import MOTION_CACHE
-from sang.data.talkvid import clip_times
 from sang.render.liveportrait import MotionCodec, decode_clip
 
 SR, FPS, TPF = 16000, 25, 2
 
 
 def chunk_stem(stem: str, k: int) -> str:
-    """File name of chunk k of a clip: the clip's own name for k = 0, else '<video>_<n>_c<k>_<start>_<end>', so
-    sang.data.talkvid.clip_times still reads the clip's TalkVid start/end and its labels still match."""
+    """File name of chunk k of a clip: the clip's own name for k = 0, else '<video>_<n>_c<k>_<start>_<end>', so the
+    name still ends in the clip's TalkVid start and end times (names without them get '_c<k>')."""
     if k == 0:
         return stem
-    head, s, e = stem.rsplit("_", 2) if stem.count("_") >= 2 else (stem, "", "")
-    return f"{head}_c{k}_{s}_{e}" if clip_times(stem) is not None else f"{stem}_c{k}"
+    parts = stem.rsplit("_", 2)
+    try:
+        float(parts[1]), float(parts[2])
+    except (IndexError, ValueError):
+        return f"{stem}_c{k}"
+    return f"{parts[0]}_c{k}_{parts[1]}_{parts[2]}"
 
 
 def clip_id(clip: str) -> tuple[str, str]:
@@ -95,7 +98,6 @@ def main() -> None:
     ap.add_argument("--min-frames", type=int, default=74, help="one training window: 64 + 10 prefix")
     ap.add_argument("--shard", type=int, default=int(os.environ.get("SLURM_ARRAY_TASK_ID", 0)))
     ap.add_argument("--nshards", type=int, default=1)
-    ap.add_argument("--audio-encoder", default="wavlm-large")
     ap.add_argument("--chunks", type=int, default=1,
                     help="segments per clip, each up to --max-frames (module docstring); 1 = the first only")
     ap.add_argument("--tag", default="", help="index files index_<tag>_<shard>.jsonl, so runs never share one")
@@ -119,7 +121,7 @@ def main() -> None:
 
     from sang.data.audio import load_wav, load_wavlm
     codec = MotionCodec(device="cuda")
-    wavlm = load_wavlm(args.audio_encoder, device="cuda")
+    wavlm = load_wavlm(device="cuda")
 
     ok = fail = seen = 0
     t0 = time.time()

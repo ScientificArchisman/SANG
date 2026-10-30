@@ -11,8 +11,6 @@ import torch
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from sang.data.talkvid import clip_times
-
 
 def cm():
     spec = importlib.util.spec_from_file_location("cm", REPO / "scripts" / "cache_motion.py")
@@ -74,7 +72,6 @@ def test_chunk_names_keep_the_clip_times():
     m = cm()
     assert m.chunk_stem("ab-c_d_NA_1.500_31.000", 0) == "ab-c_d_NA_1.500_31.000"
     assert m.chunk_stem("ab-c_d_NA_1.500_31.000", 2) == "ab-c_d_NA_c2_1.500_31.000"
-    assert clip_times(m.chunk_stem("ab-c_d_NA_1.500_31.000", 2)) == (1.5, 31.0)
     assert m.chunk_stem("noTimes", 1) == "noTimes_c1"
 
 
@@ -97,7 +94,7 @@ def test_main_writes_chunks_resumes_from_any_index(tmp_path, monkeypatch):
             return torch.zeros(1, x.shape[-1] // 320, 1024)
 
     codec_mod = type(sys)("sang.data.audio")
-    codec_mod.load_wavlm = lambda name, device: WavLM()
+    codec_mod.load_wavlm = lambda device: WavLM()
     codec_mod.load_wav = lambda path, s, n: torch.zeros(n * 640)
     monkeypatch.setitem(sys.modules, "sang.data.audio", codec_mod)
     monkeypatch.setattr(m, "MotionCodec", Codec)

@@ -32,19 +32,13 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--sampler", default=None, help="sampler spec (sang.model.flow.SAMPLER_KEYS); default: the run's")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--start", default="source", choices=["null", "source"],
-                    help="first window: 'source' = continue from the photo's own motion after 0.4 s of silence; "
-                         "'null' = the dropped-prefix start training uses")
-    ap.add_argument("--stitch", action=argparse.BooleanOptionalAction, default=True,
-                    help="LivePortrait's stitching module: keeps the background still")
     args = ap.parse_args()
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     talker = Talker(args.ckpt, args.sampler, dev)
     wav = load_wav(args.audio)
     n = int(len(wav) / SR * FPS)
-    frames, _, _ = talker.run(load_image(args.image), wav, n, seed=args.seed, stitch=args.stitch, paste=False,
-                              start=args.start)
+    frames, _, _ = talker.run(load_image(args.image), wav, n, seed=args.seed, paste=False)
     write_mp4(frames, Path(args.out), fps=FPS, audio=Path(args.audio))
     print(f"wrote {args.out}: {len(frames)} frames, {n / FPS:.1f} s")
 

@@ -48,25 +48,6 @@ class Readout:
         return {"w": self.w.tolist(), "b": self.b, "r2": self.r2}
 
 
-def typical_frames(lip, band: float = 0.2) -> np.ndarray:
-    """Frames of a clip whose lip opening is 'typical': its rank lies within +-band/2 of the median
-    (band 0.2 = between the 40th and 60th percentile). Never empty: band 0 gives the median frame.
-    The reference-frame convention of `ref_frame: median` training (C0: the speaker's usual opening
-    is otherwise pulled 39 % toward the average, docs/research_log.md 3.12)."""
-    lip = np.asarray(lip, np.float64)
-    n = len(lip)
-    rank = np.empty(n)
-    rank[np.argsort(lip, kind="stable")] = np.arange(n) / max(n - 1, 1)
-    idx = np.flatnonzero(np.abs(rank - 0.5) <= band / 2 + 1e-12)
-    return idx if len(idx) else np.array([int(np.argmin(np.abs(rank - 0.5)))])
-
-
-def median_frame(lip) -> int:
-    """The single frame closest to the clip's median lip opening (evaluation with --ref-frame median)."""
-    lip = np.asarray(lip, np.float64)
-    return int(np.abs(lip - np.median(lip)).argmin())
-
-
 def fit_readout(Y: torch.Tensor, r: torch.Tensor, cols: list[int], groups: np.ndarray,
                 lam: float = 1e-2) -> Readout:
     """Ridge from Y[:, cols] to r. R^2 is measured on held-out CLIPS (every 5th group), then the

@@ -35,8 +35,6 @@ from sang.model.target import T_DIM, to_target
 REF_DIM = 63 + T_DIM
 
 
-
-
 class SwiGLU(nn.Module):
     def __init__(self, dim: int, mult: float = 4.0):
         super().__init__()
@@ -80,10 +78,10 @@ class DiTBlock(nn.Module):
         nn.init.zeros_(self.ada[-1].weight)
         nn.init.zeros_(self.ada[-1].bias)
 
-    def forward(self, x: torch.Tensor, c: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
         s1, k1, g1, s2, k2, g2 = self.ada(c).chunk(6, dim=-1)
         h = _modulate(self.n1(x), s1, k1)
-        x = x + g1 * self.attn(h, h, h, attn_mask=mask, need_weights=False)[0]
+        x = x + g1 * self.attn(h, h, h, need_weights=False)[0]
         return x + g2 * self.ff(_modulate(self.n2(x), s2, k2))
 
 
@@ -100,12 +98,12 @@ class MotionFlowTransformer(nn.Module):
     """
 
     def __init__(self, dim: int = 512, depth: int = 8, heads: int = 8, audio_dim: int = 1024,
-                 ticks_per_frame: int = 2, audio_kernel: int = 5, attn_window: int = 0,
-                 max_frames: int = 512, dropout: float = 0.0, t_dim: int = 42):
+                 ticks_per_frame: int = 2, audio_kernel: int = 5, max_frames: int = 512, dropout: float = 0.0,
+                 t_dim: int = 42):
         super().__init__()
         if audio_kernel % 2 == 0:
             raise ValueError("audio_kernel must be odd so the window is centred on its frame")
-        self.tpf, self.attn_window, self.t_dim = ticks_per_frame, attn_window, t_dim
+        self.tpf, self.t_dim = ticks_per_frame, t_dim
         self.in_proj = nn.Linear(t_dim, dim)
         self.pos = nn.Embedding(max_frames, dim)
         self.prefix_tag = nn.Parameter(torch.zeros(dim))
@@ -136,13 +134,6 @@ class MotionFlowTransformer(nn.Module):
             a = F.pad(a, (0, 0, 0, n_frames * self.tpf - a.shape[1]))
         a = a.reshape(B, n_frames, self.tpf * D).transpose(1, 2)
         return self.audio(a).transpose(1, 2)
-
-    def _mask(self, n: int, device) -> torch.Tensor | None:
-        """None = full bidirectional attention; else True where a frame may NOT attend."""
-        if self.attn_window <= 0:
-            return None
-        i = torch.arange(n, device=device)
-        return (i[:, None] - i[None, :]).abs() > self.attn_window
 
     def forward(self, x_t, t, audio, ref, prefix=None, prefix_keep=None, drop_audio=None, drop_ref=None, beta=None):
         """prefix_keep [B] bool: False drops the whole prefix (null tokens, null audio); drop_audio / drop_ref [B]
@@ -176,10 +167,9 @@ class MotionFlowTransformer(nn.Module):
             b = torch.where(drop_audio, torch.ones_like(b), b)
         c = c_time + c_audio + c_ref.unsqueeze(1) + self.beta(b * 1000.0).unsqueeze(1)
 
-        mask = self._mask(n, dev)
         x = tok
         for blk in self.blocks:
-            x = blk(x, c, mask)
+            x = blk(x, c)
         shift, scale = self.out_ada(c).chunk(2, dim=-1)
         return self.out(_modulate(self.out_norm(x), shift, scale))[:, P:]
 
@@ -281,9 +271,7 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
     out, pos = [], 0
     while pos < n_frames:
         keep = None
-        if n_prefix == 0:
-            prefix, a = None, audio[:, pos * tpf:(pos + window) * tpf]
-        elif pos == 0 and start is None:
+        if pos == 0 and start is None:
             prefix = torch.zeros(B, n_prefix, model.t_dim, device=dev)
             keep = torch.zeros(B, dtype=torch.bool, device=dev)
             a = F.pad(audio[:, : window * tpf], (0, 0, n_prefix * tpf, 0))
@@ -324,9 +312,8 @@ class Norm(nn.Module):
 def build(cfg: dict) -> MotionFlowTransformer:
     return MotionFlowTransformer(
         dim=cfg.get("dim", 512), depth=cfg.get("layers", 8), heads=cfg.get("heads", 8),
-        audio_dim={"wavlm-base": 768, "wavlm-large": 1024}[cfg.get("audio_encoder", "wavlm-large")],
-        audio_kernel=cfg.get("audio_kernel", 5), attn_window=cfg.get("attn_window", 0),
-        max_frames=cfg.get("max_frames", 512), dropout=cfg.get("dropout", 0.0), t_dim=int(cfg["latent_k"]))
+        audio_kernel=cfg.get("audio_kernel", 5), max_frames=cfg.get("max_frames", 512), dropout=cfg.get("dropout", 0.0),
+        t_dim=int(cfg["latent_k"]))
 
 
 SAMPLER_KEYS = {
