@@ -168,7 +168,7 @@ class Evaluator:
         gt = frames[s0:s0 + len(crops)]
         return GpuPaster(d["M_c2o"], gt[0], crops.shape[1], device=self.dev)(crops), gt
 
-    def score(self, row: str, clip: Path, out_dir: Path, gen, gt, src):
+    def score(self, row: str, clip: Path, out_dir: Path, gen, gt, src, start: int = 0):
         from sang.data.audio import save_wav
         from sang.eval.metrics import csim, lse, psnr, ssim, write_mp4
         n = min(len(gen), len(gt))
@@ -183,7 +183,7 @@ class Evaluator:
         vid = out_dir / "videos" / row / f"{clip.stem}.mp4"
         vid.parent.mkdir(parents=True, exist_ok=True)
         tmp_wav = vid.with_suffix(".wav")
-        save_wav(load_wav(clip, 0, n), tmp_wav)
+        save_wav(load_wav(clip, start, n), tmp_wav)  # the segment's own audio (--start)
         write_mp4(gen, vid, fps=FPS, audio=tmp_wav)
         tmp_wav.unlink(missing_ok=True)
         try:
@@ -241,7 +241,7 @@ def run(args) -> None:
                                      if args.real_stats else {})
                 else:
                     gen, gt = ev.gen_sang(frames, wav, demo)
-                res, feats = ev.score(row, clip, out, gen, gt, frames[0])
+                res, feats = ev.score(row, clip, out, gen, gt, frames[0], s0)
                 if row == "sang":
                     res.update(ev.last_t)
                 if row in ("sang", "ditto"):
