@@ -25,6 +25,7 @@ import random
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import torch
 from torch.utils.data import DataLoader
@@ -93,25 +94,10 @@ def lr_at(step, cfg):
     return cfg["min_lr"] + 0.5 * (cfg["lr"] - cfg["min_lr"]) * (1 + math.cos(math.pi * p))
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default=str(REPO / "configs/train_motion.yaml"))
-    ap.add_argument("overrides", nargs="*", help="key=value, parsed as YAML")
-    args = ap.parse_args()
-    cfg = load_cfg(args.config, args.overrides)
-
-    init = cfg["seed"] if cfg.get("init_seed") is None else int(cfg["init_seed"])
-    torch.manual_seed(init)
-    random.seed(init)
-    if init != cfg["seed"]:
-        print(f"init seed {init} (split seed {cfg['seed']})", flush=True)
-    dev = "cuda" if torch.cuda.is_available() else "cpu"
-    if dev == "cpu":
-        cfg["bf16"] = False
-    out = Path(cfg["out_dir"])
-    out.mkdir(parents=True, exist_ok=True)
+def setup_data(cfg: dict, dev: str) -> SimpleNamespace:
+    """The speaker split, photo normalisation, motion latent, sync offsets and window datasets of a config (also
+    used by scripts/train_critic.py and scripts/train_rl.py). encode maps a batch's deltas to latent codes."""
     cache = Path(cfg["cache_dir"])
-
     rows = load_index(cache)
     train_rows, val_rows = split_by_speaker(rows, cfg["val_frac"], cfg["seed"])
     norm_path = cache / "norm42.pt"
@@ -146,6 +132,36 @@ def main() -> None:
         print(f"demo: {cfg['demo_tokens']} tokens from {data_kw['demo_min']}..{data_kw['demo']} frames of another clip of "
               f"the same person; clips with one: train {sum(map(bool, train_ds.peers))}/{len(train_ds.rows)}, "
               f"val {sum(map(bool, val_ds.peers))}/{len(val_ds.rows)}", flush=True)
+
+    def encode(b):
+        b = {**b, "target": latent.encode(b["target"], k), "prefix": latent.encode(b["prefix"], k)}
+        if "demo_motion" in b:
+            b["demo_motion"] = latent.encode(b["demo_motion"], k)
+        return b
+    return SimpleNamespace(train_ds=train_ds, val_ds=val_ds, data_kw=data_kw, norm=norm, latent=latent, k=k, L=L, P=P,
+                           encode=encode, decode=latent.decode)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--config", default=str(REPO / "configs/train_motion.yaml"))
+    ap.add_argument("overrides", nargs="*", help="key=value, parsed as YAML")
+    args = ap.parse_args()
+    cfg = load_cfg(args.config, args.overrides)
+
+    init = cfg["seed"] if cfg.get("init_seed") is None else int(cfg["init_seed"])
+    torch.manual_seed(init)
+    random.seed(init)
+    if init != cfg["seed"]:
+        print(f"init seed {init} (split seed {cfg['seed']})", flush=True)
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    if dev == "cpu":
+        cfg["bf16"] = False
+    out = Path(cfg["out_dir"])
+    out.mkdir(parents=True, exist_ok=True)
+    d = setup_data(cfg, dev)
+    train_ds, val_ds, data_kw, norm, latent, L, P = d.train_ds, d.val_ds, d.data_kw, d.norm, d.latent, d.L, d.P
+    encode, decode = d.encode, d.decode
     dl = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True, num_workers=cfg["workers"],
                     drop_last=True, pin_memory=dev == "cuda", persistent_workers=cfg["workers"] > 0)
     vdl = DataLoader(val_ds, batch_size=min(cfg["batch_size"], 64), shuffle=False,
@@ -158,13 +174,6 @@ def main() -> None:
         tdl = DataLoader(tev_ds, batch_size=min(cfg["batch_size"], 64), shuffle=False,
                          num_workers=min(2, cfg["workers"]), drop_last=True)
         print(f"train_eval: {len(tev_ds.rows)} fixed training clips scored like val at every eval", flush=True)
-
-    def encode(b):
-        b = {**b, "target": latent.encode(b["target"], k), "prefix": latent.encode(b["prefix"], k)}
-        if "demo_motion" in b:
-            b["demo_motion"] = latent.encode(b["demo_motion"], k)
-        return b
-    decode = latent.decode
 
     model = build(cfg).to(dev)
     ema = copy.deepcopy(model).eval().requires_grad_(False)

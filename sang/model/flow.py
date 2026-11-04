@@ -193,10 +193,11 @@ class MotionFlowTransformer(nn.Module):
         return self.demo(batch["demo_motion"], batch["demo_audio"], batch["demo_mask"])
 
     def forward(self, x_t, t, audio, ref, prefix=None, prefix_keep=None, drop_audio=None, drop_ref=None, beta=None,
-                demo=None, demo_keep=None):
+                demo=None, demo_keep=None, features=False):
         """prefix_keep [B] bool: False drops the whole prefix (null tokens, null audio); drop_audio / drop_ref [B]
         bool: condition dropout. Where the audio is dropped the model always sees beta = 1. demo_keep [B] bool:
-        False ignores that sample's demo, which is then exactly the model without footage."""
+        False ignores that sample's demo, which is then exactly the model without footage. features=True returns
+        the [B, L, dim] features before the output layer (the person critic's trunk, sang.model.critic)."""
         B, L, _ = x_t.shape
         P = 0 if prefix is None else prefix.shape[1]
         n = P + L
@@ -233,7 +234,8 @@ class MotionFlowTransformer(nn.Module):
         for blk in self.blocks:
             x = blk(x, c, demo, demo_w)
         shift, scale = self.out_ada(c).chunk(2, dim=-1)
-        return self.out(_modulate(self.out_norm(x), shift, scale))[:, P:]
+        h = _modulate(self.out_norm(x), shift, scale)[:, P:]
+        return h if features else self.out(h)
 
 
 def sample_t(B: int, device, dist: str = "uniform", mean: float = 0.0, scale: float = 1.0) -> torch.Tensor:
@@ -297,12 +299,15 @@ def flow_times(steps: int) -> list[float]:
 @torch.no_grad()
 def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps: int = 10,
            cfg_audio: float = 2.0, generator: torch.Generator | None = None,
-           prefix_keep: torch.Tensor | None = None, demo: torch.Tensor | None = None) -> torch.Tensor:
+           prefix_keep: torch.Tensor | None = None, demo: torch.Tensor | None = None,
+           demo_keep: torch.Tensor | None = None, guide=None) -> torch.Tensor:
     """Euler from t = 1 (noise) to 0, one pass per step at beta = 1/cfg_audio: the guided velocity
     v_u + gamma (v_c - v_u), whose unconditional branch drops the audio and keeps the photo and the prefix.
 
     prefix_keep [B] bool (optional): False = the prefix slot is present but DROPPED, exactly as
-    flow_loss drops it -- which is how training represents 'no previous frames'. demo: encode_demo tokens, or None."""
+    flow_loss drops it -- which is how training represents 'no previous frames'. demo: encode_demo tokens, or None;
+    demo_keep [B] bool: False ignores that sample's demo. guide: a velocity correction
+    guide(x, t, audio, ref, prefix, prefix_keep) added at every step (sang.model.critic.make_guide)."""
     B, dev = ref.shape[0], ref.device
     x = torch.randn(B, L, model.t_dim, device=dev, generator=generator)
     keep = None
@@ -312,7 +317,9 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
     ts = flow_times(steps)
     for i in range(steps):
         t = torch.full((B,), ts[i], device=dev)
-        v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, beta=beta, demo=demo)
+        v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, beta=beta, demo=demo, demo_keep=demo_keep)
+        if guide is not None:
+            v = v + guide(x, t, audio, ref, prefix, keep)
         x = x - (ts[i] - ts[i + 1]) * v
     return x
 
@@ -321,7 +328,7 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
 def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tensor, n_frames: int,
              window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio: float = 2.0,
              generator: torch.Generator | None = None, start: torch.Tensor | None = None,
-             demo: torch.Tensor | None = None) -> torch.Tensor:
+             demo: torch.Tensor | None = None, guide=None) -> torch.Tensor:
     """Any length. Windows of `window` NEW frames, each conditioned on the previous `n_prefix`
     generated frames (FLOAT's L'). audio [B, 2*n_frames, 1024] -> [B, n_frames, t_dim].
 
@@ -348,7 +355,7 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
             a0 = lead + pos - n_prefix
             a = audio[:, a0 * tpf:(lead + pos + window) * tpf]
         y = sample(model, a, ref, window, prefix=prefix, steps=steps, cfg_audio=cfg_audio,
-                   generator=generator, prefix_keep=keep, demo=demo)
+                   generator=generator, prefix_keep=keep, demo=demo, guide=guide)
         out.append(y[:, : n_frames - pos])
         pos += window
     return torch.cat(out, 1)
@@ -387,6 +394,9 @@ def build(cfg: dict) -> MotionFlowTransformer:
 SAMPLER_KEYS = {
     "g": "audio guidance scale gamma (default: the run's cfg_audio), sampled in one pass at beta = 1/gamma",
     "steps": "Euler steps (default: the run's sample_steps)",
+    "dg": "person-critic guidance weight on its realism logit (sang.model.critic; needs a critic, e.g. eval_hdtf.py "
+          "--critic); 0 = off",
+    "dgs": "person-critic guidance weight on its lip-sync logit; 0 = off",
 }
 
 

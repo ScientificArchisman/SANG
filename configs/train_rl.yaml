@@ -1,0 +1,26 @@
+# RL fine-tuning against the person critic (scripts/train_rl.py; docs/person_critic_plan.md stage 4). Data settings
+# come from the generator run's own config; these keys override it.
+gen: runs/demo/last.pt     # starting policy
+critic: runs/critic/last.pt
+out_dir: runs/rl
+rounds: 3
+policy_steps: 500          # per round, critic frozen, KL to the policy as it was when the round began
+critic_steps: 500          # per round, the critic refit on the new policy's samples
+batch_size: 64
+lr: 1.0e-5
+critic_lr: 5.0e-5
+weight_decay: 0.01         # critic refit only; the policy has none
+kl: 1.0                    # KL weight; 1 = the optimum is the real distribution (docs/person_critic_plan.md)
+w_real: 1.0                # reward = w_real * realism logit + w_sync * lip-sync logit
+w_sync: 1.0
+g: 2.0                     # the policy is the guided sampler at beta = 1/g
+steps: 6
+p_clean: 0.25              # critic refit, as in configs/train_critic.yaml
+p_demo: 0.2
+shift_min: 3
+shift_max: 15
+grad_clip: 1.0
+bf16: true
+workers: 8
+log_every: 25
+eval_batches: 8

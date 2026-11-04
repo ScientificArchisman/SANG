@@ -232,3 +232,16 @@ def ccc(x, y) -> float:
     cov = float(np.mean((x - x.mean()) * (y - y.mean())))
     return 2 * cov / (x.var() + y.var() + (x.mean() - y.mean()) ** 2 + 1e-12)
 
+
+
+def copy_ratio(gen: torch.Tensor, real: torch.Tensor, footage: torch.Tensor, chunk: int = 16) -> float:
+    """Does generated motion replay the person's footage? Mean distance of each `chunk`-frame piece of `gen` [n, D]
+    to its nearest piece of `footage` [N, D] (every dimension standardised by the footage), over the same for the
+    real segment `real`. 1 = as close to the footage as the person's own new take; << 1 = copying."""
+    f = footage.float().cpu()
+    if min(len(f), len(gen), len(real)) < chunk:
+        return float("nan")
+    sd = f.std(0).clamp_min(1e-6)[None, :, None]
+    lib = (f.unfold(0, chunk, 1) / sd).flatten(1)
+    near = lambda y: torch.cdist((y.float().cpu().unfold(0, chunk, chunk) / sd).flatten(1), lib).min(1).values.mean()
+    return float(near(gen) / near(real).clamp_min(1e-9))
