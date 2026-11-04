@@ -75,12 +75,23 @@ class MotionWindows(Dataset):
     motion.
 
     preload=True reads every clip once at start-up and keeps it in RAM (~2 MB per 20 s clip): reading
-    one .pt per SAMPLE from BeeGFS capped the first run at ~1.4 it/s."""
+    one .pt per SAMPLE from BeeGFS capped the first run at ~1.4 it/s.
+
+    demo=N > 0 adds extra footage of the same person: a random stretch of demo_min..N frames of ANOTHER clip of the
+    same video directory (so never the target's own frames), as 69-d deltas to the same photo frame, with its
+    audio, padded to N frames (demo_mask marks the real ones). demo_keep is False where the video has no other
+    clip."""
 
     def __init__(self, rows, L: int, P: int, norm: Norm, per_clip: int, fixed: bool = False,
-                 preload: bool = True, threads: int = 16, shifts: dict | None = None):
+                 preload: bool = True, threads: int = 16, shifts: dict | None = None, demo: int = 0,
+                 demo_min: int = 25):
         self.rows = [r for r in rows if r["n"] >= L + P]
         self.L, self.P, self.norm, self.per_clip = L, P, norm, per_clip
+        self.demo, self.demo_min = demo, min(demo_min, demo)
+        by_video = {}
+        for i, r in enumerate(self.rows):
+            by_video.setdefault(Path(r["path"]).parent.name, []).append(i)
+        self.peers = [[j for j in by_video[Path(r["path"]).parent.name] if j != i] for i, r in enumerate(self.rows)]
         self.shifts = shifts or {}
         self.fixed = fixed
         if not self.rows:
@@ -113,6 +124,21 @@ class MotionWindows(Dataset):
         s = rng.randint(0, n - span)
         k = rng.randint(0, n - 1)
         y = y_all[s:s + span] - y_all[k]
-        return {"prefix": y[: self.P], "target": y[self.P:], "ref": ref_all[k],
-                "audio": audio[TPF * s: TPF * (s + span)]}
+        out = {"prefix": y[: self.P], "target": y[self.P:], "ref": ref_all[k],
+               "audio": audio[TPF * s: TPF * (s + span)]}
+        if self.demo:
+            N = self.demo
+            dm, mask = torch.zeros(N, y_all.shape[1]), torch.zeros(N, dtype=torch.bool)
+            da = torch.zeros(TPF * N, audio.shape[1], dtype=audio.dtype)
+            if self.peers[j]:
+                p = rng.choice(self.peers[j])
+                y2, _, a2 = self.mem[p] if self.mem is not None else self._load(self.rows[p])
+                n = min(len(y2), rng.randint(self.demo_min, N))
+                s2 = rng.randint(0, len(y2) - n)
+                dm[:n] = y2[s2:s2 + n] - y_all[k]
+                a = a2[TPF * s2: TPF * (s2 + n)]
+                da[:len(a)] = a
+                mask[:n] = True
+            out.update(demo_motion=dm, demo_audio=da, demo_mask=mask, demo_keep=torch.tensor(bool(self.peers[j])))
+        return out
 

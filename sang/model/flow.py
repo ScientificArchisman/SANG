@@ -66,9 +66,12 @@ def _modulate(x: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor) -> torc
 
 
 class DiTBlock(nn.Module):
-    """Pre-norm self-attention + SwiGLU, each modulated per FRAME by adaLN-Zero (shift, scale, gate)."""
+    """Pre-norm self-attention + SwiGLU, each modulated per FRAME by adaLN-Zero (shift, scale, gate).
 
-    def __init__(self, dim: int, heads: int, dropout: float = 0.0):
+    cross=True adds cross-attention to the demo tokens (DemoEncoder) between the two, with a zero-initialised output:
+    a fresh demo model is exactly the model without one."""
+
+    def __init__(self, dim: int, heads: int, dropout: float = 0.0, cross: bool = False):
         super().__init__()
         self.n1 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         self.attn = nn.MultiheadAttention(dim, heads, dropout=dropout, batch_first=True)
@@ -77,12 +80,58 @@ class DiTBlock(nn.Module):
         self.ada = nn.Sequential(nn.SiLU(), nn.Linear(dim, 6 * dim))
         nn.init.zeros_(self.ada[-1].weight)
         nn.init.zeros_(self.ada[-1].bias)
+        if cross:
+            self.nx = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
+            self.xattn = nn.MultiheadAttention(dim, heads, dropout=dropout, batch_first=True)
+            nn.init.zeros_(self.xattn.out_proj.weight)
+            nn.init.zeros_(self.xattn.out_proj.bias)
 
-    def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, c: torch.Tensor, demo: torch.Tensor | None = None,
+                demo_w: torch.Tensor | None = None) -> torch.Tensor:
         s1, k1, g1, s2, k2, g2 = self.ada(c).chunk(6, dim=-1)
         h = _modulate(self.n1(x), s1, k1)
         x = x + g1 * self.attn(h, h, h, need_weights=False)[0]
+        if demo is not None:
+            x = x + demo_w * self.xattn(self.nx(x), demo, demo, need_weights=False)[0]
         return x + g2 * self.ff(_modulate(self.n2(x), s2, k2))
+
+
+class DemoEncoder(nn.Module):
+    """Extra footage of the person -> n_tokens learned tokens (a Perceiver-style resampler).
+
+    A frame token is the frame's motion codes (relative to the photo, like the target) plus its audio, so the
+    tokens can carry how THIS person moves for the speech they make, not only how much. Two convolutions mix
+    +-4 frames so velocities are visible; learned queries then cross-attend to all frames. No positional
+    embedding, so any length of footage gives the same number of tokens. Nothing in it is hand-picked: what the
+    tokens carry is learned from the flow loss alone."""
+
+    def __init__(self, dim: int, t_dim: int, audio_dim: int, tpf: int, n_tokens: int, heads: int, depth: int = 2):
+        super().__init__()
+        self.tpf = tpf
+        self.motion = nn.Linear(t_dim, dim)
+        self.audio = nn.Linear(audio_dim * tpf, dim)
+        self.mix = nn.Sequential(nn.Conv1d(dim, dim, 5, padding=2), nn.SiLU(), nn.Conv1d(dim, dim, 5, padding=2))
+        self.queries = nn.Parameter(torch.randn(n_tokens, dim) * 0.02)
+        self.kv_norm = nn.LayerNorm(dim)
+        self.layers = nn.ModuleList(nn.ModuleList([nn.LayerNorm(dim), nn.MultiheadAttention(dim, heads, batch_first=True),
+                                                   nn.LayerNorm(dim), SwiGLU(dim)]) for _ in range(depth))
+        self.out_norm = nn.LayerNorm(dim)
+
+    def forward(self, motion: torch.Tensor, audio: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """motion [B, N, t_dim], audio [B, tpf*N, audio_dim], mask [B, N] (True = a real frame) -> [B, n_tokens, dim]."""
+        B, N, _ = motion.shape
+        a = audio[:, : N * self.tpf].float()
+        if a.shape[1] < N * self.tpf:
+            a = F.pad(a, (0, 0, 0, N * self.tpf - a.shape[1]))
+        mask = mask.clone()
+        mask[:, 0] |= ~mask.any(1)  # an empty demo would make attention NaN; its tokens are unused anyway
+        h = (self.motion(motion.float()) + self.audio(a.reshape(B, N, -1))) * mask.unsqueeze(-1)
+        h = self.kv_norm(h + self.mix(h.transpose(1, 2)).transpose(1, 2))
+        q = self.queries.expand(B, -1, -1)
+        for n1, att, n2, ff in self.layers:
+            q = q + att(n1(q), h, h, key_padding_mask=~mask, need_weights=False)[0]
+            q = q + ff(n2(q))
+        return self.out_norm(q)
 
 
 class MotionFlowTransformer(nn.Module):
@@ -94,12 +143,13 @@ class MotionFlowTransformer(nn.Module):
     ref    [B, REF_DIM]        the photo: Norm.ref, normalised [x_c, its 42-d target]
     prefix [B, P, t_dim] | None  clean previous frames (FLOAT's L'); None = no prefix at all
     beta   [B] | None          guidance temperature 1/gamma (None = 1, no guidance)
+    demo   [B, M, dim] | None  tokens of extra footage of the person (encode_demo); needs demo_tokens > 0
     -> v   [B, L, t_dim]
     """
 
     def __init__(self, dim: int = 512, depth: int = 8, heads: int = 8, audio_dim: int = 1024,
                  ticks_per_frame: int = 2, audio_kernel: int = 5, max_frames: int = 512, dropout: float = 0.0,
-                 t_dim: int = 42):
+                 t_dim: int = 42, demo_tokens: int = 0):
         super().__init__()
         if audio_kernel % 2 == 0:
             raise ValueError("audio_kernel must be odd so the window is centred on its frame")
@@ -118,7 +168,8 @@ class MotionFlowTransformer(nn.Module):
         nn.init.zeros_(self.beta[-1].bias)
         self.null_audio = nn.Parameter(torch.zeros(dim))
         self.null_ref = nn.Parameter(torch.zeros(dim))
-        self.blocks = nn.ModuleList([DiTBlock(dim, heads, dropout) for _ in range(depth)])
+        self.demo = DemoEncoder(dim, t_dim, audio_dim, ticks_per_frame, demo_tokens, heads) if demo_tokens else None
+        self.blocks = nn.ModuleList([DiTBlock(dim, heads, dropout, cross=bool(demo_tokens)) for _ in range(depth)])
         self.out_norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         self.out_ada = nn.Sequential(nn.SiLU(), nn.Linear(dim, 2 * dim))
         self.out = nn.Linear(dim, t_dim)
@@ -135,9 +186,17 @@ class MotionFlowTransformer(nn.Module):
         a = a.reshape(B, n_frames, self.tpf * D).transpose(1, 2)
         return self.audio(a).transpose(1, 2)
 
-    def forward(self, x_t, t, audio, ref, prefix=None, prefix_keep=None, drop_audio=None, drop_ref=None, beta=None):
+    def encode_demo(self, batch: dict) -> torch.Tensor | None:
+        """The demo tokens of a batch with demo_motion / demo_audio / demo_mask; None without a demo encoder or demo."""
+        if self.demo is None or "demo_motion" not in batch:
+            return None
+        return self.demo(batch["demo_motion"], batch["demo_audio"], batch["demo_mask"])
+
+    def forward(self, x_t, t, audio, ref, prefix=None, prefix_keep=None, drop_audio=None, drop_ref=None, beta=None,
+                demo=None, demo_keep=None):
         """prefix_keep [B] bool: False drops the whole prefix (null tokens, null audio); drop_audio / drop_ref [B]
-        bool: condition dropout. Where the audio is dropped the model always sees beta = 1."""
+        bool: condition dropout. Where the audio is dropped the model always sees beta = 1. demo_keep [B] bool:
+        False ignores that sample's demo, which is then exactly the model without footage."""
         B, L, _ = x_t.shape
         P = 0 if prefix is None else prefix.shape[1]
         n = P + L
@@ -167,9 +226,12 @@ class MotionFlowTransformer(nn.Module):
             b = torch.where(drop_audio, torch.ones_like(b), b)
         c = c_time + c_audio + c_ref.unsqueeze(1) + self.beta(b * 1000.0).unsqueeze(1)
 
+        demo_w = None
+        if demo is not None:
+            demo_w = (torch.ones(B, device=dev) if demo_keep is None else demo_keep.float()).view(B, 1, 1)
         x = tok
         for blk in self.blocks:
-            x = blk(x, c)
+            x = blk(x, c, demo, demo_w)
         shift, scale = self.out_ada(c).chunk(2, dim=-1)
         return self.out(_modulate(self.out_norm(x), shift, scale))[:, P:]
 
@@ -183,12 +245,14 @@ def sample_t(B: int, device, dist: str = "uniform", mean: float = 0.0, scale: fl
 
 
 def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
-              p_audio: float = 0.1, p_ref: float = 0.1, p_prefix: float = 0.5,
+              p_audio: float = 0.1, p_ref: float = 0.1, p_prefix: float = 0.5, p_demo: float = 0.2,
               t_dist: str = "uniform", t_mean: float = 0.0, t_scale: float = 1.0) -> tuple[torch.Tensor, dict]:
-    """batch: target [B,L,t_dim], audio [B,2(P+L),1024], ref [B,REF_DIM], prefix [B,P,t_dim] (optional).
+    """batch: target [B,L,t_dim], audio [B,2(P+L),1024], ref [B,REF_DIM], prefix [B,P,t_dim] (optional), and for a
+    demo model demo_motion [B,N,t_dim], demo_audio [B,2N,1024], demo_mask [B,N], demo_keep [B] (optional).
 
     Rectified flow (MSE), plus lam_vel times the same loss on frame-to-frame differences of the one-step clean
     estimate (FLOAT). Condition dropout rates are FLOAT's: audio 0.1, reference 0.1, previous-window context 0.5.
+    The demo is dropped with p_demo, so the same model also runs with no footage at all.
 
     GFT: beta ~ U(0, 1) per sample, and the loss is on beta v(x | audio, beta) + (1 - beta) v_u, where
     v_u = v(x | no audio, 1) from the same network in eval mode without gradient (the paper's Algorithm 1)."""
@@ -202,6 +266,9 @@ def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
     drop = torch.rand(B, device=dev) < p_audio
     kw = dict(prefix=prefix, drop_ref=torch.rand(B, device=dev) < p_ref,
               prefix_keep=(torch.rand(B, device=dev) >= p_prefix) if prefix is not None else None)
+    demo = model.encode_demo(batch) if hasattr(model, "encode_demo") else None
+    if demo is not None:
+        kw.update(demo=demo, demo_keep=batch["demo_keep"].bool() & (torch.rand(B, device=dev) >= p_demo))
     beta = torch.rand(B, device=dev)
     v = model(x_t, t, batch["audio"], batch["ref"], drop_audio=drop, beta=beta, **kw)
     training = model.training
@@ -230,12 +297,12 @@ def flow_times(steps: int) -> list[float]:
 @torch.no_grad()
 def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps: int = 10,
            cfg_audio: float = 2.0, generator: torch.Generator | None = None,
-           prefix_keep: torch.Tensor | None = None) -> torch.Tensor:
+           prefix_keep: torch.Tensor | None = None, demo: torch.Tensor | None = None) -> torch.Tensor:
     """Euler from t = 1 (noise) to 0, one pass per step at beta = 1/cfg_audio: the guided velocity
     v_u + gamma (v_c - v_u), whose unconditional branch drops the audio and keeps the photo and the prefix.
 
     prefix_keep [B] bool (optional): False = the prefix slot is present but DROPPED, exactly as
-    flow_loss drops it -- which is how training represents 'no previous frames'."""
+    flow_loss drops it -- which is how training represents 'no previous frames'. demo: encode_demo tokens, or None."""
     B, dev = ref.shape[0], ref.device
     x = torch.randn(B, L, model.t_dim, device=dev, generator=generator)
     keep = None
@@ -245,7 +312,7 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
     ts = flow_times(steps)
     for i in range(steps):
         t = torch.full((B,), ts[i], device=dev)
-        v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, beta=beta)
+        v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, beta=beta, demo=demo)
         x = x - (ts[i] - ts[i + 1]) * v
     return x
 
@@ -253,7 +320,8 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
 @torch.no_grad()
 def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tensor, n_frames: int,
              window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio: float = 2.0,
-             generator: torch.Generator | None = None, start: torch.Tensor | None = None) -> torch.Tensor:
+             generator: torch.Generator | None = None, start: torch.Tensor | None = None,
+             demo: torch.Tensor | None = None) -> torch.Tensor:
     """Any length. Windows of `window` NEW frames, each conditioned on the previous `n_prefix`
     generated frames (FLOAT's L'). audio [B, 2*n_frames, 1024] -> [B, n_frames, t_dim].
 
@@ -280,7 +348,7 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
             a0 = lead + pos - n_prefix
             a = audio[:, a0 * tpf:(lead + pos + window) * tpf]
         y = sample(model, a, ref, window, prefix=prefix, steps=steps, cfg_audio=cfg_audio,
-                   generator=generator, prefix_keep=keep)
+                   generator=generator, prefix_keep=keep, demo=demo)
         out.append(y[:, : n_frames - pos])
         pos += window
     return torch.cat(out, 1)
@@ -313,7 +381,7 @@ def build(cfg: dict) -> MotionFlowTransformer:
     return MotionFlowTransformer(
         dim=cfg.get("dim", 512), depth=cfg.get("layers", 8), heads=cfg.get("heads", 8),
         audio_kernel=cfg.get("audio_kernel", 5), max_frames=cfg.get("max_frames", 512), dropout=cfg.get("dropout", 0.0),
-        t_dim=int(cfg["latent_k"]))
+        t_dim=int(cfg["latent_k"]), demo_tokens=int(cfg.get("demo_tokens", 0)))
 
 
 SAMPLER_KEYS = {

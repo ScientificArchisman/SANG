@@ -5,6 +5,8 @@
     sbatch --time=16:00:00 bash_scripts/run.sh scripts/eval_hdtf.py \\
         --ckpt runs/l42_gft/last.pt --data /beegfs/work/$USER/HDTF --rows sang --real-stats --sampler g=2,steps=6 \\
         --name l42_gft
+    # extra footage: a demo model sees the 30 s before a test segment that starts at 60 s
+    sbatch ... scripts/eval_hdtf.py --ckpt runs/demo/last.pt ... --start 60 --demo 30 --name demo_s60_d30
     # the renderer ceiling when the real motion is squeezed through k codes of the motion latent
     sbatch ... scripts/eval_hdtf.py ... --rows gt_motion --gt-latent runs/latent/pca.pt --gt-k 42 --name lat_pca_k42
 
@@ -12,7 +14,11 @@ Protocol (also written to <out>/protocol.json):
   data      <data>/crops512/*.mp4 (commit 02791a9 scripts/download_hdtf.py): HDTF's official face crop
             (method 1), 512x512, 25 fps, 16 kHz audio.
   test set  --list configs/hdtf_test.csv: 75 clips, one per video (md5 per file, checked); SANG never trained on HDTF.
-  per clip  first --seconds (default 10 s); source = frame 0; driving audio = the clip's own audio.
+  per clip  --seconds (default 10 s) from --start (default 0 s); source = the segment's first frame; driving audio =
+            the clip's own audio. With --start > 0 a clip too short for the whole segment is skipped.
+  footage   --demo N (s, needs a demo model, N <= --start): the N s just before the segment are the person's extra
+            footage, read once by the model (sang.render.pipeline.Talker.run demo=). The segment is the same for
+            every N, so rows with different N score the same frames.
   rows      real       the ground-truth clip itself (LSE and CSIM only: the ceiling of each metric)
             gt_motion  the clip's real LivePortrait motion (--gt-latent: squeezed through the first --gt-k codes
                        of a motion latent) and re-rendered from frame 0 through the same renderer and
@@ -108,13 +114,15 @@ class Evaluator:
             self.gt_latent = MotionLatent.unpack(torch.load(args.gt_latent, map_location="cpu",
                                                             weights_only=False)).to(self.dev)
 
-    def gen_sang(self, frames, wav):
-        """sang.render.pipeline.Talker; the stage times (source, audio, motion, render, paste; CUDA-synchronised) go into
-        the clip's json."""
+    def gen_sang(self, frames, wav, demo=None):
+        """sang.render.pipeline.Talker; the stage times (source, demo, audio, motion, render, paste; CUDA-synchronised)
+        go into the clip's json."""
         a = self.args
         real = self.real_motion(frames) if a.real_stats else None
-        gen, m, timer = self.talker.run(frames[0], wav, len(frames), seed=a.seed)
+        gen, m, timer = self.talker.run(frames[0], wav, len(frames), seed=a.seed, demo=demo)
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
+        if demo is not None:
+            self.last_t["demo_frames"] = self.talker.demo_frames
         self.last_stats = self.motion_stats(m, real)
         return gen, frames
 
@@ -208,8 +216,15 @@ def run(args) -> None:
         if not todo:
             continue
         try:
-            frames = decode_clip(str(clip), int(args.seconds * FPS))
-            wav = load_wav(clip, 0, len(frames))
+            s0, n_test, n_demo = round(args.start * FPS), round(args.seconds * FPS), round(args.demo * FPS)
+            frames = decode_clip(str(clip), n_test, start=s0)
+            if s0 and len(frames) < n_test:
+                raise ValueError(f"only {len(frames) / FPS:.1f} s after {args.start:g} s")
+            wav = load_wav(clip, s0, len(frames))
+            demo = None
+            if n_demo and "sang" in todo:
+                dfr = decode_clip(str(clip), n_demo, start=s0 - n_demo)
+                demo = (dfr, load_wav(clip, s0 - n_demo, len(dfr)))
             for row in todo:
                 if row == "real":
                     gen, gt = frames, frames
@@ -225,7 +240,7 @@ def run(args) -> None:
                     ev.last_stats = (ev.motion_stats(ev.codec.extract(gen)["m"], ev.real_motion(frames))
                                      if args.real_stats else {})
                 else:
-                    gen, gt = ev.gen_sang(frames, wav)
+                    gen, gt = ev.gen_sang(frames, wav, demo)
                 res, feats = ev.score(row, clip, out, gen, gt, frames[0])
                 if row == "sang":
                     res.update(ev.last_t)
@@ -313,6 +328,9 @@ def main() -> None:
     ap.add_argument("--ditto-dir", default=str(REPO / "results" / "hdtf" / "ditto_videos"),
                     help="Ditto's videos for the ditto row")
     ap.add_argument("--seconds", type=float, default=10.0, help="evaluated length per clip")
+    ap.add_argument("--start", type=float, default=0.0, help="where the evaluated segment starts (s)")
+    ap.add_argument("--demo", type=float, default=0.0,
+                    help="seconds of footage just before --start given to a demo model (0 = none)")
     ap.add_argument("--rows", nargs="+", default=["real", "gt_motion", "sang"], choices=ROWS,
                     help="ditto needs --ditto-dir, so it is opt-in")
     ap.add_argument("--sampler", default=None, help="sampler spec, e.g. 'g=2,steps=6' "
@@ -326,6 +344,10 @@ def main() -> None:
     args = ap.parse_args()
     if args.gt_latent and not args.gt_k:
         sys.exit("--gt-latent needs --gt-k")
+    if args.demo > args.start:
+        sys.exit(f"--demo {args.demo:g} s needs --start >= {args.demo:g} s: the footage comes before the segment")
+    if args.start and "ditto" in args.rows:
+        sys.exit("the Ditto videos cover the first seconds of each clip only: no ditto row with --start")
     run(args)
 
 

@@ -12,6 +12,10 @@ this architecture is most exposed to, using Motar's (arXiv:2609.10317) rollout r
   vc_r   generated / GT frame-diff std   -> >> 1 is jitter, << 1 is frozen
 plus audio_gain: mouth error with a DIFFERENT clip's audio over mouth error with the right audio
 (~1.0 = the model ignores audio). All are on the decoded 69-d motion.
+
+demo_tokens > 0 trains a demo model: every window also gets up to demo_frames frames of ANOTHER clip of the same
+person (sang.data.dataset.MotionWindows), dropped with p_demo. The val lines then add val_loss_nodemo, the same
+windows with the demo dropped: the gap to val_loss is what the footage is worth.
 """
 import argparse
 import copy
@@ -54,11 +58,18 @@ def evaluate(model, loader, cfg, dev, max_batches: int, encode, decode) -> dict:
             break
         batch = encode({k: v.to(dev) for k, v in batch.items()})
         torch.manual_seed(bi)
-        loss, _ = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0, t_dist="uniform")
+        loss, _ = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0, p_demo=0,
+                            t_dist="uniform")
         fm += float(loss)
+        demo = model.encode_demo(batch)
+        if demo is not None:
+            torch.manual_seed(bi)
+            loss0, _ = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0, p_demo=1,
+                                 t_dist="uniform")
+            stats.setdefault("val_loss_nodemo", []).append(float(loss0))
         n += 1
         L = batch["target"].shape[1]
-        kw = dict(prefix=batch["prefix"], steps=cfg["sample_steps"], cfg_audio=cfg["cfg_audio"])
+        kw = dict(prefix=batch["prefix"], steps=cfg["sample_steps"], cfg_audio=cfg["cfg_audio"], demo=demo)
         g.manual_seed(bi)
         gen = decode(sample(model, batch["audio"], batch["ref"], L, generator=g, **kw))
         g.manual_seed(bi)
@@ -124,11 +135,17 @@ def main() -> None:
     print(f"sync offsets {cfg['sync_offsets']}: audio moved in {sum(s != 0 for s in shifts.values())}/"
           f"{len(shifts)} clips; dropped train {why_t}, val {why_v}", flush=True)
     L, P = cfg["frames"], cfg["prefix"]
-    data_kw = {"preload": cfg.get("preload", True), "shifts": shifts}
+    data_kw = {"preload": cfg.get("preload", True), "shifts": shifts,
+               "demo": int(cfg.get("demo_frames", 250)) if cfg.get("demo_tokens", 0) else 0,
+               "demo_min": int(cfg.get("demo_min_frames", 25))}
     train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], **data_kw)
     val_ds = MotionWindows(val_rows, L, P, norm, cfg.get("val_windows_per_clip", 4), fixed=True, **data_kw)
     print(f"{len(train_ds.rows)} train / {len(val_ds.rows)} val clips "
           f"({len({Path(r['path']).parent.name for r in val_rows})} unseen val speakers)", flush=True)
+    if data_kw["demo"]:
+        print(f"demo: {cfg['demo_tokens']} tokens from {data_kw['demo_min']}..{data_kw['demo']} frames of another clip of "
+              f"the same person; clips with one: train {sum(map(bool, train_ds.peers))}/{len(train_ds.rows)}, "
+              f"val {sum(map(bool, val_ds.peers))}/{len(val_ds.rows)}", flush=True)
     dl = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True, num_workers=cfg["workers"],
                     drop_last=True, pin_memory=dev == "cuda", persistent_workers=cfg["workers"] > 0)
     vdl = DataLoader(val_ds, batch_size=min(cfg["batch_size"], 64), shuffle=False,
@@ -142,7 +159,11 @@ def main() -> None:
                          num_workers=min(2, cfg["workers"]), drop_last=True)
         print(f"train_eval: {len(tev_ds.rows)} fixed training clips scored like val at every eval", flush=True)
 
-    encode = lambda b: {**b, "target": latent.encode(b["target"], k), "prefix": latent.encode(b["prefix"], k)}
+    def encode(b):
+        b = {**b, "target": latent.encode(b["target"], k), "prefix": latent.encode(b["prefix"], k)}
+        if "demo_motion" in b:
+            b["demo_motion"] = latent.encode(b["demo_motion"], k)
+        return b
     decode = latent.decode
 
     model = build(cfg).to(dev)
@@ -158,6 +179,7 @@ def main() -> None:
     step, best = 0, float("inf")
 
     kw = {k_: cfg[k_] for k_ in ("lam_vel", "p_audio", "p_ref", "p_prefix", "t_dist")}
+    kw["p_demo"] = cfg.get("p_demo", 0.2)
     kw.update(t_mean=cfg.get("t_mean", 0.0), t_scale=cfg.get("t_scale", 1.0))
     print(f"objective: t_dist {kw['t_dist']} (mean {kw['t_mean']}, scale {kw['t_scale']})", flush=True)
     t0 = time.time()

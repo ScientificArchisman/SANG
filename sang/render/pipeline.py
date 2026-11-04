@@ -117,10 +117,14 @@ class Talker:
 
     @torch.no_grad()
     def run(self, src: np.ndarray, wav: torch.Tensor, n_frames: int, seed: int = 0, paste: bool = True,
-            batch: int = 16, timer: Timer | None = None):
+            batch: int = 16, timer: Timer | None = None, demo: tuple | None = None):
         """src [H,W,3] uint8, wav [N] 16 kHz -> (frames [n,H,W,3] or, with paste=False, crops [n,512,512,3] uint8,
         motion [n,70], timer). The first window continues from the photo's own motion after `prefix` frames of
-        silence. The photo keeps its own lips, as training references do (docs/research_log.md 3.23)."""
+        silence. The photo keeps its own lips, as training references do (docs/research_log.md 3.23).
+
+        demo = (frames [T,H,W,3] uint8, wav [T*640]): extra footage of the person, read once (stage 'demo': its
+        motion relative to the photo plus its WavLM, encoded to the model's demo tokens). Needs a demo model.
+        self.demo_frames is the number of footage frames used (the footage stops at its first shot cut)."""
         from sang.model.flow import generate
         timer = timer or Timer()
         codec = self.codec
@@ -129,6 +133,17 @@ class Talker:
             sm = codec.source_motion(src, crop=crop)
             m_src = sm["m"].to(self.dev)
             ref = self.norm.ref(sm["kp"].to(self.dev), m_src)
+        tokens, self.demo_frames = None, 0
+        if demo is not None:
+            if self.model.demo is None:
+                raise ValueError("this checkpoint has no demo encoder (trained with demo_tokens=0)")
+            with timer("demo"):
+                d = codec.extract(np.ascontiguousarray(demo[0]))
+                a, b = d["span"]
+                u = self.latent.from_motion(d["m"].float().to(self.dev), m_src, self.model.t_dim)
+                ad = self.wavlm.encode(demo[1][a * HOP:b * HOP][None, None].to(self.dev)).float()
+                tokens = self.model.demo(u[None], ad, torch.ones(1, len(u), dtype=torch.bool, device=self.dev))
+                self.demo_frames = len(u)
         lead = self.cfg["prefix"]
         with timer("audio"):
             audio = self.wavlm.encode(torch.nn.functional.pad(wav, (lead * HOP, 0))[None, None].to(self.dev)).float()
@@ -136,7 +151,7 @@ class Talker:
             first = self.latent.from_motion(m_src, m_src, self.model.t_dim).unsqueeze(1).expand(1, lead, -1)
             g = torch.Generator(device=self.dev).manual_seed(seed)
             z = generate(self.model, audio, ref, n_frames, window=self.cfg["frames"], n_prefix=self.cfg["prefix"],
-                         generator=g, start=first, **self.sampler)[0]
+                         generator=g, start=first, demo=tokens, **self.sampler)[0]
             m = self.latent.to_motion(z, m_src)
         with timer("render"):
             state = codec.source_state(crop["img_crop_256x256"])

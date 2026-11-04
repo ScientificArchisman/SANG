@@ -18,6 +18,11 @@ dropout: 0.1
 max_frames: 512
 latent: runs/latent/pca.pt
 latent_k: 42
+# extra footage of the person (0 = off): tokens, frames of another clip per window (min..max), drop rate
+demo_tokens: 0
+demo_frames: 250
+demo_min_frames: 25
+p_demo: 0.2
 
 lam_vel: 1.0
 p_audio: 0.1
