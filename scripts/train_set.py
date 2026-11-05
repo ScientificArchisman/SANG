@@ -67,15 +67,17 @@ def set_eval(policy, critic, sdl, d, dev, n_batches: int, steps: int, g: float, 
         rep = {k: v.repeat_interleave(m, 0) for k, v in batch.items()}
         x = gen_fakes(policy, rep, steps, g, torch.Generator(device=dev).manual_seed(bi)).float()
         x = x.view(B0, m, *y.shape[1:])
-        sets = lambda z: z.reshape(P, K, -1)
-        real = shrink(y, d, 1.0)  # the same decode/encode round trip as the shrunk windows
-        add("ed_sang", energy(sets(x[:, 0]), sets(y)).mean())
-        add("ed_shrink", energy(sets(shrink(y, d, 0.62)), sets(real)).mean())
+        sets = lambda z, pre: (z - pre[:, -1:].float()).reshape(P, K, -1)  # from each window's start, as set_loss
+        pre = batch["prefix"]
+        # the head shrunk over the whole stretch (prefix too), and the same decode/encode round trip unshrunk
+        (real, real_pre), (shr, shr_pre) = [(shrink(y, d, s), shrink(pre.float(), d, s)) for s in (1.0, 0.62)]
+        add("ed_sang", energy(sets(x[:, 0], pre), sets(y, pre), True).mean())
+        add("ed_shrink", energy(sets(shr, shr_pre), sets(real, real_pre), True).mean())
         if critic is not None:
             demo = critic.encode_demo(batch)
-            f = lambda z: critic.features(z, batch, demo).view(P, K, -1)
-            add("ed_sang_adv", energy(f(x[:, 0]), f(y)).mean())
-            add("ed_shrink_adv", energy(f(shrink(y, d, 0.62)), f(real)).mean())
+            f = lambda z, p: critic.features(z, {**batch, "prefix": p}, demo).view(P, K, -1)
+            add("ed_sang_adv", energy(f(x[:, 0], pre), f(y, pre), True).mean())
+            add("ed_shrink_adv", energy(f(shr, shr_pre), f(real, real_pre), True).mean())
         xf = x.flatten(2)
         mu = xf.mean(1, keepdim=True)
         for s in spreads:
@@ -83,7 +85,7 @@ def set_eval(policy, critic, sdl, d, dev, n_batches: int, steps: int, g: float, 
     out = {k: sum(v) / len(v) for k, v in acc.items()}
     for sfx in ("", "_adv"):
         if f"ed_sang{sfx}" in out:
-            out[f"gate{sfx}"] = out[f"ed_shrink{sfx}"] / max(out[f"ed_sang{sfx}"], 1e-8)
+            out[f"gate{sfx}"] = out[f"ed_shrink{sfx}"] / out[f"ed_sang{sfx}"] if out[f"ed_sang{sfx}"] else float("nan")
     return out
 
 

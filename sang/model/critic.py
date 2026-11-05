@@ -272,15 +272,23 @@ def rollout(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, bat
     return x, path_kl
 
 
-def energy(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+def energy(x: torch.Tensor, y: torch.Tensor, paired: bool = False) -> torch.Tensor:
     """Energy distance per group between samples x [G, n, D] (n >= 2) and real y [G, k, D]:
     2 E||x - y|| - E||x - x'|| - E||y - y'|| (the last term only for k > 1; it is constant for the generator).
     Unbiased, so 0 in expectation when both sides come from one law, and its expectation over the data is minimised
-    only by the real law (strictly proper; Szekely and Rizzo). k = 1 is twice the energy score of x for y."""
+    only by the real law (strictly proper; Szekely and Rizzo). k = 1 is twice the energy score of x for y.
+    paired (k > 1): x holds n / k samples of each of y's windows, in window order, made for that window's photo,
+    prefix and audio. A sample and its own real window are then nearly equal, not independent, so only pairs from
+    different windows count: the energy distance between the two laws over the windows' inputs."""
     n, k = x.shape[1], y.shape[1]
     assert n >= 2, "the energy distance needs two or more samples per group"
     i, j = torch.triu_indices(n, n, 1, device=x.device)  # pairs i < j: the norm's gradient is undefined at 0
-    out = 2 * (x[:, :, None] - y[:, None]).norm(dim=-1).mean((1, 2)) - (x[:, i] - x[:, j]).norm(dim=-1).mean(1)
+    cross, within = (x[:, :, None] - y[:, None]).norm(dim=-1), (x[:, i] - x[:, j]).norm(dim=-1)
+    if paired and k > 1:
+        assert n % k == 0, "paired: the same number of samples for every window"
+        w = torch.arange(n, device=x.device) // (n // k)
+        cross, within = cross[:, w[:, None] != torch.arange(k, device=x.device)], within[:, w[i] != w[j]]
+    out = 2 * cross.flatten(1).mean(1) - within.mean(1)
     if k > 1:
         a, b = torch.triu_indices(k, k, 1, device=y.device)
         out = out - (y[:, a] - y[:, b]).norm(dim=-1).mean(1)
@@ -293,7 +301,9 @@ def set_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, ba
     """Proper multi-sample fine-tuning of the sampler (reports/SANG RL for video realism.md, ideas 1 and 2).
 
     batch holds persons x K windows in person order (PersonSets, flattened); each window is rolled out m times.
-      ed     energy distance between a person's K*m samples and its K real windows, on the standardised codes.
+      ed     energy distance between a person's K*m samples and its K real windows, on the standardised codes minus
+             the window's last prefix frame (else the windows' different photo offsets swamp the spread; for K = 1 the
+             shift changes nothing).
              K = 1, m = 8 is idea 1 (8 samples for one input against its real window); K = 8, m = 1 idea 2.
       ed_adv the same in the set critic's unit feature space (Critic.features; the critic maximises it, see
              set_critic_loss). ed stays in the loss, so the sum is still minimised only by the real law.
@@ -304,14 +314,16 @@ def set_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, ba
     x, path_kl = rollout(policy, ref_model, rep, steps, g, generator)
     loss, parts = kl * path_kl.mean(), {"path_kl": path_kl.mean().detach()}
     if w_set:
-        e = energy(x.float().reshape(P, K * m, -1), batch["target"].float().reshape(P, K, -1)).mean()
+        start = batch["prefix"][:, -1:].float()  # each window from where it starts: its photo and prefix offset cancel
+        xs, ys = x.float() - start.repeat_interleave(m, 0), batch["target"].float() - start
+        e = energy(xs.reshape(P, K * m, -1), ys.reshape(P, K, -1), True).mean()
         loss, parts["ed"] = loss + w_set * e, e.detach()
     if w_adv:
         with torch.no_grad():
             demo = critic.encode_demo(batch)
             fy = critic.features(batch["target"], batch, demo)
         fx = critic.features(x, rep, demo.repeat_interleave(m, 0) if demo is not None and m > 1 else demo)
-        e = energy(fx.view(P, K * m, -1), fy.view(P, K, -1)).mean()
+        e = energy(fx.view(P, K * m, -1), fy.view(P, K, -1), True).mean()
         loss, parts["ed_adv"] = loss + w_adv * e, e.detach()
     return loss, parts
 
@@ -327,7 +339,7 @@ def set_critic_loss(critic: Critic, batch: dict, fake: torch.Tensor, K: int, gp:
     with sdpa_kernel(SDPBackend.MATH) if gp > 0 else contextlib.nullcontext():  # flash attention has no 2nd backward
         fy = critic.features(y, batch, demo)
     fx = critic.features(fake, batch, demo)
-    out = {"neg_ed_adv": -energy(fx.view(P, K, -1), fy.view(P, K, -1)).mean()}
+    out = {"neg_ed_adv": -energy(fx.view(P, K, -1), fy.view(P, K, -1), True).mean()}
     if gp > 0:
         grad, = torch.autograd.grad((fy * torch.randn_like(fy)).sum(), y, create_graph=True)
         out["gp"] = 0.5 * gp * grad.float().pow(2).sum((1, 2)).mean()

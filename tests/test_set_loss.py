@@ -38,6 +38,22 @@ def test_the_energy_distance_is_zero_for_one_law_and_sees_a_shrunk_coordinate():
     assert float(energy(0.62 * x, y).mean()) > 20 * se
 
 
+def test_paired_sets_compare_laws_not_each_sample_with_its_own_window():
+    # windows differ by a large offset (their photo and prefix); a sample shares it with its own real window
+    g = torch.Generator().manual_seed(2)
+    off = 5 * torch.randn(2000, 8, 30, generator=g)
+    y = off + torch.randn(2000, 8, 30, generator=g)
+    x = off + torch.randn(2000, 8, 30, generator=g)
+    se = float(energy(x, y, True).std()) / 2000 ** 0.5
+    assert float(energy(x, y).mean()) < -20 * se  # the bias seen on the cluster (ed_sang -4.3, ed_shrink -14.7)
+    assert abs(float(energy(x, y, True).mean())) < 3 * se
+    narrow = off + 0.62 * torch.randn(2000, 8, 30, generator=g)
+    assert float(energy(narrow, y, True).mean()) < 3 * se  # the offsets swamp the spread ...
+    assert float(energy(narrow - off, y - off, True).mean()) > 10 * se  # ... so set_loss measures from each start
+    two = torch.repeat_interleave(x, 2, 1) + 0.1 * torch.randn(2000, 16, 30, generator=g)  # m = 2 per window
+    assert abs(float(energy(two, y, True).mean())) < 3 * float(energy(two, y, True).std()) / 2000 ** 0.5
+
+
 def test_person_sets_hold_the_real_windows_out_of_the_footage(tmp_path):
     make_cache(tmp_path, n_spk=4)
     norm = Norm(torch.zeros(REF_DIM - 63), torch.ones(REF_DIM - 63), torch.zeros(63), torch.ones(63))
