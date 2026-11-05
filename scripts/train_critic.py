@@ -6,8 +6,9 @@
 configs/train_critic.yaml on top of the generator run's own config (its data, latent, window and footage settings).
 Real = a training window with its audio, photo, prefix and up to 10 s of another clip of the same person; fake = the
 frozen generator's sample for the same inputs, made on the fly with the deployed sampler (gen_g, gen_steps); sync
-fake = the real window with its audio shifted by shift_min..shift_max frames. The critic starts as a copy of the
-generator with a zero two-logit head.
+fake = the real window with its audio shifted by shift_min..shift_max frames; person: the real window with its own
+footage vs the next sample's (sang.model.critic, audio, photo and prefix dropped). The critic starts as a copy of
+the generator with a zero three-logit head.
 
 EVAL lines, on unseen val speakers:
   auc_real     real vs SANG (the training sampler) at t = 0;  auc_real_t  the same at a random noise level
@@ -15,6 +16,8 @@ EVAL lines, on unseen val speakers:
   rank_<s>     mean realism logit at t = 0 of real motion, real motion reversed in time, and SANG with each sampler
                of SAMPLERS (the generator sees the footage unless the name says otherwise); sync_<s> the same for the
                sync logit. Gate 1b compares this order with the HDTF FVD order.
+  auc_person   real windows with their own person's footage vs another speaker's, at t = 0
+  person_<s>   mean person contrast (own footage minus another speaker's) of the same windows as rank_<s>
 """
 import argparse
 import random
@@ -47,7 +50,8 @@ def evaluate(critic, gen, loader, encode, dev, n_batches: int, g: float = 2.0, s
     samplers = {train: (g, steps, True), **SAMPLERS}
     rank = {k: [] for k in ("real", "real_reversed", *samplers)}
     sync = {k: [] for k in rank}
-    noisy_real, noisy_fake, late = [], [], []
+    person = {k: [] for k in rank}
+    noisy_real, noisy_fake, late, own_p, oth_p = [], [], [], [], []
     rng = torch.Generator(device=dev)
     for bi, batch in enumerate(loader):
         if bi >= n_batches:
@@ -71,6 +75,13 @@ def evaluate(critic, gen, loader, encode, dev, n_batches: int, g: float = 2.0, s
             rank[name].append(lg[:, 0])
             sync[name].append(lg[:, 1])
         late.append(score(x0, audio=batch["audio"].roll(16, 1))[:, 1])
+        if critic.has_person and kw["demo"] is not None:
+            t0, keep = torch.zeros(B, device=dev), batch["demo_keep"].bool()
+            both, pa = keep & keep.roll(1, 0), (batch["audio"], batch["ref"], batch["prefix"])
+            for name, x in xs.items():
+                person[name].append(critic.person_contrast(x, t0, *pa, kw["demo"], keep)[both])
+            own_p.append(critic.person(x0, t0, *pa, kw["demo"], keep)[both])
+            oth_p.append(critic.person(x0, t0, *pa, kw["demo"].roll(1, 0), keep.roll(1, 0))[both])
         torch.manual_seed(bi)
         t = torch.rand(B, device=dev)
         noisy_real.append(score(noised(x0, t), t)[:, 0])
@@ -81,6 +92,9 @@ def evaluate(critic, gen, loader, encode, dev, n_batches: int, g: float = 2.0, s
            "auc_sync": auc(cat(sync["real"]), cat(late))}
     out.update({f"rank_{k}": float(cat(v).mean()) for k, v in rank.items()})
     out.update({f"sync_{k}": float(cat(v).mean()) for k, v in sync.items()})
+    if own_p:
+        out["auc_person"] = auc(cat(own_p), cat(oth_p))
+        out.update({f"person_{k}": float(cat(v).mean()) for k, v in person.items()})
     return out
 
 

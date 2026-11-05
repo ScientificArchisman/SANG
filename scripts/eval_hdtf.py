@@ -72,7 +72,8 @@ SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std", "real_rot_std",
                "rot_vel", "real_rot_vel", "critic_real", "real_critic_real", "critic_sync", "real_critic_sync",
-               "copy_ratio") + tuple(f"real_critic_{k}_head_{p}" for p in ("all", "slow", "fast") for k in ("real", "sync"))
+               "copy_ratio", "critic_person", "real_critic_person") + tuple(
+    f"real_critic_{k}_head_{p}" for p in ("all", "slow", "fast") for k in ("real", "sync", "person"))
 METRICS = ("FID", "FVD", "CSIM", "LSE-C", "LSE-D", "PSNR", "SSIM")
 
 

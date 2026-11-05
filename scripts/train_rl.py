@@ -69,6 +69,9 @@ def main() -> None:
     policy.load_state_dict(ck["ema"])
     policy.eval()  # no dropout in rollouts; gradients still flow
     critic = load_critic(cfg["critic"], dev)
+    w_person = float(cfg["w_person"]) if critic.has_person else 0.0
+    if cfg["w_person"] and not critic.has_person:
+        print(f"{cfg['critic']} has no person logit: w_person {cfg['w_person']} -> 0", flush=True)
     g, steps = float(cfg["g"]), int(cfg["steps"])
     mcfg = {**ck["cfg"], "sample_steps": steps, "cfg_audio": g}
     kw = dict(p_clean=cfg["p_clean"], p_demo=cfg["p_demo"], shift=(int(cfg["shift_min"]), int(cfg["shift_max"])),
@@ -90,7 +93,7 @@ def main() -> None:
     P, C, A = int(cfg["policy_steps"]), int(cfg["critic_steps"]), int(cfg["alternations"])
     print(f"RL from {cfg['gen']} (step {ck['step']}) against {cfg['critic']}: {cfg['rounds']} rounds x {A} x "
           f"({P} policy + {C} critic steps), kl {cfg['kl']}, reward {cfg['w_real']} real + {cfg['w_sync']} sync "
-          f"contrast, gp {cfg['gp']}, g={g:g}, steps={steps}", flush=True)
+          f"contrast + {w_person} person contrast, gp {cfg['gp']}, g={g:g}, steps={steps}", flush=True)
     prev = eval_round(0)
     for rnd in range(1, int(cfg["rounds"]) + 1):
         ref = copy.deepcopy(policy).eval().requires_grad_(False)
@@ -102,7 +105,7 @@ def main() -> None:
             for step in range(it * P + 1, (it + 1) * P + 1):
                 with torch.autocast(**amp):
                     loss, parts = rl_loss(policy, ref, critic, next_batch(), steps, g, cfg["kl"], cfg["w_real"],
-                                          cfg["w_sync"], kw["shift"])
+                                          cfg["w_sync"], kw["shift"], w_person)
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 gnorm = torch.nn.utils.clip_grad_norm_(policy.parameters(), cfg["grad_clip"])

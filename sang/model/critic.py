@@ -1,11 +1,15 @@
 """The person critic: a learned reward for SANG's motion (plan, design and gates: docs/person_critic_plan.md).
 
-One trunk, two logits, nothing hand-picked:
+One trunk, three logits, nothing hand-picked:
   real  this person's real motion (1) vs SANG's motion for the same audio, photo, prefix and footage (0). At the
         optimum its logit is log p_real / p_SANG: the RL reward, the guidance signal (Discriminator Guidance, Kim et
         al., ICML 2023, arXiv 2211.17091) and what the test-time fit adapts to one person.
   sync  real motion with its own audio (1) vs the same motion with the audio shifted by 3-15 frames (0): lip sync
         learned in motion space. SyncNet stays an evaluation metric only, so it cannot be gamed.
+  person real motion with its own person's footage (1) vs with another speaker's footage from the batch (0), with
+        the window's audio, the photo and the prefix dropped, so only the motion and the footage can be compared (not
+        voices, faces or the real prefix). A real-vs-SANG critic cannot see head range: a calm head is realistic,
+        just not for this person (research log §3.32). Critics trained before it have two logits and still load.
 The trunk is a MotionFlowTransformer initialised from the generator, so it reads audio, photo, prefix and footage
 the way SANG does. It also takes the flow time t: t > 0 scores noisy states (guidance), t = 0 clean windows (reward).
 """
@@ -24,21 +28,43 @@ TPF = 2  # WavLM ticks per video frame
 
 
 class Critic(nn.Module):
-    def __init__(self, trunk: MotionFlowTransformer):
+    def __init__(self, trunk: MotionFlowTransformer, n_out: int = 3):
         super().__init__()
         self.trunk = trunk
-        self.head = nn.Linear(trunk.in_proj.out_features, 2)
+        self.head = nn.Linear(trunk.in_proj.out_features, n_out)
         nn.init.zeros_(self.head.weight)
         nn.init.zeros_(self.head.bias)
 
     def encode_demo(self, batch: dict):
         return self.trunk.encode_demo(batch)
 
-    def forward(self, x_t, t, audio, ref, prefix=None, prefix_keep=None, demo=None, demo_keep=None) -> torch.Tensor:
-        """Same inputs as the generator -> [B, 2] logits (real, sync), mean-pooled over the target frames."""
+    @property
+    def has_person(self) -> bool:
+        return self.head.out_features > 2
+
+    def forward(self, x_t, t, audio, ref, prefix=None, prefix_keep=None, demo=None, demo_keep=None,
+                drop_audio=None, drop_ref=None) -> torch.Tensor:
+        """Same inputs as the generator -> [B, 3] logits (real, sync, person; [B, 2] for older critics), mean-pooled
+        over the target frames."""
         h = self.trunk(x_t, t, audio, ref, prefix=prefix, prefix_keep=prefix_keep, demo=demo, demo_keep=demo_keep,
-                       features=True)
+                       drop_audio=drop_audio, drop_ref=drop_ref, features=True)
         return self.head(h.float().mean(1))
+
+    def person(self, x_t, t, audio, ref, prefix, demo, demo_keep) -> torch.Tensor:
+        """[B] person logit: the motion against the footage alone (audio, photo and prefix dropped)."""
+        B, dev = x_t.shape[0], x_t.device
+        on, off = torch.ones(B, dtype=torch.bool, device=dev), torch.zeros(B, dtype=torch.bool, device=dev)
+        return self(x_t, t, audio, ref, prefix=prefix, prefix_keep=off, demo=demo, demo_keep=demo_keep,
+                    drop_audio=on, drop_ref=on)[:, 2].float()
+
+    def person_contrast(self, x_t, t, audio, ref, prefix, demo, demo_keep) -> torch.Tensor:
+        """[B] person logit with the own footage minus with the next sample's footage (another speaker), 0 where
+        either has none. shortcut: a batch neighbour can be the same speaker (rare in shuffled TalkVid batches)."""
+        keep = demo_keep.bool()
+        other = keep.roll(1, 0)
+        own = self.person(x_t, t, audio, ref, prefix, demo, keep)
+        oth = self.person(x_t, t, audio, ref, prefix, demo.roll(1, 0), other)
+        return torch.where(keep & other, own - oth, torch.zeros_like(own))
 
 
 def critic_from_generator(ck: dict) -> Critic:
@@ -51,7 +77,7 @@ def critic_from_generator(ck: dict) -> Critic:
 def load_critic(path: str, device: str = "cuda") -> Critic:
     """A scripts/train_critic.py checkpoint, frozen, in eval mode."""
     ck = torch.load(path, map_location=device, weights_only=False)
-    c = Critic(build(ck["gen_cfg"]))
+    c = Critic(build(ck["gen_cfg"]), ck["critic"]["head.weight"].shape[0])
     c.load_state_dict(ck["critic"])
     return c.to(device).eval().requires_grad_(False)
 
@@ -79,12 +105,14 @@ def gen_fakes(gen: MotionFlowTransformer, batch: dict, steps: int = 6, g: float 
 
 
 def critic_loss(critic: Critic, batch: dict, fake: torch.Tensor, p_clean: float = 0.25, p_demo: float = 0.2,
-                shift: tuple[int, int] = (3, 15), sync: bool = True, gp: float = 0.0) -> tuple[torch.Tensor, dict]:
+                shift: tuple[int, int] = (3, 15), sync: bool = True, gp: float = 0.0,
+                person: bool = True) -> tuple[torch.Tensor, dict]:
     """BCE of both logits on one batch of real windows (codes) and SANG's windows `fake` for the same inputs.
 
     Every window gets one flow time: t = 0 with p_clean (the reward), else t ~ U(0, 1) (guidance); real and fake
     share it. The sync pass reuses the real pass's noisy x with the audio shifted, so only the audio differs.
-    The critic's footage is dropped with p_demo, so it also scores without footage.
+    The critic's footage is dropped with p_demo, so it also scores without footage. person (a critic with three logits
+    and footage): the same noisy real x with its own footage (1) vs the next sample's (0), where both have footage.
     gp > 0 adds R1, gp/2 E_real ||grad_x l||^2 for both logits (Mescheder et al. 2018; AMP's penalty, arXiv
     2104.02180): a smooth critic that a small change of the motion cannot flip, so the policy cannot hack it."""
     x0 = batch["target"]
@@ -106,6 +134,13 @@ def critic_loss(critic: Critic, batch: dict, fake: torch.Tensor, p_clean: float 
         k = random.choice((-1, 1)) * random.randint(*shift)
         ln = critic(xr, t, batch["audio"].roll(TPF * k, 1), batch["ref"], **kw).float()
         out["sync"] = bce(lr[:, 1], one) + bce(ln[:, 1], zero)
+    if person and critic.has_person and demo is not None:
+        keep = batch["demo_keep"].bool()
+        both = keep & keep.roll(1, 0)
+        if both.any():
+            own = critic.person(xr, t, batch["audio"], batch["ref"], batch["prefix"], demo, keep)
+            oth = critic.person(xr, t, batch["audio"], batch["ref"], batch["prefix"], demo.roll(1, 0), keep.roll(1, 0))
+            out["person"] = bce(own[both], one[both]) + bce(oth[both], zero[both])
     if gp > 0:
         sign = torch.randint(0, 2, lr.shape, device=dev) * 2 - 1  # random signs: one backward, unbiased for both heads
         grad, = torch.autograd.grad((lr * sign).sum(), xr, create_graph=True)
@@ -126,7 +161,7 @@ def make_guide(critic: Critic, demo: torch.Tensor | None = None, w_real: float =
     def guide(x, t, audio, ref, prefix=None, prefix_keep=None):
         with torch.enable_grad():
             x = x.detach().float().requires_grad_(True)
-            r = critic(x, t, audio, ref, prefix=prefix, prefix_keep=prefix_keep, demo=demo).float() @ w.to(x.device)
+            r = critic(x, t, audio, ref, prefix=prefix, prefix_keep=prefix_keep, demo=demo).float()[:, :2] @ w.to(x.device)
             (grad,) = torch.autograd.grad(r.sum(), x)
         f = (t.float() / (1 - t.float()).clamp_min(1e-6)).clamp(max=cap).view(-1, 1, 1)
         return -f * grad
@@ -198,7 +233,7 @@ def fit_person(critic: Critic, gen: MotionFlowTransformer, u: torch.Tensor, audi
     with torch.enable_grad():
         for _ in range(steps):
             j = torch.randint(0, pool, (batch,), generator=rng, device=dev)
-            loss, _ = critic_loss(fitted, sub(j), fake[j], p_clean=p_clean, p_demo=0.0, sync=False)
+            loss, _ = critic_loss(fitted, sub(j), fake[j], p_clean=p_clean, p_demo=0.0, sync=False, person=False)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
@@ -207,12 +242,14 @@ def fit_person(critic: Critic, gen: MotionFlowTransformer, u: torch.Tensor, audi
 
 def rl_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, critic: Critic, batch: dict,
             steps: int = 6, g: float = 2.0, kl: float = 1.0, w_real: float = 1.0, w_sync: float = 1.0,
-            shift: tuple[int, int] = (3, 15), generator: torch.Generator | None = None) -> tuple[torch.Tensor, dict]:
+            shift: tuple[int, int] = (3, 15), w_person: float = 0.0,
+            generator: torch.Generator | None = None) -> tuple[torch.Tensor, dict]:
     """KL-regularised reward maximisation, backpropagated through the whole Euler sampler (DRaFT-style).
 
     reward = w_real l_real + w_sync (l_sync - l_sync with the audio shifted) of the clean sample (critic frozen). The
     sync term is a contrast on the same sample, one shift each way by shift frames, as SyncNet's confidence is: motion the
-    sync head likes under any audio earns nothing (RL v1 raised l_sync above real while LSE-C fell, research log §3.30). path KL = 1/2 sum_i dt_i
+    sync head likes under any audio earns nothing (RL v1 raised l_sync above real while LSE-C fell, research log §3.30).
+    w_person adds the person contrast (Critic.person_contrast): this person's footage against another speaker's. path KL = 1/2 sum_i dt_i
     ||v_theta - v_ref||^2 along the policy's own path, summed over frames and codes: Girsanov's KL for unit
     diffusion, the usual stand-in for a deterministic sampler. With the critic refit to ref_model each round and
     kl = 1, the optimum of E[log p_real / p_ref] - KL(pi || p_ref) is p_real itself."""
@@ -240,16 +277,21 @@ def rl_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, cri
     ks = (-random.randint(*shift), random.randint(*shift))
     r_shift = torch.stack([score(batch["audio"].roll(TPF * k, 1))[:, 1] for k in ks]).mean(0)
     reward = w_real * r[:, 0] + w_sync * (r[:, 1] - r_shift)
+    parts = {"l_real": r[:, 0].mean().detach(), "l_sync": r[:, 1].mean().detach(),
+             "l_sync_shift": r_shift.mean().detach()}
+    if w_person:
+        lp = critic.person_contrast(x, torch.zeros(B, device=dev), batch["audio"], batch["ref"], batch["prefix"], d_cri,
+                                    batch["demo_keep"])
+        reward = reward + w_person * lp
+        parts["l_person"] = lp.mean().detach()
     loss = (kl * path_kl - reward).mean()
-    return loss, {"reward": reward.mean().detach(), "l_real": r[:, 0].mean().detach(),
-                  "l_sync": r[:, 1].mean().detach(), "l_sync_shift": r_shift.mean().detach(),
-                  "path_kl": path_kl.mean().detach()}
+    return loss, {"reward": reward.mean().detach(), **parts, "path_kl": path_kl.mean().detach()}
 
 
 @torch.no_grad()
 def score_clip(critic: Critic, z: torch.Tensor, audio: torch.Tensor, ref: torch.Tensor, start: torch.Tensor,
                demo: torch.Tensor | None = None, window: int = 64) -> dict:
-    """Mean (real, sync) logits at t = 0 over the full windows of a clip z [B, n, k], windowed as
+    """Mean (real, sync, and with footage person) logits at t = 0 over the full windows of a clip z [B, n, k], windowed as
     sang.model.flow.generate makes them: the first continues from `start` [B, P, k] (audio carries P frames of lead),
     later ones from the clip's own last P frames. {} if the clip is shorter than one window."""
     B, n, _ = z.shape
@@ -258,9 +300,13 @@ def score_clip(critic: Critic, z: torch.Tensor, audio: torch.Tensor, ref: torch.
     for pos in range(0, n - window + 1, window):
         prefix = start if pos == 0 else z[:, pos - P:pos]
         a = audio[:, pos * TPF:(P + pos + window) * TPF]
-        out.append(critic(z[:, pos:pos + window], torch.zeros(B, device=z.device), a, ref, prefix=prefix,
-                          demo=demo).float())
+        x, t0 = z[:, pos:pos + window], torch.zeros(B, device=z.device)
+        lg = critic(x, t0, a, ref, prefix=prefix, demo=demo).float()[:, :2]
+        if critic.has_person and demo is not None:  # own footage only: one clip has no other speaker to contrast with
+            keep = torch.ones(B, dtype=torch.bool, device=z.device)
+            lg = torch.cat([lg, critic.person(x, t0, a, ref, prefix, demo, keep)[:, None]], 1)
+        out.append(lg)
     if not out:
         return {}
     m = torch.stack(out).mean((0, 1))
-    return {"critic_real": float(m[0]), "critic_sync": float(m[1])}
+    return {"critic_real": float(m[0]), "critic_sync": float(m[1]), **({"critic_person": float(m[2])} if len(m) > 2 else {})}
