@@ -4,18 +4,24 @@
     sbatch bash_scripts/run.sh scripts/train_rl.py gen=runs/demo/last.pt critic=runs/critic/last.pt \\
         out_dir=runs/rl [key=value ...]
 
-configs/train_rl.yaml on top of the generator run's own config. `rounds` rounds of
+configs/train_rl.yaml on top of the generator run's own config. Each of `rounds` rounds fixes the KL reference
+(the policy as the round began) and then alternates `alternations` times between
   (a) policy_steps of KL-regularised reward maximisation (sang.model.critic.rl_loss): the critic's reward on the
-      clean sample, backpropagated through the Euler steps, minus kl times the path KL to the policy as it was when
-      the round began; the critic is frozen;
-  (b) critic_steps refitting the critic on the new policy's samples (critic_loss), so the reward stays
-      log p_real / p_policy.
+      clean sample, backpropagated through the Euler steps, minus kl times the path KL to the reference; the critic
+      is frozen;
+  (b) critic_steps refitting the critic on the new policy's samples (critic_loss, with the R1 penalty gp), so the
+      reward stays log p_real / p_policy.
+Short alternations keep any frozen critic too brief to exploit: RL v1 (one 500-step block per round) found the
+critic's blind spot within 25 steps (research log §3.30).
 round<r>.pt loads like a generator (eval_hdtf.py --ckpt runs/rl/round<r>.pt), critic<r>.pt like a critic.
 EVAL lines (round 0 = the starting policy), on unseen val speakers: train_critic's metrics for the critic against
-the current policy, and train_motion's rollout statistics (std_r, vc_r, audio_gain, val_loss).
+the current policy, train_motion's rollout statistics (std_r, vc_r, audio_gain, val_loss), and dist_mouth /
+dist_head, the summed |log ratio| of the mouth's and the head's (rot, place) std_r and vc_r (0 = real). Training
+stops after the first round in which either distance grows; the round before it is the one to use.
 """
 import argparse
 import copy
+import math
 import random
 import sys
 import time
@@ -65,59 +71,73 @@ def main() -> None:
     critic = load_critic(cfg["critic"], dev)
     g, steps = float(cfg["g"]), int(cfg["steps"])
     mcfg = {**ck["cfg"], "sample_steps": steps, "cfg_audio": g}
-    kw = dict(p_clean=cfg["p_clean"], p_demo=cfg["p_demo"], shift=(int(cfg["shift_min"]), int(cfg["shift_max"])))
+    kw = dict(p_clean=cfg["p_clean"], p_demo=cfg["p_demo"], shift=(int(cfg["shift_min"]), int(cfg["shift_max"])),
+              gp=float(cfg["gp"]))
     amp = dict(device_type=dev, dtype=torch.bfloat16, enabled=cfg["bf16"])
     next_batch = lambda: d.encode({k: v.to(dev, non_blocking=True) for k, v in next(batches).items()})
 
-    def eval_round(rnd: int) -> None:
+    def eval_round(rnd: int) -> dict:
         with torch.autocast(**amp):
             rc = critic_eval(critic, policy, vdl, d.encode, dev, cfg["eval_batches"], g, steps)
         rm = motion_eval(policy, vdl, mcfg, dev, cfg["eval_batches"], d.encode, d.decode)
         policy.eval()  # motion_eval leaves the model in train mode
-        print(f"EVAL round {rnd} " + " ".join(f"{k} {v:.4g}" for k, v in {**rc, **rm}.items()), flush=True)
+        dist = lambda parts: sum(abs(math.log(max(rm[f"{s}_r_{q}"], 1e-6))) for s in ("std", "vc") for q in parts)
+        far = {"mouth": dist(("mouth",)), "head": dist(("rot", "place"))}
+        print(f"EVAL round {rnd} " + " ".join(f"{k} {v:.4g}" for k, v in {**rc, **rm}.items())
+              + f" dist_mouth {far['mouth']:.4f} dist_head {far['head']:.4f}", flush=True)
+        return far
 
-    print(f"RL from {cfg['gen']} (step {ck['step']}) against {cfg['critic']}: {cfg['rounds']} rounds x "
-          f"({cfg['policy_steps']} policy + {cfg['critic_steps']} critic steps), kl {cfg['kl']}, "
-          f"reward {cfg['w_real']} real + {cfg['w_sync']} sync, g={g:g}, steps={steps}", flush=True)
-    eval_round(0)
+    P, C, A = int(cfg["policy_steps"]), int(cfg["critic_steps"]), int(cfg["alternations"])
+    print(f"RL from {cfg['gen']} (step {ck['step']}) against {cfg['critic']}: {cfg['rounds']} rounds x {A} x "
+          f"({P} policy + {C} critic steps), kl {cfg['kl']}, reward {cfg['w_real']} real + {cfg['w_sync']} sync "
+          f"contrast, gp {cfg['gp']}, g={g:g}, steps={steps}", flush=True)
+    prev = eval_round(0)
     for rnd in range(1, int(cfg["rounds"]) + 1):
         ref = copy.deepcopy(policy).eval().requires_grad_(False)
         opt = torch.optim.AdamW(policy.parameters(), lr=cfg["lr"], weight_decay=0.0)
-        critic.eval().requires_grad_(False)
-        t0 = time.time()
-        for step in range(1, int(cfg["policy_steps"]) + 1):
-            with torch.autocast(**amp):
-                loss, parts = rl_loss(policy, ref, critic, next_batch(), steps, g, cfg["kl"], cfg["w_real"],
-                                      cfg["w_sync"])
-            opt.zero_grad(set_to_none=True)
-            loss.backward()
-            gnorm = torch.nn.utils.clip_grad_norm_(policy.parameters(), cfg["grad_clip"])
-            opt.step()
-            if step % cfg["log_every"] == 0:
-                print(f"round {rnd} policy {step:>5} " + " ".join(f"{k} {float(v):.4f}" for k, v in parts.items())
-                      + f" gnorm {float(gnorm):.3f} {cfg['log_every'] / (time.time() - t0):.2f} it/s", flush=True)
-                t0 = time.time()
-        critic.train().requires_grad_(True)
         copt = torch.optim.AdamW(critic.parameters(), lr=cfg["critic_lr"], weight_decay=cfg["weight_decay"])
-        for step in range(1, int(cfg["critic_steps"]) + 1):
-            batch = next_batch()
-            with torch.autocast(**amp):
-                loss, parts = critic_loss(critic, batch, gen_fakes(policy, batch, steps, g).float(), **kw)
-            copt.zero_grad(set_to_none=True)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg["grad_clip"])
-            copt.step()
-            if step % cfg["log_every"] == 0:
-                print(f"round {rnd} critic {step:>5} " + " ".join(f"{k} {float(v):.4f}" for k, v in parts.items()),
-                      flush=True)
+        for it in range(A):
+            critic.eval().requires_grad_(False)
+            t0 = time.time()
+            for step in range(it * P + 1, (it + 1) * P + 1):
+                with torch.autocast(**amp):
+                    loss, parts = rl_loss(policy, ref, critic, next_batch(), steps, g, cfg["kl"], cfg["w_real"],
+                                          cfg["w_sync"], kw["shift"])
+                opt.zero_grad(set_to_none=True)
+                loss.backward()
+                gnorm = torch.nn.utils.clip_grad_norm_(policy.parameters(), cfg["grad_clip"])
+                opt.step()
+                if step % cfg["log_every"] == 0:
+                    print(f"round {rnd} policy {step:>5} " + " ".join(f"{k} {float(v):.4f}" for k, v in parts.items())
+                          + f" gnorm {float(gnorm):.3f} {cfg['log_every'] / (time.time() - t0):.2f} it/s", flush=True)
+                    t0 = time.time()
+            critic.train().requires_grad_(True)
+            for step in range(it * C + 1, (it + 1) * C + 1):
+                batch = next_batch()
+                with torch.autocast(**amp):
+                    loss, parts = critic_loss(critic, batch, gen_fakes(policy, batch, steps, g).float(), **kw)
+                copt.zero_grad(set_to_none=True)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg["grad_clip"])
+                copt.step()
+                if step % cfg["log_every"] == 0:
+                    print(f"round {rnd} critic {step:>5} " + " ".join(f"{k} {float(v):.4f}" for k, v in parts.items()),
+                          flush=True)
         critic.eval().requires_grad_(False)
-        eval_round(rnd)
+        far = eval_round(rnd)
         sd = policy.state_dict()
         torch.save({"model": sd, "ema": sd, "cfg": ck["cfg"], "norm": ck["norm"], "latent": ck["latent"],
                     "step": ck["step"], "rl": {"round": rnd, "gen": cfg["gen"], "critic": cfg["critic"], "cfg": cfg}},
                    out / f"round{rnd}.pt")
         torch.save({"critic": critic.state_dict(), "gen_cfg": ck["cfg"], "cfg": cfg, "gen": str(out / f"round{rnd}.pt"),
                     "step": rnd}, out / f"critic{rnd}.pt")
+        away = [k for k in far if far[k] > prev[k]]
+        if away:
+            print(f"STOP after round {rnd}: the {' and '.join(away)} moved away from real "
+                  f"({', '.join(f'{k} {prev[k]:.4f} -> {far[k]:.4f}' for k in away)}); use round {rnd - 1} "
+                  f"(round 0 = {cfg['gen']})", flush=True)
+            break
+        prev = far
     print(f"done -> {out}", flush=True)
 
 

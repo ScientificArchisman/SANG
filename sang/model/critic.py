@@ -9,12 +9,14 @@ One trunk, two logits, nothing hand-picked:
 The trunk is a MotionFlowTransformer initialised from the generator, so it reads audio, photo, prefix and footage
 the way SANG does. It also takes the flow time t: t > 0 scores noisy states (guidance), t = 0 clean windows (reward).
 """
+import contextlib
 import copy
 import random
 
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from sang.model.flow import MotionFlowTransformer, build, flow_times, sample
 
@@ -77,12 +79,14 @@ def gen_fakes(gen: MotionFlowTransformer, batch: dict, steps: int = 6, g: float 
 
 
 def critic_loss(critic: Critic, batch: dict, fake: torch.Tensor, p_clean: float = 0.25, p_demo: float = 0.2,
-                shift: tuple[int, int] = (3, 15), sync: bool = True) -> tuple[torch.Tensor, dict]:
+                shift: tuple[int, int] = (3, 15), sync: bool = True, gp: float = 0.0) -> tuple[torch.Tensor, dict]:
     """BCE of both logits on one batch of real windows (codes) and SANG's windows `fake` for the same inputs.
 
     Every window gets one flow time: t = 0 with p_clean (the reward), else t ~ U(0, 1) (guidance); real and fake
     share it. The sync pass reuses the real pass's noisy x with the audio shifted, so only the audio differs.
-    The critic's footage is dropped with p_demo, so it also scores without footage."""
+    The critic's footage is dropped with p_demo, so it also scores without footage.
+    gp > 0 adds R1, gp/2 E_real ||grad_x l||^2 for both logits (Mescheder et al. 2018; AMP's penalty, arXiv
+    2104.02180): a smooth critic that a small change of the motion cannot flip, so the policy cannot hack it."""
     x0 = batch["target"]
     B, dev = x0.shape[0], x0.device
     t = torch.rand(B, device=dev)
@@ -91,8 +95,9 @@ def critic_loss(critic: Critic, batch: dict, fake: torch.Tensor, p_clean: float 
     demo = critic.encode_demo(batch)
     if demo is not None:
         kw.update(demo=demo, demo_keep=batch["demo_keep"].bool() & (torch.rand(B, device=dev) >= p_demo))
-    xr = noised(x0, t)
-    lr = critic(xr, t, batch["audio"], batch["ref"], **kw).float()
+    xr = noised(x0, t).requires_grad_(gp > 0)
+    with sdpa_kernel(SDPBackend.MATH) if gp > 0 else contextlib.nullcontext():  # flash attention has no 2nd backward
+        lr = critic(xr, t, batch["audio"], batch["ref"], **kw).float()
     lf = critic(noised(fake, t), t, batch["audio"], batch["ref"], **kw).float()
     one, zero = torch.ones(B, device=dev), torch.zeros(B, device=dev)
     bce = F.binary_cross_entropy_with_logits
@@ -101,6 +106,10 @@ def critic_loss(critic: Critic, batch: dict, fake: torch.Tensor, p_clean: float 
         k = random.choice((-1, 1)) * random.randint(*shift)
         ln = critic(xr, t, batch["audio"].roll(TPF * k, 1), batch["ref"], **kw).float()
         out["sync"] = bce(lr[:, 1], one) + bce(ln[:, 1], zero)
+    if gp > 0:
+        sign = torch.randint(0, 2, lr.shape, device=dev) * 2 - 1  # random signs: one backward, unbiased for both heads
+        grad, = torch.autograd.grad((lr * sign).sum(), xr, create_graph=True)
+        out["gp"] = 0.5 * gp * grad.float().pow(2).sum((1, 2)).mean()
     return sum(out.values()), {k: v.detach() for k, v in out.items()}
 
 
@@ -198,10 +207,12 @@ def fit_person(critic: Critic, gen: MotionFlowTransformer, u: torch.Tensor, audi
 
 def rl_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, critic: Critic, batch: dict,
             steps: int = 6, g: float = 2.0, kl: float = 1.0, w_real: float = 1.0, w_sync: float = 1.0,
-            generator: torch.Generator | None = None) -> tuple[torch.Tensor, dict]:
+            shift: tuple[int, int] = (3, 15), generator: torch.Generator | None = None) -> tuple[torch.Tensor, dict]:
     """KL-regularised reward maximisation, backpropagated through the whole Euler sampler (DRaFT-style).
 
-    reward = w_real l_real + w_sync l_sync of the clean sample (critic frozen). path KL = 1/2 sum_i dt_i
+    reward = w_real l_real + w_sync (l_sync - l_sync with the audio shifted) of the clean sample (critic frozen). The
+    sync term is a contrast on the same sample, one shift each way by shift frames, as SyncNet's confidence is: motion the
+    sync head likes under any audio earns nothing (RL v1 raised l_sync above real while LSE-C fell, research log §3.30). path KL = 1/2 sum_i dt_i
     ||v_theta - v_ref||^2 along the policy's own path, summed over frames and codes: Girsanov's KL for unit
     diffusion, the usual stand-in for a deterministic sampler. With the critic refit to ref_model each round and
     kl = 1, the optimum of E[log p_real / p_ref] - KL(pi || p_ref) is p_real itself."""
@@ -223,12 +234,16 @@ def rl_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, cri
         dt = ts[i] - ts[i + 1]
         path_kl = path_kl + 0.5 * dt * (v.float() - v0.float()).pow(2).sum((1, 2))
         x = x - dt * v
-    r = critic(x, torch.zeros(B, device=dev), batch["audio"], batch["ref"], prefix=batch["prefix"], demo=d_cri,
-               demo_keep=batch.get("demo_keep")).float()
-    reward = w_real * r[:, 0] + w_sync * r[:, 1]
+    score = lambda audio: critic(x, torch.zeros(B, device=dev), audio, batch["ref"], prefix=batch["prefix"],
+                                 demo=d_cri, demo_keep=batch.get("demo_keep")).float()
+    r = score(batch["audio"])
+    ks = (-random.randint(*shift), random.randint(*shift))
+    r_shift = torch.stack([score(batch["audio"].roll(TPF * k, 1))[:, 1] for k in ks]).mean(0)
+    reward = w_real * r[:, 0] + w_sync * (r[:, 1] - r_shift)
     loss = (kl * path_kl - reward).mean()
     return loss, {"reward": reward.mean().detach(), "l_real": r[:, 0].mean().detach(),
-                  "l_sync": r[:, 1].mean().detach(), "path_kl": path_kl.mean().detach()}
+                  "l_sync": r[:, 1].mean().detach(), "l_sync_shift": r_shift.mean().detach(),
+                  "path_kl": path_kl.mean().detach()}
 
 
 @torch.no_grad()

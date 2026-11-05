@@ -111,7 +111,8 @@ def main() -> None:
     g, steps = float(cfg["gen_g"]), int(cfg["gen_steps"])
     print(f"critic: {sum(p.numel() for p in critic.parameters()) / 1e6:.1f} M params from {cfg['gen']} (step "
           f"{ck['step']}); fakes g={g:g}, steps={steps}", flush=True)
-    kw = dict(p_clean=cfg["p_clean"], p_demo=cfg["p_demo"], shift=(int(cfg["shift_min"]), int(cfg["shift_max"])))
+    kw = dict(p_clean=cfg["p_clean"], p_demo=cfg["p_demo"], shift=(int(cfg["shift_min"]), int(cfg["shift_max"])),
+              gp=float(cfg["gp"]))
     amp = dict(device_type=dev, dtype=torch.bfloat16, enabled=cfg["bf16"])
 
     step, t0 = 0, time.time()
