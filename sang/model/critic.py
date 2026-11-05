@@ -50,6 +50,13 @@ class Critic(nn.Module):
                        drop_audio=drop_audio, drop_ref=drop_ref, features=True)
         return self.head(h.float().mean(1))
 
+    def features(self, x, batch: dict, demo=None) -> torch.Tensor:
+        """[B, d] unit-norm mean-pooled trunk features of clean windows x with the batch's inputs: the set critic's
+        space (set_loss, set_critic_loss)."""
+        h = self.trunk(x, torch.zeros(x.shape[0], device=x.device), batch["audio"], batch["ref"], prefix=batch["prefix"],
+                       demo=demo, demo_keep=batch.get("demo_keep"), features=True)
+        return F.normalize(h.float().mean(1), dim=-1)
+
     def person(self, x_t, t, audio, ref, prefix, demo, demo_keep) -> torch.Tensor:
         """[B] person logit: the motion against the footage alone (audio, photo and prefix dropped)."""
         B, dev = x_t.shape[0], x_t.device
@@ -240,26 +247,17 @@ def fit_person(critic: Critic, gen: MotionFlowTransformer, u: torch.Tensor, audi
     return fitted.eval().requires_grad_(False)
 
 
-def rl_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, critic: Critic, batch: dict,
-            steps: int = 6, g: float = 2.0, kl: float = 1.0, w_real: float = 1.0, w_sync: float = 1.0,
-            shift: tuple[int, int] = (3, 15), w_person: float = 0.0,
-            generator: torch.Generator | None = None) -> tuple[torch.Tensor, dict]:
-    """KL-regularised reward maximisation, backpropagated through the whole Euler sampler (DRaFT-style).
-
-    reward = w_real l_real + w_sync (l_sync - l_sync with the audio shifted) of the clean sample (critic frozen). The
-    sync term is a contrast on the same sample, one shift each way by shift frames, as SyncNet's confidence is: motion the
-    sync head likes under any audio earns nothing (RL v1 raised l_sync above real while LSE-C fell, research log §3.30).
-    w_person adds the person contrast (Critic.person_contrast): this person's footage against another speaker's. path KL = 1/2 sum_i dt_i
-    ||v_theta - v_ref||^2 along the policy's own path, summed over frames and codes: Girsanov's KL for unit
-    diffusion, the usual stand-in for a deterministic sampler. With the critic refit to ref_model each round and
-    kl = 1, the optimum of E[log p_real / p_ref] - KL(pi || p_ref) is p_real itself."""
+def rollout(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, batch: dict, steps: int = 6,
+            g: float = 2.0, generator: torch.Generator | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+    """The deployed one-pass Euler sampler with gradients (DRaFT-style) -> clean windows [B, L, k] and the path KL
+    1/2 sum_i dt_i ||v_theta - v_ref||^2 [B] along the policy's own path, summed over frames and codes."""
     x0 = batch["target"]
     B, L, dev = x0.shape[0], x0.shape[1], x0.device
     kw = {"prefix": batch["prefix"], "prefix_keep": torch.ones(B, dtype=torch.bool, device=dev),
           "beta": torch.full((B,), 1.0 / g, device=dev), "demo_keep": batch.get("demo_keep")}
     d_pol = policy.encode_demo(batch)
     with torch.no_grad():
-        d_ref, d_cri = ref_model.encode_demo(batch), critic.encode_demo(batch)
+        d_ref = ref_model.encode_demo(batch)
     x = torch.randn(B, L, policy.t_dim, device=dev, generator=generator)
     ts = flow_times(steps)
     path_kl = torch.zeros(B, device=dev)
@@ -271,6 +269,88 @@ def rl_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, cri
         dt = ts[i] - ts[i + 1]
         path_kl = path_kl + 0.5 * dt * (v.float() - v0.float()).pow(2).sum((1, 2))
         x = x - dt * v
+    return x, path_kl
+
+
+def energy(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    """Energy distance per group between samples x [G, n, D] (n >= 2) and real y [G, k, D]:
+    2 E||x - y|| - E||x - x'|| - E||y - y'|| (the last term only for k > 1; it is constant for the generator).
+    Unbiased, so 0 in expectation when both sides come from one law, and its expectation over the data is minimised
+    only by the real law (strictly proper; Szekely and Rizzo). k = 1 is twice the energy score of x for y."""
+    n, k = x.shape[1], y.shape[1]
+    assert n >= 2, "the energy distance needs two or more samples per group"
+    i, j = torch.triu_indices(n, n, 1, device=x.device)  # pairs i < j: the norm's gradient is undefined at 0
+    out = 2 * (x[:, :, None] - y[:, None]).norm(dim=-1).mean((1, 2)) - (x[:, i] - x[:, j]).norm(dim=-1).mean(1)
+    if k > 1:
+        a, b = torch.triu_indices(k, k, 1, device=y.device)
+        out = out - (y[:, a] - y[:, b]).norm(dim=-1).mean(1)
+    return out
+
+
+def set_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, batch: dict, K: int, m: int = 1,
+             steps: int = 6, g: float = 2.0, kl: float = 1.0, w_set: float = 1.0, w_adv: float = 0.0,
+             critic: Critic | None = None, generator: torch.Generator | None = None) -> tuple[torch.Tensor, dict]:
+    """Proper multi-sample fine-tuning of the sampler (reports/SANG RL for video realism.md, ideas 1 and 2).
+
+    batch holds persons x K windows in person order (PersonSets, flattened); each window is rolled out m times.
+      ed     energy distance between a person's K*m samples and its K real windows, on the standardised codes.
+             K = 1, m = 8 is idea 1 (8 samples for one input against its real window); K = 8, m = 1 idea 2.
+      ed_adv the same in the set critic's unit feature space (Critic.features; the critic maximises it, see
+             set_critic_loss). ed stays in the loss, so the sum is still minimised only by the real law.
+    loss = w_set ed + w_adv ed_adv + kl path KL. ed has no reward model to exploit: its minimiser is the data."""
+    B0 = batch["target"].shape[0]
+    P = B0 // K
+    rep = {k: v.repeat_interleave(m, 0) for k, v in batch.items()} if m > 1 else batch
+    x, path_kl = rollout(policy, ref_model, rep, steps, g, generator)
+    loss, parts = kl * path_kl.mean(), {"path_kl": path_kl.mean().detach()}
+    if w_set:
+        e = energy(x.float().reshape(P, K * m, -1), batch["target"].float().reshape(P, K, -1)).mean()
+        loss, parts["ed"] = loss + w_set * e, e.detach()
+    if w_adv:
+        with torch.no_grad():
+            demo = critic.encode_demo(batch)
+            fy = critic.features(batch["target"], batch, demo)
+        fx = critic.features(x, rep, demo.repeat_interleave(m, 0) if demo is not None and m > 1 else demo)
+        e = energy(fx.view(P, K * m, -1), fy.view(P, K, -1)).mean()
+        loss, parts["ed_adv"] = loss + w_adv * e, e.detach()
+    return loss, parts
+
+
+def set_critic_loss(critic: Critic, batch: dict, fake: torch.Tensor, K: int, gp: float = 0.0) -> tuple[torch.Tensor, dict]:
+    """The set critic maximises the energy distance between each person's generated windows `fake` and its real
+    windows in its unit feature space (MMD-GAN / OT-GAN style: it learns where the two sets differ most). gp > 0 adds
+    gp/2 E_real ||J^T r||^2 with r ~ N(0, I): one backward's estimate of the feature Jacobian's squared norm at real
+    windows (R1 for a vector output), so a small change of the motion cannot move the features far."""
+    y = batch["target"].detach().requires_grad_(gp > 0)
+    P = y.shape[0] // K
+    demo = critic.encode_demo(batch)
+    with sdpa_kernel(SDPBackend.MATH) if gp > 0 else contextlib.nullcontext():  # flash attention has no 2nd backward
+        fy = critic.features(y, batch, demo)
+    fx = critic.features(fake, batch, demo)
+    out = {"neg_ed_adv": -energy(fx.view(P, K, -1), fy.view(P, K, -1)).mean()}
+    if gp > 0:
+        grad, = torch.autograd.grad((fy * torch.randn_like(fy)).sum(), y, create_graph=True)
+        out["gp"] = 0.5 * gp * grad.float().pow(2).sum((1, 2)).mean()
+    return sum(out.values()), {k: v.detach() for k, v in out.items()}
+
+
+def rl_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, critic: Critic, batch: dict,
+            steps: int = 6, g: float = 2.0, kl: float = 1.0, w_real: float = 1.0, w_sync: float = 1.0,
+            shift: tuple[int, int] = (3, 15), w_person: float = 0.0,
+            generator: torch.Generator | None = None) -> tuple[torch.Tensor, dict]:
+    """KL-regularised reward maximisation, backpropagated through the whole Euler sampler (DRaFT-style).
+
+    reward = w_real l_real + w_sync (l_sync - l_sync with the audio shifted) of the clean sample (critic frozen). The
+    sync term is a contrast on the same sample, one shift each way by shift frames, as SyncNet's confidence is: motion the
+    sync head likes under any audio earns nothing (RL v1 raised l_sync above real while LSE-C fell, research log §3.30).
+    w_person adds the person contrast (Critic.person_contrast): this person's footage against another speaker's.
+    path KL: see rollout. For this deterministic sampler it is a trust region on the velocity, not a KL between output
+    laws: it has no entropy term, so its optimum is not p_real (reports/SANG RL for video realism.md)."""
+    x0 = batch["target"]
+    B, dev = x0.shape[0], x0.device
+    with torch.no_grad():
+        d_cri = critic.encode_demo(batch)
+    x, path_kl = rollout(policy, ref_model, batch, steps, g, generator)
     score = lambda audio: critic(x, torch.zeros(B, device=dev), audio, batch["ref"], prefix=batch["prefix"],
                                  demo=d_cri, demo_keep=batch.get("demo_keep")).float()
     r = score(batch["audio"])

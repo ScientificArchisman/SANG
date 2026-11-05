@@ -11,7 +11,7 @@ batch_size: 64
 lr: 1.0e-5
 critic_lr: 5.0e-5
 weight_decay: 0.01         # critic refit only; the policy has none
-kl: 1.0                    # KL weight; 1 = the optimum is the real distribution (docs/person_critic_plan.md)
+kl: 1.0                    # path-KL weight: a velocity trust region for this deterministic sampler, not a true KL
 w_real: 1.0                # reward = w_real * realism logit + w_sync * (sync logit - sync logit, audio shifted)
 w_sync: 1.0
 w_person: 1.0              # + w_person * (person logit with this person's footage - with another speaker's); 0 without one

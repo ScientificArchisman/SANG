@@ -116,11 +116,16 @@ class MotionWindows(Dataset):
     def __len__(self):
         return len(self.rows) * self.per_clip
 
+    def clip(self, j):
+        return self.mem[j] if self.mem is not None else self._load(self.rows[j])
+
     def __getitem__(self, i):
-        j = i % len(self.rows)
-        y_all, ref_all, audio = self.mem[j] if self.mem is not None else self._load(self.rows[j])
+        return self.window(i % len(self.rows), random.Random(i) if self.fixed else random)
+
+    def window(self, j, rng, peer=None, stretch=None):
+        """A random window of clip j; peer (a clip index) and stretch (start, frames) fix the footage (PersonSets)."""
+        y_all, ref_all, audio = self.clip(j)
         n, span = y_all.shape[0], self.L + self.P
-        rng = random.Random(i) if self.fixed else random
         s = rng.randint(0, n - span)
         k = rng.randint(0, n - 1)
         y = y_all[s:s + span] - y_all[k]
@@ -130,15 +135,48 @@ class MotionWindows(Dataset):
             N = self.demo
             dm, mask = torch.zeros(N, y_all.shape[1]), torch.zeros(N, dtype=torch.bool)
             da = torch.zeros(TPF * N, audio.shape[1], dtype=audio.dtype)
-            if self.peers[j]:
-                p = rng.choice(self.peers[j])
-                y2, _, a2 = self.mem[p] if self.mem is not None else self._load(self.rows[p])
-                n = min(len(y2), rng.randint(self.demo_min, N))
-                s2 = rng.randint(0, len(y2) - n)
+            if peer is None and self.peers[j]:
+                peer = rng.choice(self.peers[j])
+            if peer is not None:
+                y2, _, a2 = self.clip(peer)
+                if stretch is None:
+                    n = min(len(y2), rng.randint(self.demo_min, N))
+                    stretch = (rng.randint(0, len(y2) - n), n)
+                s2, n = stretch
                 dm[:n] = y2[s2:s2 + n] - y_all[k]
                 a = a2[TPF * s2: TPF * (s2 + n)]
                 da[:len(a)] = a
                 mask[:n] = True
-            out.update(demo_motion=dm, demo_audio=da, demo_mask=mask, demo_keep=torch.tensor(bool(self.peers[j])))
+            out.update(demo_motion=dm, demo_audio=da, demo_mask=mask, demo_keep=torch.tensor(peer is not None))
         return out
+
+
+class PersonSets(Dataset):
+    """K windows of one person (a video directory) that all read the same footage: one stretch of a clip that none of
+    the K windows comes from, so the real windows are held out from what the generator sees (sang.model.critic.
+    set_loss compares a person's generated and real windows as sets). Only persons with two or more clips; K = 1 is
+    one window with footage, as MotionWindows gives."""
+
+    def __init__(self, ds: MotionWindows, K: int, fixed: bool = False):
+        if not ds.demo:
+            raise ValueError("PersonSets needs footage (demo > 0)")
+        by_video = {}
+        for j, r in enumerate(ds.rows):
+            by_video.setdefault(Path(r["path"]).parent.name, []).append(j)
+        self.ds, self.K, self.fixed = ds, K, fixed
+        self.groups = [v for v in by_video.values() if len(v) > 1]
+
+    def __len__(self):
+        return len(self.groups) * self.ds.per_clip
+
+    def __getitem__(self, i):
+        rng = random.Random(i) if self.fixed else random
+        clips = self.groups[i % len(self.groups)]
+        p = rng.choice(clips)
+        y2 = self.ds.clip(p)[0]
+        n = min(len(y2), rng.randint(self.ds.demo_min, self.ds.demo))
+        stretch = (rng.randint(0, len(y2) - n), n)
+        rest = [j for j in clips if j != p]
+        items = [self.ds.window(rng.choice(rest), rng, p, stretch) for _ in range(self.K)]
+        return {k: torch.stack([w[k] for w in items]) for k in items[0]}
 
