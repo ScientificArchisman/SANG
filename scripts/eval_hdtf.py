@@ -46,6 +46,8 @@ Protocol (also written to <out>/protocol.json):
             real segment is (sang.eval.naturalness.copy_ratio; << 1 = replaying the footage).
             --motion-only: the sang row's motion statistics and critic scores only, no rendering or video metrics
             (the same seed gives the same motion as a full run, so its FVD carries over).
+            --head-check S: real_critic_*_head_{all,slow,fast}, the real motion's critic scores with its head scaled by
+            S about the photo's pose: all of it, only the drift slower than one 64-frame window, or only the rest.
 Resumable: per-clip results go to <out>/clips/<row>/<clip>.{json,npz}; a rerun skips them.
 """
 import argparse
@@ -70,7 +72,7 @@ SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std", "real_rot_std",
                "rot_vel", "real_rot_vel", "critic_real", "real_critic_real", "critic_sync", "real_critic_sync",
-               "copy_ratio")
+               "copy_ratio") + tuple(f"real_critic_{k}_head_{p}" for p in ("all", "slow", "fast") for k in ("real", "sync"))
 METRICS = ("FID", "FVD", "CSIM", "LSE-C", "LSE-D", "PSNR", "SSIM")
 
 
@@ -139,6 +141,9 @@ class Evaluator:
         self.last_stats = {**self.motion_stats(m, real), **self.talker.last_critic}
         if real is not None and real["span"][0] == 0:  # the critic needs the real motion aligned with the audio
             self.last_stats.update(self.talker.score_motion(real["m"]))
+            for part in ("all", "slow", "fast") if a.head_check is not None else ():
+                sc = self.talker.score_motion(real["m"], (a.head_check, part))
+                self.last_stats.update({f"{k}_head_{part}": v for k, v in sc.items()})
         if real is not None and self.talker.demo_motion is not None:
             from sang.eval.naturalness import copy_ratio
             from sang.model.target import to_target
@@ -374,7 +379,12 @@ def main() -> None:
     ap.add_argument("--fit-blocks", type=int, default=1, help="last trunk blocks that get LoRA (plus the head)")
     ap.add_argument("--fit-lr", type=float, default=1e-3)
     ap.add_argument("--motion-only", action="store_true", help="sang row motion stats and critic scores only")
+    ap.add_argument("--head-check", type=float, default=None,
+                    help="also score the real motion with its head scaled by this about the photo's pose: all of it, "
+                         "only the drift slower than one critic window, only the rest (does the critic see head range?)")
     args = ap.parse_args()
+    if args.head_check is not None and not (args.critic and args.real_stats):
+        sys.exit("--head-check needs --critic and --real-stats")
     if args.motion_only and args.rows != ["sang"]:
         sys.exit("--motion-only scores the sang row only: pass --rows sang")
     args.critic_demo = args.demo if args.critic_demo is None else args.critic_demo

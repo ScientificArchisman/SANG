@@ -208,13 +208,18 @@ class Talker:
         return np.concatenate(out), m, timer
 
     @torch.no_grad()
-    def score_motion(self, m: torch.Tensor) -> dict:
+    def score_motion(self, m: torch.Tensor, head: tuple[float, str] | None = None) -> dict:
         """The person critic's mean logits for motion m [n, 70] (e.g. the real clip's) on the inputs of the last run
-        (same photo, audio, footage, fitted critic): {real_critic_real, real_critic_sync}, {} without a critic."""
+        (same photo, audio, footage, fitted critic): {real_critic_real, real_critic_sync}, {} without a critic.
+        head = (s, part): first scale m's head about the photo's pose (sang.eval.naturalness.shrink_head)."""
         critic, audio, ref, first, ctokens, m_src = self._scoring
         if critic is None:
             return {}
-        z = self.latent.from_motion(m.float().to(self.dev), m_src, self.model.t_dim)
+        m = m.float().to(self.dev)
+        if head is not None:
+            from sang.eval.naturalness import shrink_head
+            m = shrink_head(m, m_src.float(), *head)
+        z = self.latent.from_motion(m, m_src, self.model.t_dim)
         from sang.model.critic import score_clip
         return {f"real_{k}": v for k, v in score_clip(critic, z[None], audio, ref, first, ctokens,
                                                       self.cfg["frames"]).items()}
