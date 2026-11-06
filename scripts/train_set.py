@@ -136,9 +136,6 @@ def main() -> None:
     if score not in ("es", "mbes") or (score == "mbes" and (K != 1 or w_adv)):
         raise SystemExit("score: es, or mbes with K = 1 and no set critic")
     d = setup_data(cfg, dev)
-    real = next(iter(DataLoader(d.train_ds, batch_size=1024, shuffle=True, num_workers=cfg["workers"])))
-    real = d.encode({k: real[k].to(dev) for k in ("target", "prefix")})
-    blocks = (d.decode, *block_scale(real["target"], real["prefix"][:, -1:], d.decode))  # mbes's c0, c_b: real spreads
     batches = forever(DataLoader(PersonSets(d.train_ds, K), batch_size=cfg["persons"], shuffle=True,
                                  num_workers=cfg["workers"], drop_last=True, pin_memory=dev == "cuda",
                                  persistent_workers=cfg["workers"] > 0))
@@ -154,6 +151,13 @@ def main() -> None:
     mcfg = {**ck["cfg"], "sample_steps": steps, "cfg_audio": g}
     amp = dict(device_type=dev, dtype=torch.bfloat16, enabled=cfg["bf16"])
     next_batch = lambda: d.encode({k: v.to(dev, non_blocking=True).flatten(0, 1) for k, v in next(batches).items()})
+    # mbes's c0, c_b: real spreads of ~1024 training windows, from the training loader (one 1024 batch with its
+    # footage audio per worker ran out of host memory); shuffled so neighbours are different inputs when K > 1
+    real = [{k: b[k] for k in ("target", "prefix")} for b in (next_batch() for _ in range(max(1, 1024 // (cfg["persons"] * K))))]
+    tgt, pre = (torch.cat([b[k] for b in real]) for k in ("target", "prefix"))
+    perm = torch.randperm(len(tgt), device=tgt.device)
+    blocks = (d.decode, *block_scale(tgt[perm], pre[perm][:, -1:], d.decode))
+    del real, tgt, pre
 
     def eval_round(rnd: int) -> dict:
         with torch.autocast(**amp):
