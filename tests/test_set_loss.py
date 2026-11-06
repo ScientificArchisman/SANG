@@ -9,10 +9,11 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(REPO), str(REPO / "scripts"), str(Path(__file__).resolve().parent)]
 from sang.data.dataset import MotionWindows, PersonSets
 from sang.data.paths import load_index
-from sang.model.critic import Critic, block_scale, energy, haar, mbes, set_critic_loss, set_loss
+from sang.model.critic import (LoRA, Critic, block_scale, energy, fit_generator, footage_windows, haar, mbes,
+                               set_critic_loss, set_loss)
 from sang.model.flow import REF_DIM, Norm
 from test_demo import M, _demo
-from test_motion_model import _batch, _model, _unzero
+from test_motion_model import A, K, L, P, _batch, _model, _unzero
 from test_train_eval import make_cache, train
 
 
@@ -114,6 +115,29 @@ def test_both_losses_train_the_policy_and_the_set_critic():
     assert float(cparts["gp"]) > 0 and critic.trunk.in_proj.weight.grad.abs().sum() > 0
     f = critic.features(b["target"], b, critic.encode_demo(b))
     assert torch.allclose(f.norm(dim=-1), torch.ones(2), atol=1e-5)
+
+
+def test_the_person_fit_adapts_a_copy_and_masks_each_window_out_of_the_footage():
+    torch.manual_seed(0)
+    gen = _model(demo_tokens=M).eval()
+    _unzero(gen)
+    before = copy.deepcopy(gen.state_dict())
+    n = P + L + 20
+    u, audio, ref = torch.randn(n, K), torch.randn(1, 2 * n, A), torch.randn(1, REF_DIM)
+    b = footage_windows(u, audio, ref, 3, P, L, torch.Generator().manual_seed(1))
+    assert (~b["demo_mask"]).sum(1).tolist() == [P + L] * 3
+    assert all(torch.equal(u[~b["demo_mask"][i]], torch.cat([b["prefix"][i], b["target"][i]])) for i in range(3))
+    kw = dict(batch=2, m=2, pool=4, P=P, L=L, gen_steps=2)
+    assert fit_generator(gen, u, audio, ref, lambda z: z, steps=0, **kw) is gen
+    assert fit_generator(gen, u[: P + L - 1], audio, ref, lambda z: z, **kw) is gen  # shorter than one window
+    fitted = fit_generator(gen, u, audio, ref, lambda z: z, steps=3, **kw)
+    assert all(torch.equal(v, gen.state_dict()[k]) for k, v in before.items())
+    adapters = [mod for mod in fitted.modules() if isinstance(mod, LoRA)]
+    assert len(adapters) == 4 and any(float(mod.b.abs().sum()) > 0 for mod in adapters)
+    x, t = torch.randn(3, L, K), torch.full((3,), 0.5)
+    out = lambda mdl: mdl(x, t, b["audio"], b["ref"], prefix=b["prefix"], demo=mdl.encode_demo(b))
+    with torch.no_grad():
+        assert not torch.allclose(out(fitted), out(gen))
 
 
 def test_train_set_runs_rounds_reports_the_gates_and_stops(tmp_path, monkeypatch, capsys):

@@ -190,12 +190,12 @@ class LoRA(nn.Module):
         return self.base(x) + F.linear(F.linear(x, self.a), self.b)
 
 
-def add_lora(critic: Critic, rank: int = 4, blocks: int = 1) -> list[nn.Parameter]:
-    """Freeze the critic; add LoRA to its head and to the SwiGLU and adaLN layers of its last `blocks` blocks.
-    Returns the adapter parameters, the only ones the test-time fit trains."""
-    critic.requires_grad_(False)
-    sites = [(critic, "head")]
-    for blk in critic.trunk.blocks[len(critic.trunk.blocks) - blocks:]:
+def add_lora(model: Critic | MotionFlowTransformer, rank: int = 4, blocks: int = 1) -> list[nn.Parameter]:
+    """Freeze a critic or a generator; add LoRA to the SwiGLU and adaLN layers of its last `blocks` blocks (and to a
+    critic's head). Returns the adapter parameters, the only ones the test-time fit trains."""
+    model.requires_grad_(False)
+    trunk, sites = (model.trunk, [(model, "head")]) if isinstance(model, Critic) else (model, [])
+    for blk in trunk.blocks[len(trunk.blocks) - blocks:]:
         sites += [(blk.ff, "w1"), (blk.ff, "w2"), (blk.ff, "w3"), (blk.ada, "1")]
     params = []
     for mod, name in sites:
@@ -217,21 +217,10 @@ def fit_person(critic: Critic, gen: MotionFlowTransformer, u: torch.Tensor, audi
     u [N, k] footage codes relative to the photo, audio [1, >= 2N, 1024] its WavLM, ref [1, REF_DIM].
     Returns a fitted copy; the critic itself when steps = 0 (the no-fit ablation) or the footage is shorter than
     one window."""
-    N, W, dev = u.shape[0], P + L, u.device
-    if steps <= 0 or N < W:
+    if steps <= 0 or u.shape[0] < P + L:
         return critic
-    rng = torch.Generator(device=dev).manual_seed(seed)
-    A = audio[0, : TPF * N].float()
-    A = F.pad(A, (0, 0, 0, TPF * N - A.shape[0]))
-    s = torch.randint(0, N - W + 1, (pool,), generator=rng, device=dev)
-    idx = s[:, None] + torch.arange(W, device=dev)
-    win = u[idx]
-    mask = torch.ones(pool, N, dtype=torch.bool, device=dev)
-    mask[torch.arange(pool, device=dev)[:, None], idx] = False
-    b = {"target": win[:, P:], "prefix": win[:, :P], "audio": A[(TPF * s)[:, None] + torch.arange(TPF * W, device=dev)],
-         "ref": ref.expand(pool, -1), "demo_motion": u[None].expand(pool, -1, -1),
-         "demo_audio": A[None].expand(pool, -1, -1), "demo_mask": mask,
-         "demo_keep": torch.ones(pool, dtype=torch.bool, device=dev)}
+    rng = torch.Generator(device=u.device).manual_seed(seed)
+    b = footage_windows(u, audio, ref, pool, P, L, rng)
     sub = lambda j: {k: v[j] for k, v in b.items()}
     fake = torch.cat([gen_fakes(gen, sub(slice(i, i + batch)), gen_steps, g, rng) for i in range(0, pool, batch)])
     fitted = copy.deepcopy(critic)
@@ -239,12 +228,64 @@ def fit_person(critic: Critic, gen: MotionFlowTransformer, u: torch.Tensor, audi
     fitted.train()
     with torch.enable_grad():
         for _ in range(steps):
-            j = torch.randint(0, pool, (batch,), generator=rng, device=dev)
+            j = torch.randint(0, pool, (batch,), generator=rng, device=u.device)
             loss, _ = critic_loss(fitted, sub(j), fake[j], p_clean=p_clean, p_demo=0.0, sync=False, person=False)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
     return fitted.eval().requires_grad_(False)
+
+
+def footage_windows(u: torch.Tensor, audio: torch.Tensor, ref: torch.Tensor, pool: int, P: int, L: int,
+                    rng: torch.Generator) -> dict:
+    """A batch of `pool` random (prefix P + window L) stretches of one person's footage u [N, k] (audio [1, >= 2N, D]
+    its WavLM, ref [1, REF_DIM]), each reading the whole footage with its own stretch masked out, so a model cannot
+    win by recognising frames it was shown."""
+    N, W, dev = u.shape[0], P + L, u.device
+    A = audio[0, : TPF * N].float()
+    A = F.pad(A, (0, 0, 0, TPF * N - A.shape[0]))
+    s = torch.randint(0, N - W + 1, (pool,), generator=rng, device=dev)
+    idx = s[:, None] + torch.arange(W, device=dev)
+    win = u[idx]
+    mask = torch.ones(pool, N, dtype=torch.bool, device=dev)
+    mask[torch.arange(pool, device=dev)[:, None], idx] = False
+    return {"target": win[:, P:], "prefix": win[:, :P], "audio": A[(TPF * s)[:, None] + torch.arange(TPF * W, device=dev)],
+            "ref": ref.expand(pool, -1), "demo_motion": u[None].expand(pool, -1, -1),
+            "demo_audio": A[None].expand(pool, -1, -1), "demo_mask": mask,
+            "demo_keep": torch.ones(pool, dtype=torch.bool, device=dev)}
+
+
+def fit_generator(gen: MotionFlowTransformer, u: torch.Tensor, audio: torch.Tensor, ref: torch.Tensor, decode,
+                  steps: int = 20, rank: int = 4, blocks: int = 1, lr: float = 1e-3, batch: int = 8, m: int = 8,
+                  pool: int = 64, P: int = 10, L: int = 64, gen_steps: int = 6, g: float = 2.0, kl: float = 1.0,
+                  seed: int = 0) -> MotionFlowTransformer:
+    """Test-time person fit of the generator (LoRA only; reports/SANG flow generated person adapters.md, rank 1).
+
+    Each step rolls out m samples for `batch` footage windows (footage_windows: the window masked out of the footage
+    the model reads) through the deployed sampler and minimises the multiscale-block energy score against the
+    window's real motion, plus kl x the path KL to the unadapted model (set_loss with K = 1). The score is strictly
+    proper, so its minimum is this person's own motion law, not a reward to hack. Block constants c0, c_b come from
+    this person's footage windows: any positive constants keep the score proper, these weight the blocks for this
+    person. u [N, k] footage codes relative to the photo, audio [1, >= 2N, D] its WavLM, ref [1, REF_DIM], decode the
+    latent's codes -> 69 motion channels. Returns an adapted copy; gen itself when steps = 0 (the no-fit ablation)
+    or the footage is shorter than one window."""
+    if steps <= 0 or u.shape[0] < P + L:
+        return gen
+    dev = u.device
+    rng = torch.Generator(device=dev).manual_seed(seed)
+    b = footage_windows(u, audio, ref, pool, P, L, rng)
+    blk = (decode, *block_scale(b["target"], b["prefix"][:, -1:], decode))
+    sub = lambda j: {k: v[j] for k, v in b.items()}
+    fitted = copy.deepcopy(gen).eval()  # eval: no dropout in the rollouts; gradients still flow
+    opt = torch.optim.Adam(add_lora(fitted, rank, blocks), lr=lr)
+    with torch.enable_grad(), torch.autocast(dev.type, dtype=torch.bfloat16, enabled=dev.type == "cuda"):
+        for _ in range(steps):
+            j = torch.randint(0, pool, (batch,), generator=rng, device=dev)
+            loss, _ = set_loss(fitted, gen, sub(j), 1, m, gen_steps, g, kl, blocks=blk, generator=rng)
+            opt.zero_grad(set_to_none=True)
+            loss.backward()
+            opt.step()
+    return fitted.requires_grad_(False)
 
 
 def rollout(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, batch: dict, steps: int = 6,
