@@ -295,9 +295,52 @@ def energy(x: torch.Tensor, y: torch.Tensor, paired: bool = False) -> torch.Tens
     return out
 
 
+def haar(x: torch.Tensor) -> list[torch.Tensor]:
+    """Orthonormal Haar levels of x [..., T, C] over time (T a power of 2): the details at 1, 2, 4, ... frames, then
+    the window mean (T = 64: 7 levels of 32, 16, 8, 4, 2, 1 and 1 coefficients)."""
+    assert x.shape[-2] & (x.shape[-2] - 1) == 0, "the Haar levels need a power-of-2 window"
+    out = []
+    while x.shape[-2] > 1:
+        a, b = x[..., 0::2, :], x[..., 1::2, :]
+        out.append((a - b) / 2 ** 0.5)
+        x = (a + b) / 2 ** 0.5
+    return out + [x]
+
+
+def block_scale(y: torch.Tensor, start: torch.Tensor, decode) -> tuple[torch.Tensor, torch.Tensor]:
+    """The constants mbes divides by, from pairs of different real windows y [N, T, K] (codes, N >= 2) measured from
+    their start [N, 1, K]: E||Y - Y'|| of the whole window, and of every (Haar level, decoded channel) block [levels, C]."""
+    with torch.autocast(y.device.type, enabled=False):
+        ys, w = (y - start).float(), decode(y.float()) - decode(start.float())
+        c0 = (ys - ys.roll(1, 0)).flatten(1).norm(dim=-1).mean()
+        return c0, torch.stack([(h - h.roll(1, 0)).norm(dim=-2).mean(0) for h in haar(w)])
+
+
+def mbes(x: torch.Tensor, y: torch.Tensor, start: torch.Tensor, decode, c0: torch.Tensor,
+         cb: torch.Tensor) -> torch.Tensor:
+    """Multiscale-block energy score per input (reports/SANG style aware scoring rules.md, rank 1): samples x
+    [B, m, T, K] (m >= 2) and the real window y [B, T, K], codes measured from start [B, 1, K], the last prefix frame.
+      ES(whole window) + c0 x mean over blocks b of ES(block b) / c_b
+    with a block one decoded motion channel at one Haar level (69 x 7 at T = 64) and c_b its real spread
+    (block_scale), so every block counts equally. Each term is proper and the first strictly, so the sum is strictly
+    proper; the blocks see errors confined to a few channels or one time scale (head range, nod rhythm, drift), which
+    the whole-window score dilutes. c0 keeps it in the units of the whole-window score, so kl keeps its meaning."""
+    m = x.shape[1]
+    i, j = torch.triu_indices(m, m, 1, device=x.device)
+    es = lambda u, v, dim: (u - v[:, None]).norm(dim=dim).mean(1) - 0.5 * (u[:, i] - u[:, j]).norm(dim=dim).mean(1)
+    with torch.autocast(x.device.type, enabled=False):
+        x, y, start = x.float(), y.float(), start.float()
+        full = es((x - start[:, None]).flatten(2), (y - start).flatten(1), -1)
+        p = decode(start)
+        hx, hy = haar(decode(x) - p[:, None]), haar(decode(y) - p)
+        blocks = torch.stack([es(a, b, -2) for a, b in zip(hx, hy)], 1) / cb  # [B, levels, C]
+        return full + c0 * blocks.flatten(1).mean(1)
+
+
 def set_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, batch: dict, K: int, m: int = 1,
              steps: int = 6, g: float = 2.0, kl: float = 1.0, w_set: float = 1.0, w_adv: float = 0.0,
-             critic: Critic | None = None, generator: torch.Generator | None = None) -> tuple[torch.Tensor, dict]:
+             critic: Critic | None = None, generator: torch.Generator | None = None,
+             blocks: tuple | None = None) -> tuple[torch.Tensor, dict]:
     """Proper multi-sample fine-tuning of the sampler (reports/SANG RL for video realism.md, ideas 1 and 2).
 
     batch holds persons x K windows in person order (PersonSets, flattened); each window is rolled out m times.
@@ -305,6 +348,7 @@ def set_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, ba
              the window's last prefix frame (else the windows' different photo offsets swamp the spread; for K = 1 the
              shift changes nothing).
              K = 1, m = 8 is idea 1 (8 samples for one input against its real window); K = 8, m = 1 idea 2.
+      mbes   with blocks = (decode, c0, cb) and K = 1: the multiscale-block energy score in place of ed (mbes).
       ed_adv the same in the set critic's unit feature space (Critic.features; the critic maximises it, see
              set_critic_loss). ed stays in the loss, so the sum is still minimised only by the real law.
     loss = w_set ed + w_adv ed_adv + kl path KL. ed has no reward model to exploit: its minimiser is the data."""
@@ -313,7 +357,11 @@ def set_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, ba
     rep = {k: v.repeat_interleave(m, 0) for k, v in batch.items()} if m > 1 else batch
     x, path_kl = rollout(policy, ref_model, rep, steps, g, generator)
     loss, parts = kl * path_kl.mean(), {"path_kl": path_kl.mean().detach()}
-    if w_set:
+    if w_set and blocks is not None:
+        assert K == 1, "mbes scores samples of one input against its own window (idea 1)"
+        e = mbes(x.view(B0, m, *x.shape[1:]), batch["target"], batch["prefix"][:, -1:], *blocks).mean()
+        loss, parts["mbes"] = loss + w_set * e, e.detach()
+    elif w_set:
         start = batch["prefix"][:, -1:].float()  # each window from where it starts: its photo and prefix offset cancel
         xs, ys = x.float() - start.repeat_interleave(m, 0), batch["target"].float() - start
         e = energy(xs.reshape(P, K * m, -1), ys.reshape(P, K, -1), True).mean()

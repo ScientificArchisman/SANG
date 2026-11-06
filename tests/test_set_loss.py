@@ -9,7 +9,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(REPO), str(REPO / "scripts"), str(Path(__file__).resolve().parent)]
 from sang.data.dataset import MotionWindows, PersonSets
 from sang.data.paths import load_index
-from sang.model.critic import Critic, energy, set_critic_loss, set_loss
+from sang.model.critic import Critic, block_scale, energy, haar, mbes, set_critic_loss, set_loss
 from sang.model.flow import REF_DIM, Norm
 from test_demo import M, _demo
 from test_motion_model import _batch, _model, _unzero
@@ -54,6 +54,24 @@ def test_paired_sets_compare_laws_not_each_sample_with_its_own_window():
     assert abs(float(energy(two, y, True).mean())) < 3 * float(energy(two, y, True).std()) / 2000 ** 0.5
 
 
+def test_the_block_score_is_lowest_at_the_real_spread_and_sees_a_two_channel_shrink():
+    g = torch.Generator().manual_seed(3)
+    x = torch.randn(5, 16, 3, generator=g)
+    assert torch.allclose(sum(h.pow(2).sum() for h in haar(x)), x.pow(2).sum(), rtol=1e-5)  # orthonormal
+    n, m, T, C = 1500, 8, 16, 12
+    y, z = torch.randn(n, T, C, generator=g), torch.randn(n, m, T, C, generator=g)
+    start, dec = torch.zeros(n, 1, C), lambda u: u
+    blocks = (dec, *block_scale(y, start, dec))
+    score = {s: float(mbes(s * z, y, start, *blocks).mean()) for s in (0.62, 1.0, 1.3)}
+    assert score[1.0] < score[0.62] and score[1.0] < score[1.3]
+    narrow = z.clone()
+    narrow[..., :2] *= 0.62  # 2 of 12 channels: the whole-window score dilutes it, the blocks do not
+    zs = lambda dlt: float(dlt.mean() / (dlt.std() / n ** 0.5))
+    whole = lambda u: energy(u.flatten(2), y.flatten(1)[:, None]) / 2
+    z_es, z_mb = zs(whole(narrow) - whole(z)), zs(mbes(narrow, y, start, *blocks) - mbes(z, y, start, *blocks))
+    assert z_mb > 3 and z_mb > 2 * abs(z_es)
+
+
 def test_person_sets_hold_the_real_windows_out_of_the_footage(tmp_path):
     make_cache(tmp_path, n_spk=4)
     norm = Norm(torch.zeros(REF_DIM - 63), torch.ones(REF_DIM - 63), torch.zeros(63), torch.ones(63))
@@ -85,6 +103,11 @@ def test_both_losses_train_the_policy_and_the_set_critic():
     grads = [p.grad for p in policy.parameters() if p.grad is not None]
     assert grads and all(torch.isfinite(gr).all() for gr in grads) and sum(gr.abs().sum() for gr in grads) > 0
     assert {"path_kl", "ed", "ed_adv"} <= parts.keys() and float(parts["path_kl"]) < 1e-8
+    policy.zero_grad()
+    blocks = (lambda u: u, *block_scale(b["target"], b["prefix"][:, -1:], lambda u: u))
+    loss, parts = set_loss(policy, ref, b, K=1, m=2, steps=2, blocks=blocks)  # idea 1 with the block score
+    loss.backward()
+    assert "mbes" in parts and sum(p.grad.abs().sum() for p in policy.parameters() if p.grad is not None) > 0
     critic.requires_grad_(True)
     closs, cparts = set_critic_loss(critic, b, torch.randn_like(b["target"]), K=2, gp=10.0)
     closs.backward()
@@ -98,7 +121,7 @@ def test_train_set_runs_rounds_reports_the_gates_and_stops(tmp_path, monkeypatch
     cache = tmp_path / "cache"
     make_cache(cache)
     train(cache, tmp_path / "gen", "train_eval=false", "demo_tokens=4", "demo_frames=30", "demo_min_frames=10")
-    calls = iter([0.80, 0.85, 0.70])  # round 0, round 1 closer to real, round 2 away -> stop, use round 1
+    calls = iter([0.80, 0.85, 0.70, 0.80, 0.85])  # round 0, round 1 closer, round 2 away -> stop; then the mbes run
     def motion_eval(*a, **kw):
         r = next(calls)
         return {f"{s}_r_{q}": r for s in ("std", "vc") for q in ("mouth", "rot", "place")}
@@ -110,4 +133,11 @@ def test_train_set_runs_rounds_reports_the_gates_and_stops(tmp_path, monkeypatch
     train_set.main()
     out = capsys.readouterr().out
     assert "STOP after round 2" in out and "gate " in out and "gate_adv" in out and "es_s1.6" in out
+    assert "g1z_mbes_head0.62_slow" in out and "mbes_s1.6" in out
     assert sorted(p.name for p in (tmp_path / "set").iterdir()) == ["critic1.pt", "critic2.pt", "round1.pt", "round2.pt"]
+    monkeypatch.setattr(sys, "argv", ["train_set.py", f"gen={tmp_path / 'gen' / 'last.pt'}", f"out_dir={tmp_path / 'mb'}",
+                                      "rounds=1", "alternations=1", "policy_steps=2", "persons=2", "K=1", "m=2",
+                                      "score=mbes", "workers=0", "eval_batches=1", "log_every=1", "steps=2"])
+    train_set.main()
+    out = capsys.readouterr().out
+    assert "score mbes" in out and "mbes " in out and (tmp_path / "mb" / "round1.pt").exists()

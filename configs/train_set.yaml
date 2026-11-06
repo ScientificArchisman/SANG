@@ -11,6 +11,7 @@ persons: 8                 # batch = persons x K windows x m samples = 64 rollou
 K: 8                       # windows per person (1 = idea 1)
 m: 1                       # samples per window (idea 1: 8)
 w_set: 1.0                 # energy distance on the codes
+score: es                  # es = the energy distance on the codes; mbes (K = 1) = the multiscale-block score
 w_adv: 0.0                 # + the same in the set critic's learned space
 kl: 1.0                    # path-KL weight: a velocity trust region to the round's start
 lr: 1.0e-5
