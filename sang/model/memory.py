@@ -1,11 +1,12 @@
 """Style memory (research log §7.9, reports/SANG style memory.md): other TalkVid speakers' windows, retrieved as extra
 footage of a new person.
 
-  StyleKey  an (audio, residual) window -> a unit style vector, trained with a supervised InfoNCE over speakers
-            (scripts/train_style.py). residual = the real codes minus the frozen generator's mean for that audio,
-            photo and prefix (one pass at t = 1, no footage), so speakers are grouped by what the generator cannot get
-            from the audio: head range and drift, mouth gain and timing, blinks. key=motion embeds the codes
-            themselves (the ablation).
+  StyleKey  a window -> a unit style vector, trained with a supervised InfoNCE over speakers
+            (scripts/train_style.py). It never hears the voice, so it cannot tell speakers apart by it. key=residual
+            reads per frame the frozen generator's mean motion for the window's audio, photo and prefix (one pass at
+            t = 1, no footage) and the real codes minus it: what the speech predicts and how this person departs from
+            it (head range and drift, mouth gain and timing, blinks). key=motion reads the real codes alone (the
+            ablation).
   Memory    every training window's audio key, and every speaker's mean style. Two keys pick a window's
             demonstrations: the footage's style -> the N_SPK nearest speakers; the window's own audio -> the N_WIN
             windows of those speakers whose audio is nearest.
@@ -27,36 +28,40 @@ TPF, N_SPK, N_WIN = 2, 32, 4
 
 
 class StyleKey(nn.Module):
-    """[B, T, t_dim] residuals (or codes) + their audio [B, TPF*T, audio_dim] -> unit vectors [B, out]: the footage
-    encoder's layout with one query."""
+    """[B, T, t_in] frames (key_input) -> unit vectors [B, out]: the footage encoder's layout with one query and no
+    audio input."""
 
-    def __init__(self, t_dim: int, dim: int = 256, out: int = 128, heads: int = 4, audio_dim: int = 1024):
+    def __init__(self, t_in: int, dim: int = 256, out: int = 128, heads: int = 4):
         super().__init__()
-        self.cfg = {"t_dim": t_dim, "dim": dim, "out": out, "heads": heads, "audio_dim": audio_dim}
-        self.enc = DemoEncoder(dim, t_dim, audio_dim, TPF, 1, heads)
+        self.cfg = {"t_in": t_in, "dim": dim, "out": out, "heads": heads}
+        self.enc = DemoEncoder(dim, t_in, 0, TPF, 1, heads)
         self.head = nn.Linear(dim, out)
 
-    def forward(self, x: torch.Tensor, audio: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         mask = torch.ones(x.shape[:2], dtype=torch.bool, device=x.device)
-        return F.normalize(self.head(self.enc(x, audio, mask)[:, 0]).float(), dim=-1)
+        return F.normalize(self.head(self.enc(x, None, mask)[:, 0]).float(), dim=-1)
 
 
 @torch.no_grad()
-def residual(gen, batch: dict, generator: torch.Generator | None = None) -> torch.Tensor:
-    """target minus gen's mean for the window's audio, photo and prefix: x1 - v(x1, t = 1) is E[x0 | condition] for a
+def predicted(gen, batch: dict, generator: torch.Generator | None = None) -> torch.Tensor:
+    """gen's mean motion for the window's audio, photo and prefix: x1 - v(x1, t = 1) is E[x0 | condition] for a
     rectified flow (beta = 1, no guidance; no footage)."""
     x0 = batch["target"]
     B, dev = x0.shape[0], x0.device
     x1 = torch.randn(x0.shape, device=dev, generator=generator)
     v = gen(x1, torch.ones(B, device=dev), batch["audio"], batch["ref"], prefix=batch["prefix"],
             prefix_keep=torch.ones(B, dtype=torch.bool, device=dev))
-    return x0.float() - (x1 - v.float())
+    return x1 - v.float()
 
 
-def key_input(gen, batch: dict, key: str, generator: torch.Generator | None = None) -> tuple[torch.Tensor, torch.Tensor]:
-    """What the style key reads of a batch: (residual or codes of the target frames, their audio)."""
-    x = residual(gen, batch, generator) if key == "residual" else batch["target"].float()
-    return x, batch["audio"][:, TPF * batch["prefix"].shape[1]:]
+def key_input(gen, batch: dict, key: str, generator: torch.Generator | None = None) -> torch.Tensor:
+    """What the style key reads of a batch's target frames: residual = [real codes minus gen's mean, the mean]
+    [B, L, 2k]; motion = the real codes [B, L, k]. The audio reaches it only through gen's mean."""
+    x = batch["target"].float()
+    if key == "motion":
+        return x
+    mu = predicted(gen, batch, generator)
+    return torch.cat([x - mu, mu], -1)
 
 
 def supcon(z: torch.Tensor, labels: torch.Tensor, tau: float = 0.1) -> torch.Tensor:
@@ -78,7 +83,7 @@ def embed(key: StyleKey, gen, codes: torch.Tensor, ticks: torch.Tensor, ref: tor
         return None
     b = {"prefix": torch.stack([codes[s:s + P] for s in starts]), "target": torch.stack([codes[s + P:s + P + L] for s in starts]),
          "audio": torch.stack([ticks[TPF * s:TPF * (s + P + L)] for s in starts]), "ref": ref.expand(len(starts), -1)}
-    return F.normalize(key(*key_input(gen, b, kind)).mean(0), dim=0)
+    return F.normalize(key(key_input(gen, b, kind)).mean(0), dim=0)
 
 
 class Memory:

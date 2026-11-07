@@ -6,8 +6,8 @@
 
 configs/train_style.yaml on top of the generator run's config (gen), so the speaker split, sync offsets and latent are
 the generator's. A batch is `persons` TalkVid speakers x K windows spread over each speaker's clips; the loss is a
-supervised InfoNCE over speakers on the key of (audio, residual): key=residual (the real codes minus gen's mean from
-the audio, photo and prefix) or key=motion (the codes).
+supervised InfoNCE over speakers. The key never hears the voice: key=residual reads gen's mean motion for the audio,
+photo and prefix and the real codes minus it; key=motion reads the real codes alone (sang.model.memory.key_input).
 EVAL on the unseen val speakers, 8 windows each:
   top1_win   a window's nearest other window is the same speaker's
   top1_half  the mean key of 4 windows finds the mean of the speaker's other 4 among all val speakers (chance =
@@ -63,8 +63,7 @@ def keys(key, gen, b, d, dev, kind, amp, generator=None):
     lab = b.pop("speaker").flatten().to(dev)
     batch = d.encode({k: v.to(dev, non_blocking=True).flatten(0, 1) for k, v in b.items()})
     with torch.autocast(**amp):
-        x, a = key_input(gen, batch, kind, generator)
-        return key(x, a), lab
+        return key(key_input(gen, batch, kind, generator)), lab
 
 
 @torch.no_grad()
@@ -143,7 +142,7 @@ def main() -> None:
     d = setup_data({**cfg, "demo_tokens": 0, "memory": None}, dev)
     gen = build(ck["cfg"]).to(dev).eval().requires_grad_(False)
     gen.load_state_dict(ck["ema"])
-    key = StyleKey(d.k, int(cfg["dim"]), int(cfg["out"]), int(cfg["heads"])).to(dev)
+    key = StyleKey(d.k * (2 if cfg["key"] == "residual" else 1), int(cfg["dim"]), int(cfg["out"]), int(cfg["heads"])).to(dev)
     opt = torch.optim.AdamW(key.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
     amp = dict(device_type=dev, dtype=torch.bfloat16, enabled=cfg["bf16"])
     K, tau = int(cfg["K"]), float(cfg["tau"])

@@ -112,7 +112,7 @@ class DemoEncoder(nn.Module):
         super().__init__()
         self.tpf = tpf
         self.motion = nn.Linear(t_dim, dim)
-        self.audio = nn.Linear(audio_dim * tpf, dim)
+        self.audio = nn.Linear(audio_dim * tpf, dim) if audio_dim else None  # audio_dim 0: motion only
         self.mix = nn.Sequential(nn.Conv1d(dim, dim, 5, padding=2), nn.SiLU(), nn.Conv1d(dim, dim, 5, padding=2))
         self.queries = nn.Parameter(torch.randn(n_tokens, dim) * 0.02)
         self.kv_norm = nn.LayerNorm(dim)
@@ -130,12 +130,14 @@ class DemoEncoder(nn.Module):
         """motion [B, N, t_dim], audio [B, tpf*N, audio_dim], mask [B, N] (True = a real frame), nb [B, N] (True = a
         memory frame) -> [B, n_tokens, dim]."""
         B, N, _ = motion.shape
-        a = audio[:, : N * self.tpf].float()
-        if a.shape[1] < N * self.tpf:
-            a = F.pad(a, (0, 0, 0, N * self.tpf - a.shape[1]))
         mask = mask.clone()
         mask[:, 0] |= ~mask.any(1)  # an empty demo would make attention NaN; its tokens are unused anyway
-        h = self.motion(motion.float()) + self.audio(a.reshape(B, N, -1))
+        h = self.motion(motion.float())
+        if self.audio is not None:
+            a = audio[:, : N * self.tpf].float()
+            if a.shape[1] < N * self.tpf:
+                a = F.pad(a, (0, 0, 0, N * self.tpf - a.shape[1]))
+            h = h + self.audio(a.reshape(B, N, -1))
         if nb is not None:
             h = h + nb.unsqueeze(-1) * self.nb
         h = h * mask.unsqueeze(-1)

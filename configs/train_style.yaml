@@ -2,7 +2,7 @@
 # generator run's own config; these keys override it.
 gen: runs/mbes/round4.pt   # the frozen generator whose residuals the key reads
 out_dir: runs/style
-key: residual              # residual = real codes minus gen's mean from audio; motion = the codes (the ablation)
+key: residual              # residual = gen's mean from audio + real codes minus it; motion = the codes (ablation). No voice
 dim: 256
 out: 128
 heads: 4

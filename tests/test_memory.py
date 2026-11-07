@@ -75,6 +75,8 @@ def test_the_style_key_trains_and_indexes_every_training_window(style_run):
     cache, _, path, out = style_run
     assert "EVAL step 2 " in out and "top1_half" in out and "memory -> " in out
     mem = Memory(str(path))
+    key, _ = mem.encoders("cpu")
+    assert key.enc.audio is None and key.cfg["t_in"] == 2 * 42  # no voice: [residual, predicted mean] per frame
     rows = {r["path"]: r for r in load_index(cache)}
     assert set(mem.paths) <= set(mem.query) == set(rows)  # training clips are retrievable, every clip is a query
     assert torch.allclose(mem.spk_z.norm(dim=-1), torch.ones(len(mem.spk_z)), atol=1e-3)
