@@ -269,7 +269,8 @@ def fit_generator(gen: MotionFlowTransformer, u: torch.Tensor, audio: torch.Tens
     person. u [N, k] footage codes relative to the photo, audio [1, >= 2N, D] its WavLM, ref [1, REF_DIM], decode the
     latent's codes -> 69 motion channels. Returns an adapted copy; gen itself when steps = 0 (the no-fit ablation)
     or the footage is shorter than one window. log (a dict) gets fit_mbes0 / fit_mbes, the score on fixed footage
-    windows and noise before / after the fit, and fit_kl, the path KL after it: does the fit lower the score at all?"""
+    windows and noise before / after the fit, fit_mbes_<i> after steps i at each quarter of the fit (the curve), and
+    fit_kl, the path KL after it: does the fit lower the score at all, and when is it lowest?"""
     if steps <= 0 or u.shape[0] < P + L:
         return gen
     dev = u.device
@@ -287,13 +288,16 @@ def fit_generator(gen: MotionFlowTransformer, u: torch.Tensor, audio: torch.Tens
             return set_loss(fitted, gen, fixed, 1, m, gen_steps, g, kl, blocks=blk,
                             generator=torch.Generator(device=dev).manual_seed(seed))[1]
     before = score() if log is not None else None
-    with torch.enable_grad(), amp():
-        for _ in range(steps):
+    every = max(1, steps // 4)
+    for i in range(1, steps + 1):
+        with torch.enable_grad(), amp():
             j = torch.randint(0, pool, (batch,), generator=rng, device=dev)
             loss, _ = set_loss(fitted, gen, sub(j), 1, m, gen_steps, g, kl, blocks=blk, generator=rng)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
+        if log is not None and i % every == 0 and i < steps:
+            log[f"fit_mbes_{i}"] = float(score()["mbes"])
     if log is not None:
         after = score()
         log.update(fit_mbes0=float(before["mbes"]), fit_mbes=float(after["mbes"]), fit_kl=float(after["path_kl"]))

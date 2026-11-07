@@ -337,7 +337,8 @@ def summarise(out: Path, args) -> dict:
             m["FID"] = frechet(cat("incep_gt"), cat("incep_gen"))
             m["FVD"] = frechet(cat("i3d_gt"), cat("i3d_gen"))
         rows[row] = {"n_clips": len(js), "m": {k: v for k, v in m.items() if v is not None}}
-        mot = {k: mean(k) for k in MOTION_KEYS if mean(k) is not None}
+        curve = sorted({k for j in js for k in j if k.startswith("fit_mbes_")}, key=lambda k: int(k.rsplit("_", 1)[1]))
+        mot = {k: mean(k) for k in (*MOTION_KEYS, *curve) if mean(k) is not None}
         if mot:
             rows[row]["motion"] = mot
         tj = [j for j in js if "t_motion" in j]
