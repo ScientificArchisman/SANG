@@ -27,7 +27,8 @@ Protocol (also written to <out>/protocol.json):
                        frame 0 with LivePortrait's crop mask so the output is in the GT's frame
             sang_fit   the same with the generator first fitted to the footage (--demo; test-time LoRA,
                        --gen-fit-steps / --gen-fit-lr / --gen-fit-kl; sang.model.critic.fit_generator). With the sang row
-                       in the same run, both use the same seed and clips: the paired fit vs no-fit test
+                       in the same run, both use the same seed and clips: the paired fit vs no-fit test. Logs
+                       fit_mbes0 / fit_mbes (the score on fixed footage windows before / after the fit) and fit_kl
             ditto      Ditto (antgroup/ditto-talkinghead, ACM MM 2025) videos on the same clips (same source frame,
                        same audio; generated with commit 02791a9's scripts/ditto_hdtf.py), scored from --ditto-dir
                        through the identical metric code
@@ -77,7 +78,7 @@ ROWS = ("real", "gt_motion", "sang", "sang_fit", "ditto")
 SANG_ROWS = ("sang", "sang_fit")
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std", "real_rot_std",
                "rot_vel", "real_rot_vel", "critic_real", "real_critic_real", "critic_sync", "real_critic_sync",
-               "copy_ratio", "critic_person", "real_critic_person") + tuple(
+               "copy_ratio", "critic_person", "real_critic_person", "fit_mbes0", "fit_mbes", "fit_kl") + tuple(
     f"real_critic_{k}_head_{p}" for p in ("all", "slow", "fast") for k in ("real", "sync", "person"))
 METRICS = ("FID", "FVD", "CSIM", "LSE-C", "LSE-D", "PSNR", "SSIM")
 
@@ -149,7 +150,7 @@ class Evaluator:
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
         if demo is not None:
             self.last_t["demo_frames"] = self.talker.demo_frames
-        self.last_stats = {**self.motion_stats(m, real), **self.talker.last_critic}
+        self.last_stats = {**self.motion_stats(m, real), **self.talker.last_critic, **self.talker.last_fit}
         if real is not None and real["span"][0] == 0:  # the critic needs the real motion aligned with the audio
             self.last_stats.update(self.talker.score_motion(real["m"]))
             for part in ("all", "slow", "fast") if a.head_check is not None else ():

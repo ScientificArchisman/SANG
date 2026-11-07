@@ -130,7 +130,9 @@ def test_the_person_fit_adapts_a_copy_and_masks_each_window_out_of_the_footage()
     kw = dict(batch=2, m=2, pool=4, P=P, L=L, gen_steps=2)
     assert fit_generator(gen, u, audio, ref, lambda z: z, steps=0, **kw) is gen
     assert fit_generator(gen, u[: P + L - 1], audio, ref, lambda z: z, **kw) is gen  # shorter than one window
-    fitted = fit_generator(gen, u, audio, ref, lambda z: z, steps=3, **kw)
+    log = {}
+    fitted = fit_generator(gen, u, audio, ref, lambda z: z, steps=3, log=log, **kw)
+    assert log.keys() == {"fit_mbes0", "fit_mbes", "fit_kl"} and log["fit_kl"] > 0
     assert all(torch.equal(v, gen.state_dict()[k]) for k, v in before.items())
     adapters = [mod for mod in fitted.modules() if isinstance(mod, LoRA)]
     assert len(adapters) == 4 and any(float(mod.b.abs().sum()) > 0 for mod in adapters)

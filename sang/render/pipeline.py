@@ -147,7 +147,8 @@ class Talker:
         With a person critic: stage 'fit' adapts it to the footage (self.fit), the sampler keys dg / dgs guide the
         motion by it, and self.last_critic holds its mean logits on the clip (critic_real, critic_sync).
         fit_gen (with footage): stage 'fit_gen' first adapts a copy of the generator to the footage (self.gen_fit,
-        sang.model.critic.fit_generator) and generates with it; the same seed without it is the no-fit ablation."""
+        sang.model.critic.fit_generator) and generates with it; the same seed without it is the no-fit ablation.
+        self.last_fit: the fit's score before / after (fit_mbes0, fit_mbes, fit_kl), {} without a fit."""
         from sang.model.critic import fit_generator, fit_person, make_guide, score_clip
         from sang.model.flow import generate
         timer = timer or Timer()
@@ -157,7 +158,7 @@ class Talker:
             sm = codec.source_motion(src, crop=crop)
             m_src = sm["m"].to(self.dev)
             ref = self.norm.ref(sm["kp"].to(self.dev), m_src)
-        tokens, ctokens, self.demo_frames, self.demo_motion = None, None, 0, None
+        tokens, ctokens, self.demo_frames, self.demo_motion, self.last_fit = None, None, 0, None, {}
         critic, model = self.critic, self.model
         if demo is not None:
             if self.model.demo is None and critic is None:
@@ -177,7 +178,7 @@ class Talker:
                 with timer("fit_gen"):
                     model = fit_generator(self.model, u[s:], ad[:, 2 * s:], ref, self.latent.decode,
                                           P=self.cfg["prefix"], L=self.cfg["frames"], gen_steps=self.sampler["steps"],
-                                          g=self.sampler["cfg_audio"], seed=seed, **self.gen_fit)
+                                          g=self.sampler["cfg_audio"], seed=seed, log=self.last_fit, **self.gen_fit)
             if critic is not None and self.fit.get("steps", 0) > 0:
                 with timer("fit"):
                     critic = fit_person(critic, self.model, u, ad, ref, P=self.cfg["prefix"], L=self.cfg["frames"],
