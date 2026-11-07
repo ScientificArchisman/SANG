@@ -10,6 +10,9 @@ kl x the path KL to the round's start:
   score=mbes     the multiscale-block energy score (sang.model.scoring.mbes; reports/SANG style aware scoring
                  rules.md, rank 1); the default, runs/mbes
   score=es       the plain energy score on the codes (runs/set_es2)
+memory=runs/style/memory.pt (scripts/train_style.py) adds other speakers' audio-matched windows to every window's
+footage (sang.data.dataset.MotionWindows; research log §7.9), dropped with p_nb, the own footage then with p_own;
+the footage encoder's tag for them (DemoEncoder.nb) trains at lr_tag, since it starts at zero.
 Rounds: the KL reference is fixed per round; training stops after the first round in which the TalkVid mouth or head
 moves away from real, and the round before it is the one to use.
 EVAL lines (round 0 = the starting policy), on unseen val speakers, add to train_motion's rollout statistics:
@@ -157,7 +160,9 @@ def main() -> None:
     prev = eval_round(0)
     for rnd in range(1, int(cfg["rounds"]) + 1):
         ref = copy.deepcopy(policy).eval().requires_grad_(False)
-        opt = torch.optim.AdamW(policy.parameters(), lr=cfg["lr"], weight_decay=0.0)
+        rest = [p for n, p in policy.named_parameters() if n != "demo.nb"]
+        opt = torch.optim.AdamW([{"params": rest}, {"params": [policy.demo.nb], "lr": cfg["lr_tag"]}], lr=cfg["lr"],
+                                weight_decay=0.0)
         for it in range(A):
             t0 = time.time()
             for step in range(it * Pn + 1, (it + 1) * Pn + 1):

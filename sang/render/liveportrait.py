@@ -150,7 +150,7 @@ def ort_report(cropper, threads: int) -> str:
 class MotionCodec:
     """Frozen LivePortrait. `extract` maps frames -> motion; `render` maps source + motion -> frames.
 
-    Nothing here trains (sang.render.calibrate fits a per-person adapter on the decoder). Instantiate once per process: it holds five networks plus an
+    Nothing here trains. Instantiate once per process: it holds five networks plus an
     InsightFace detector (~1.8 GB of VRAM measured on the 4090 in the upstream repo)."""
 
     def __init__(self, device: str = "cuda", weights: Path = WEIGHTS):
@@ -341,7 +341,7 @@ class MotionCodec:
 
     def warped(self, s: dict, x_d: torch.Tensor, half: bool = False) -> torch.Tensor:
         """The source's features warped to driving keypoints x_d [b, 21, 3], after stitching: the decoder's input
-        [b, 256, 64, 64]. No grad mode is set here (sang.render.calibrate backpropagates through the decoder only)."""
+        [b, 256, 64, 64]."""
         x_s = s["x_s"].expand(len(x_d), -1, -1)
         x_d = self.lp.stitching(x_s, x_d)
         with torch.autocast("cuda", dtype=torch.float16, enabled=half and self.device != "cpu"):

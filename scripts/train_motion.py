@@ -121,11 +121,24 @@ def setup_data(cfg: dict, dev: str) -> SimpleNamespace:
     print(f"sync offsets {cfg['sync_offsets']}: audio moved in {sum(s != 0 for s in shifts.values())}/"
           f"{len(shifts)} clips; dropped train {why_t}, val {why_v}", flush=True)
     L, P = cfg["frames"], cfg["prefix"]
+    mem = None
+    if cfg.get("memory"):
+        from sang.model.memory import Memory
+        if not cfg.get("demo_tokens", 0):
+            raise SystemExit("memory= adds other speakers' windows to the footage: it needs a demo model")
+        mem = Memory(cfg["memory"])
     data_kw = {"preload": cfg.get("preload", True), "shifts": shifts,
                "demo": int(cfg.get("demo_frames", 250)) if cfg.get("demo_tokens", 0) else 0,
-               "demo_min": int(cfg.get("demo_min_frames", 25))}
-    train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], **data_kw)
-    val_ds = MotionWindows(val_rows, L, P, norm, cfg.get("val_windows_per_clip", 4), fixed=True, **data_kw)
+               "demo_min": int(cfg.get("demo_min_frames", 25)), "memory": mem}
+    train_ds = MotionWindows(train_rows, L, P, norm, cfg["windows_per_clip"], **data_kw,
+                             p_own=cfg.get("p_own", 0.25), p_nb=cfg.get("p_nb", 0.25))
+    if mem is not None:
+        mem.bind(train_ds)  # neighbour windows from the training clips in RAM, for val windows too
+        print(f"memory {cfg['memory']}: {len(mem.spk_z)} speakers, {len(mem.win_key)} windows; train drops the "
+              f"neighbours with p {train_ds.p_nb}, then the own footage with p {train_ds.p_own}; val keeps both",
+              flush=True)
+    val_ds = MotionWindows(val_rows, L, P, norm, cfg.get("val_windows_per_clip", 4), fixed=True, **data_kw,
+                           p_own=0.0, p_nb=0.0)
     print(f"{len(train_ds.rows)} train / {len(val_ds.rows)} val clips "
           f"({len({Path(r['path']).parent.name for r in val_rows})} unseen val speakers)", flush=True)
     if data_kw["demo"]:

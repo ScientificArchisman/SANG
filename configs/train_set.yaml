@@ -18,3 +18,7 @@ bf16: true
 workers: 8
 log_every: 25
 eval_batches: 8            # 8 persons x 8 windows x 8 samples each for the set EVAL
+memory: null               # runs/style/memory.pt: other speakers' audio-matched windows as extra footage
+p_nb: 0.25                 # memory: drop the neighbours
+p_own: 0.25                # memory, where the neighbours stay: drop the own footage
+lr_tag: 1.0e-3             # the footage encoder's neighbour tag (zero at the start)

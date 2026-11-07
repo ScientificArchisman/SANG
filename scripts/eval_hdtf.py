@@ -42,15 +42,14 @@ Protocol (also written to <out>/protocol.json):
             real segment is (sang.eval.naturalness.copy_ratio; << 1 = replaying the footage).
             --motion-only: the sang row's motion statistics only, no rendering or video metrics (the same seed gives
             the same motion as a full run, so its FVD carries over).
-  renderer  --render-fit recon|energy (with --demo): before a clip's rows, LivePortrait's decoder is fitted to the
-            footage (sang.render.calibrate), so gt_motion shows the renderer gain alone and sang the final video;
-            none = the frozen renderer (the ablation). Logs rfit_es0 / rfit_es_<i> / rfit_es (held-out footage
-            frames' score before / during / after), rfit_s and, for energy, rfit_noise.
+  memory    --memory runs/style/memory.pt (with --demo): other TalkVid speakers' windows join the footage
+            (sang.render.pipeline.Talker.memory_tokens). Each --memory-mode (none, style, style_noaudio, random) is
+            one run, results/hdtf/<name>_<mode>, in the same job; mem_sim = the mean cosine of the chosen speakers'
+            style to the footage's.
 --n-clips N stops after the first N clips that score (a quick paired test).
 Resumable: per-clip results go to <out>/clips/<row>/<clip>.{json,npz}; a rerun skips them.
 """
 import argparse
-import contextlib
 import csv
 import hashlib
 import json
@@ -71,7 +70,7 @@ from sang.data.audio import load_wav
 SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std", "real_rot_std",
-               "rot_vel", "real_rot_vel", "copy_ratio", "rfit_es0", "rfit_es", "rfit_noise", "rfit_s", "rfit_skipped")
+               "rot_vel", "real_rot_vel", "copy_ratio", "mem_sim")
 METRICS = ("FID", "FVD", "CSIM", "LSE-C", "LSE-D", "PSNR", "SSIM")
 
 
@@ -117,12 +116,8 @@ class Evaluator:
                 print(f"no openness readouts ({e}): no blink / lip stats", flush=True)
         if "sang" in args.rows:
             from sang.render.pipeline import Talker
-            self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec)
+            self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec, memory=args.memory)
             print(f"SANG {args.ckpt} (step {self.talker.step}), sampler {self.talker.sampler}", flush=True)
-        self.rfit = dict(steps=args.render_fit_steps, lr=args.render_fit_lr, seed=args.seed)
-        if args.render_fit != "none":
-            print(f"renderer calibration {args.render_fit} {self.rfit}", flush=True)
-        self.last_rfit = {}
         if args.gt_latent:
             from sang.model.latent import MotionLatent
             self.gt_latent = MotionLatent.unpack(torch.load(args.gt_latent, map_location="cpu",
@@ -137,7 +132,7 @@ class Evaluator:
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
         if demo is not None:
             self.last_t["demo_frames"] = self.talker.demo_frames
-        self.last_stats = self.motion_stats(m, real)
+        self.last_stats = {**self.motion_stats(m, real), **self.talker.mem_info}
         if real is not None and self.talker.demo_motion is not None:
             from sang.eval.naturalness import copy_ratio
             from sang.model.target import to_target
@@ -174,18 +169,6 @@ class Evaluator:
                        lip_ccc=ccc(g, r), lip_corr=float(np.corrcoef(g, r)[0, 1]),
                        rot_std=s_1, real_rot_std=s_r, rot_vel=v_1, real_rot_vel=v_r)
         return out
-
-    def calibration(self, demo):
-        """Context: the renderer calibrated on this clip's footage (sang.render.calibrate), with the footage's first
-        frame as the source and its own crop box, as gen_gt_motion renders a clip; no change without --render-fit."""
-        self.last_rfit = {}
-        if self.args.render_fit == "none" or demo is None:
-            return contextlib.nullcontext()
-        from sang.render.calibrate import calibrated
-        d = self.codec.extract(np.ascontiguousarray(demo[0]))
-        a, b = d["span"]
-        return calibrated(self.codec, self.codec.source_state(d["crops"][0]), d["M_c2o"].numpy(), demo[0][a:b],
-                          d["m"].float().to(self.dev), self.args.render_fit, log=self.last_rfit, **self.rfit)
 
     def gen_gt_motion(self, frames, wav):
         from sang.render.pipeline import GpuPaster
@@ -227,7 +210,7 @@ class Evaluator:
         return res, feats
 
 
-def run(args) -> None:
+def run(args, ev) -> None:
     out = Path(args.out or REPO / "results" / "hdtf" / args.name)
     (out / "clips").mkdir(parents=True, exist_ok=True)
     clips = read_list(args.list, Path(args.data))
@@ -239,7 +222,6 @@ def run(args) -> None:
     (out / "protocol.json").write_text(json.dumps({**vars(args), "n_clips": len(clips), "commit": commit}, indent=1, default=str))
     print(f"HDTF eval '{args.name}': {len(clips)} clips x {args.seconds:g} s, rows {args.rows} -> {out}", flush=True)
 
-    ev = Evaluator(args)
     from sang.render.liveportrait import decode_clip
     t0, scored = time.time(), 0
     for i, clip in enumerate(clips, 1):
@@ -257,12 +239,10 @@ def run(args) -> None:
                 raise ValueError(f"only {len(frames) / FPS:.1f} s after {args.start:g} s")
             wav = load_wav(clip, s0, len(frames))
             demo = None
-            renders = {"gt_motion", "sang"} & set(todo)
-            if n_demo and renders:
+            if n_demo and "sang" in todo:
                 dfr = decode_clip(str(clip), n_demo, start=s0 - n_demo)
                 demo = (dfr, load_wav(clip, s0 - n_demo, len(dfr)))
-            with ev.calibration(demo) if renders else contextlib.nullcontext():
-                rows_of_clip(ev, args, clip, out, i, len(clips), todo, frames, wav, demo, s0)
+            rows_of_clip(ev, args, clip, out, i, len(clips), todo, frames, wav, demo, s0)
             scored += 1
         except Exception as e:
             print(f"[{i}/{len(clips)}] SKIP {clip.stem}: {type(e).__name__}: {e}", flush=True)
@@ -297,8 +277,6 @@ def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0) -> None
             res.update(ev.last_t)
         if row in ("sang", "ditto"):
             res.update(ev.last_stats)
-        if row in ("gt_motion", "sang"):
-            res.update(ev.last_rfit)
         d = out / "clips" / row
         d.mkdir(parents=True, exist_ok=True)
         if feats:
@@ -309,12 +287,10 @@ def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0) -> None
 
 
 def label(row: str, args) -> str:
-    fit = f", renderer {args.render_fit}" if args.render_fit != "none" else ""
     if row == "sang":
-        return f"SANG-M ({args.name}: {args.sampler or 'run defaults'}{fit})"
+        return f"SANG-M ({args.name}: {args.sampler or 'run defaults'})"
     if row == "gt_motion":
-        return ("Real motion → LivePortrait (ceiling)" + (f" through {args.gt_k} codes" if args.gt_latent else "")
-                + fit)
+        return "Real motion → LivePortrait (ceiling)" + (f" through {args.gt_k} codes" if args.gt_latent else "")
     return {"real": "Real video", "ditto": "Ditto"}[row]
 
 
@@ -342,8 +318,7 @@ def summarise(out: Path, args) -> dict:
             m["FID"] = frechet(cat("incep_gt"), cat("incep_gen"))
             m["FVD"] = frechet(cat("i3d_gt"), cat("i3d_gen"))
         rows[row] = {"n_clips": len(js), "m": {k: v for k, v in m.items() if v is not None}}
-        curve = sorted({k for j in js for k in j if k.startswith("rfit_es_")}, key=lambda k: int(k.rsplit("_", 1)[1]))
-        mot = {k: mean(k) for k in (*MOTION_KEYS, *curve) if mean(k) is not None}
+        mot = {k: mean(k) for k in MOTION_KEYS if mean(k) is not None}
         if mot:
             rows[row]["motion"] = mot
         tj = [j for j in js if "t_motion" in j]
@@ -393,24 +368,29 @@ def main() -> None:
     ap.add_argument("--gt-k", type=int, default=None, help="--gt-latent: codes kept")
     ap.add_argument("--save-videos", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--render-fit", default="none", choices=("none", "recon", "energy"),
-                    help="calibrate LivePortrait's decoder on the footage before each clip (sang.render.calibrate)")
-    ap.add_argument("--render-fit-steps", type=int, default=300)
-    ap.add_argument("--render-fit-lr", type=float, default=3e-4)
     ap.add_argument("--n-clips", type=int, default=0, help="stop after this many scored clips (0 = all)")
     ap.add_argument("--motion-only", action="store_true", help="sang row motion stats only (no rendering)")
+    ap.add_argument("--memory", default=None, help="style memory (scripts/train_style.py) for the sang row")
+    ap.add_argument("--memory-mode", nargs="+", default=["style"], choices=("none", "style", "style_noaudio", "random"),
+                    help="with --memory: one run per mode, named <name>_<mode>")
     args = ap.parse_args()
     if args.motion_only and args.rows != ["sang"]:
         sys.exit("--motion-only scores the sang row only: pass --rows sang")
-    if args.render_fit != "none" and (not args.demo or args.motion_only):
-        sys.exit("--render-fit fits the renderer to the footage and renders with it: pass --demo, not --motion-only")
     if args.gt_latent and not args.gt_k:
         sys.exit("--gt-latent needs --gt-k")
     if args.demo > args.start:
         sys.exit("--demo needs --start >= the footage length: the footage comes before the segment")
     if args.start and "ditto" in args.rows:
         sys.exit("the Ditto videos cover the first seconds of each clip only: no ditto row with --start")
-    run(args)
+    if args.memory and (not args.demo or "sang" not in args.rows):
+        sys.exit("--memory finds neighbours from the footage for the sang row: pass --demo and --rows sang")
+    ev = Evaluator(args)
+    if not args.memory:
+        return run(args, ev)
+    for mode in args.memory_mode:
+        ev.talker.mem_mode = mode
+        out = args.out and str(Path(args.out).with_name(Path(args.out).name + f"_{mode}"))
+        run(argparse.Namespace(**{**vars(args), "name": f"{args.name}_{mode}", "out": out, "memory_mode": mode}), ev)
 
 
 if __name__ == "__main__":

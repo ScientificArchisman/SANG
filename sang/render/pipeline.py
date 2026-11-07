@@ -12,6 +12,7 @@ which is grid_sample's align_corners=True after scaling by 2 / (S - 1). cv2 inte
 (1/32 px) and rounds the warped crop to uint8; the warped crop is rounded here too, so outputs differ from
 cv2 by at most a grey level or so (tests/test_fastpath.py).
 """
+import random
 import time
 from contextlib import contextmanager
 
@@ -97,9 +98,11 @@ class GpuPaster:
 
 
 class Talker:
-    def __init__(self, ckpt: str, sampler: str | None = None, device: str = "cuda", codec=None, wavlm=None):
+    def __init__(self, ckpt: str, sampler: str | None = None, device: str = "cuda", codec=None, wavlm=None,
+                 memory: str | None = None):
         """sampler: a spec such as 'g=2,steps=6' (sang.model.flow.SAMPLER_KEYS); without one, the run's cfg_audio
-        and sample_steps."""
+        and sample_steps. memory: a style memory (scripts/train_style.py) whose neighbours join the footage, by
+        mem_mode (memory_tokens)."""
         from sang.data.audio import load_wavlm
         from sang.model.flow import Norm, build, parse_spec, sampler_kwargs
         from sang.model.latent import MotionLatent
@@ -113,6 +116,38 @@ class Talker:
         self.sampler = sampler_kwargs(parse_spec(sampler), self.cfg)
         self.codec = codec or MotionCodec(device=device)
         self.wavlm = wavlm or load_wavlm(device=device)
+        self.memory, self.mem_mode, self.mem_info = None, "style", {}
+        if memory:
+            from sang.model.memory import Memory
+            self.memory = Memory(memory)
+            self.style_key, self.style_gen = self.memory.encoders(device)
+
+    def memory_tokens(self, u, ad, ref, centre, audio, lead, seed):
+        """A function of a window's first frame -> that window's footage tokens: the own footage u [T, k] (audio ad
+        [2T, D]) plus N_WIN memory windows, their motion re-centred on the footage's mean delta `centre` [69], as in
+        training (sang.data.dataset.MotionWindows). mem_mode picks them:
+          style          the N_SPK speakers nearest to the footage's style, their windows nearest to the window's audio
+          style_noaudio  the same speakers, random windows of theirs
+          random         N_SPK random speakers, their windows nearest to the window's audio (the control)
+        None if the footage is shorter than one window (the own footage alone then)."""
+        from sang.model.memory import N_SPK, N_WIN, embed
+        mem, mode, k, L, tpf = self.memory, self.mem_mode, self.model.t_dim, self.cfg["frames"], self.model.tpf
+        z = embed(self.style_key, self.style_gen, u, ad, ref, mem.m["key"], self.cfg["prefix"], L)
+        if z is None:
+            return None
+        rng = random.Random(f"{seed}:{float(z.sum()):.6f}")  # a different draw per footage, the same in a rerun
+        spk = mem.neighbours(z, N_SPK, rng=rng if mode == "random" else None)
+        self.mem_info = {"mem_sim": float((mem.spk_z[spk] @ z.float().cpu()).mean())}
+
+        def at(pos):
+            a = audio[0, (lead + pos) * tpf:(lead + pos + L) * tpf]
+            ws = mem.windows(spk, mem.akey(a), N_WIN, rng=rng if mode == "style_noaudio" else None)
+            ys, aus = zip(*(mem.fetch(int(w)) for w in ws))
+            mo = torch.cat([u, self.latent.encode(torch.cat(ys).to(self.dev) + centre, k)])
+            au = torch.cat([ad, torch.cat(aus).to(self.dev).float()])
+            nb = torch.arange(len(mo), device=self.dev) >= len(u)
+            return self.model.demo(mo[None], au[None], torch.ones_like(nb)[None], nb[None])
+        return at
 
     @torch.no_grad()
     def run(self, src: np.ndarray, wav: torch.Tensor, n_frames: int, seed: int = 0, paste: bool = True,
@@ -134,7 +169,7 @@ class Talker:
             sm = codec.source_motion(src, crop=crop)
             m_src = sm["m"].to(self.dev)
             ref = self.norm.ref(sm["kp"].to(self.dev), m_src)
-        tokens, self.demo_frames, self.demo_motion = None, 0, None
+        tokens, self.demo_frames, self.demo_motion, self.mem_info = None, 0, None, {}
         if demo is not None:
             if self.model.demo is None:
                 raise ValueError("this checkpoint has no demo encoder (trained with demo_tokens=0)")
@@ -142,12 +177,18 @@ class Talker:
                 d = codec.extract(np.ascontiguousarray(demo[0]))
                 a, b = d["span"]
                 u = self.latent.from_motion(d["m"].float().to(self.dev), m_src, self.model.t_dim)
-                ad = self.wavlm.encode(demo[1][a * HOP:b * HOP][None, None].to(self.dev)).float()
-                tokens = self.model.demo(u[None], ad[:, :2 * len(u)], torch.ones(1, len(u), dtype=torch.bool, device=self.dev))
+                ad = self.wavlm.encode(demo[1][a * HOP:b * HOP][None, None].to(self.dev)).float()[0, :2 * len(u)]
+                ad = F.pad(ad, (0, 0, 0, 2 * len(u) - len(ad)))
+                tokens = self.model.demo(u[None], ad[None], torch.ones(1, len(u), dtype=torch.bool, device=self.dev))
                 self.demo_frames, self.demo_motion = len(u), d["m"]
         lead = self.cfg["prefix"]
         with timer("audio"):
             audio = self.wavlm.encode(torch.nn.functional.pad(wav, (lead * HOP, 0))[None, None].to(self.dev)).float()
+        if tokens is not None and self.memory is not None and self.mem_mode != "none":
+            from sang.model.target import wide
+            with timer("memory"):
+                centre = (wide(d["m"].float().to(self.dev)) - wide(m_src.float())).mean(0)
+                tokens = self.memory_tokens(u, ad, ref, centre, audio, lead, seed) or tokens
         with timer("motion"):
             first = self.latent.from_motion(m_src, m_src, self.model.t_dim).unsqueeze(1).expand(1, lead, -1)
             g = torch.Generator(device=self.dev).manual_seed(seed)
