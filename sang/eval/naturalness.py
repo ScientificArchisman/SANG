@@ -10,9 +10,8 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 
-from sang.model.target import T_DIM, from_wide, wide
+from sang.model.target import T_DIM
 
 FPS, SR, TPF = 25, 16000, 2
 HOP = SR // FPS
@@ -246,17 +245,3 @@ def copy_ratio(gen: torch.Tensor, real: torch.Tensor, footage: torch.Tensor, chu
     lib = (f.unfold(0, chunk, 1) / sd).flatten(1)
     near = lambda y: torch.cdist((y.float().cpu().unfold(0, chunk, chunk) / sd).flatten(1), lib).min(1).values.mean()
     return float(near(gen) / near(real).clamp_min(1e-9))
-
-
-def shrink_head(m: torch.Tensor, m_src: torch.Tensor, s: float, part: str = "all", win: int = 64) -> torch.Tensor:
-    """Motion [n, 70] with its head (rotation and placement, relative to the photo's m_src [1, 70]) scaled by s.
-    part "all"; "slow", the moving average over win + 1 frames (drift longer than one critic window); or "fast", the
-    rest. Expression stays in the head frame. A diagnostic of what the critic can see (research log §3.31)."""
-    w, w0 = wide(m), wide(m_src)
-    head = [0, 1, 2, w.shape[1] - 3, w.shape[1] - 2, w.shape[1] - 1]  # pitch, yaw, roll, t_x, t_y, log scale
-    d = w[:, head] - w0[:, head]
-    slow = F.avg_pool1d(d.T[None], win + 1, stride=1, padding=win // 2, count_include_pad=False)[0].T
-    d = {"all": s * d, "slow": s * slow + (d - slow), "fast": slow + s * (d - slow)}[part]
-    w = w.clone()
-    w[:, head] = w0[:, head] + d
-    return from_wide(w, m)

@@ -25,10 +25,6 @@ Protocol (also written to <out>/protocol.json):
                        paste-back (the renderer ceiling: what perfect audio-to-motion would score)
             sang       SANG-M generated from audio, rendered with stitching, pasted back into
                        frame 0 with LivePortrait's crop mask so the output is in the GT's frame
-            sang_fit   the same with the generator first fitted to the footage (--demo; test-time LoRA,
-                       --gen-fit-steps / --gen-fit-lr / --gen-fit-kl; sang.model.critic.fit_generator). With the sang row
-                       in the same run, both use the same seed and clips: the paired fit vs no-fit test. Logs
-                       fit_mbes0 / fit_mbes (the score on fixed footage windows before / after the fit) and fit_kl
             ditto      Ditto (antgroup/ditto-talkinghead, ACM MM 2025) videos on the same clips (same source frame,
                        same audio; generated with commit 02791a9's scripts/ditto_hdtf.py), scored from --ditto-dir
                        through the identical metric code
@@ -42,20 +38,19 @@ Protocol (also written to <out>/protocol.json):
             blinks_per_min and lip_std of the generated motion; with --real-stats also the real clip's
             (real_blinks_per_min), lip_ccc / lip_corr against the real lip trajectory, and head rotation std and mean
             |frame-to-frame change| in degrees (mean of the 3 axes): rot_std / rot_vel, real_rot_std / real_rot_vel
-  critic    --critic (scripts/train_critic.py; docs/person_critic_plan.md): critic_real / critic_sync, the person
-            critic's mean logits on SANG's motion, and with --real-stats real_critic_real / real_critic_sync on the
-            real clip's. --sampler dg=..,dgs=.. guides the sampler by it; --fit-steps N > 0 first fits it to the
-            footage (LoRA, --fit-rank / --fit-blocks / --fit-lr), 0 = the critic as trained (the ablation).
             With --demo and --real-stats: copy_ratio, how close SANG's motion is to the footage over how close the
             real segment is (sang.eval.naturalness.copy_ratio; << 1 = replaying the footage).
-            --motion-only: the sang row's motion statistics and critic scores only, no rendering or video metrics
-            (the same seed gives the same motion as a full run, so its FVD carries over).
-            --head-check S: real_critic_*_head_{all,slow,fast}, the real motion's critic scores with its head scaled by
-            S about the photo's pose: all of it, only the drift slower than one 64-frame window, or only the rest.
+            --motion-only: the sang row's motion statistics only, no rendering or video metrics (the same seed gives
+            the same motion as a full run, so its FVD carries over).
+  renderer  --render-fit recon|energy (with --demo): before a clip's rows, LivePortrait's decoder is fitted to the
+            footage (sang.render.calibrate), so gt_motion shows the renderer gain alone and sang the final video;
+            none = the frozen renderer (the ablation). Logs rfit_es0 / rfit_es_<i> / rfit_es (held-out footage
+            frames' score before / during / after), rfit_s and, for energy, rfit_noise.
 --n-clips N stops after the first N clips that score (a quick paired test).
 Resumable: per-clip results go to <out>/clips/<row>/<clip>.{json,npz}; a rerun skips them.
 """
 import argparse
+import contextlib
 import csv
 import hashlib
 import json
@@ -74,12 +69,9 @@ sys.path.insert(0, str(REPO / "third_party"))
 from sang.data.audio import load_wav
 
 SR, FPS, HOP = 16000, 25, 640
-ROWS = ("real", "gt_motion", "sang", "sang_fit", "ditto")
-SANG_ROWS = ("sang", "sang_fit")
+ROWS = ("real", "gt_motion", "sang", "ditto")
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std", "real_rot_std",
-               "rot_vel", "real_rot_vel", "critic_real", "real_critic_real", "critic_sync", "real_critic_sync",
-               "copy_ratio", "critic_person", "real_critic_person", "fit_mbes0", "fit_mbes", "fit_kl") + tuple(
-    f"real_critic_{k}_head_{p}" for p in ("all", "slow", "fast") for k in ("real", "sync", "person"))
+               "rot_vel", "real_rot_vel", "copy_ratio", "rfit_es0", "rfit_es", "rfit_noise", "rfit_s", "rfit_skipped")
 METRICS = ("FID", "FVD", "CSIM", "LSE-C", "LSE-D", "PSNR", "SSIM")
 
 
@@ -115,7 +107,7 @@ class Evaluator:
         self.arc = ArcFace(device=self.dev)
         self.incep, self.i3d = InceptionFeats(self.dev), I3DFeats(self.dev)
         self.last_t, self.last_stats, self.read = {}, {}, None
-        if set(SANG_ROWS) & set(args.rows) or ("ditto" in args.rows and args.real_stats):
+        if "sang" in args.rows or ("ditto" in args.rows and args.real_stats):
             cache = Path(load_cfg(str(REPO / "configs/train_motion.yaml"), [])["cache_dir"])
             try:
                 self.read = load_readouts(cache / "openness.json")
@@ -123,39 +115,29 @@ class Evaluator:
                 if args.real_stats:
                     sys.exit(f"--real-stats needs the openness readouts: {e}")
                 print(f"no openness readouts ({e}): no blink / lip stats", flush=True)
-        if set(SANG_ROWS) & set(args.rows):
+        if "sang" in args.rows:
             from sang.render.pipeline import Talker
-            fit = dict(steps=args.fit_steps, rank=args.fit_rank, blocks=args.fit_blocks, lr=args.fit_lr)
-            gen_fit = dict(steps=args.gen_fit_steps, lr=args.gen_fit_lr, kl=args.gen_fit_kl)
-            self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec, critic=args.critic, fit=fit,
-                                 gen_fit=gen_fit)
-            if "sang_fit" in args.rows:
-                print(f"generator person fit {gen_fit}", flush=True)
-            if args.critic:
-                print(f"person critic {args.critic}, test-time fit {fit if args.fit_steps else 'off'}", flush=True)
+            self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec)
             print(f"SANG {args.ckpt} (step {self.talker.step}), sampler {self.talker.sampler}", flush=True)
+        self.rfit = dict(steps=args.render_fit_steps, lr=args.render_fit_lr, seed=args.seed)
+        if args.render_fit != "none":
+            print(f"renderer calibration {args.render_fit} {self.rfit}", flush=True)
+        self.last_rfit = {}
         if args.gt_latent:
             from sang.model.latent import MotionLatent
             self.gt_latent = MotionLatent.unpack(torch.load(args.gt_latent, map_location="cpu",
                                                             weights_only=False)).to(self.dev)
 
-    def gen_sang(self, frames, wav, demo=None, fit_gen=False):
+    def gen_sang(self, frames, wav, demo=None):
         """sang.render.pipeline.Talker; the stage times (source, demo, audio, motion, render, paste; CUDA-synchronised)
         go into the clip's json."""
         a = self.args
         real = self.real_motion(frames) if a.real_stats else None
-        gen, m, timer = self.talker.run(frames[0], wav, len(frames), seed=a.seed, demo=demo, render=not a.motion_only,
-                                        gen_demo=round(a.demo * FPS) if a.critic_demo > a.demo else None,
-                                        fit_gen=fit_gen)
+        gen, m, timer = self.talker.run(frames[0], wav, len(frames), seed=a.seed, demo=demo, render=not a.motion_only)
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
         if demo is not None:
             self.last_t["demo_frames"] = self.talker.demo_frames
-        self.last_stats = {**self.motion_stats(m, real), **self.talker.last_critic, **self.talker.last_fit}
-        if real is not None and real["span"][0] == 0:  # the critic needs the real motion aligned with the audio
-            self.last_stats.update(self.talker.score_motion(real["m"]))
-            for part in ("all", "slow", "fast") if a.head_check is not None else ():
-                sc = self.talker.score_motion(real["m"], (a.head_check, part))
-                self.last_stats.update({f"{k}_head_{part}": v for k, v in sc.items()})
+        self.last_stats = self.motion_stats(m, real)
         if real is not None and self.talker.demo_motion is not None:
             from sang.eval.naturalness import copy_ratio
             from sang.model.target import to_target
@@ -192,6 +174,18 @@ class Evaluator:
                        lip_ccc=ccc(g, r), lip_corr=float(np.corrcoef(g, r)[0, 1]),
                        rot_std=s_1, real_rot_std=s_r, rot_vel=v_1, real_rot_vel=v_r)
         return out
+
+    def calibration(self, demo):
+        """Context: the renderer calibrated on this clip's footage (sang.render.calibrate), with the footage's first
+        frame as the source and its own crop box, as gen_gt_motion renders a clip; no change without --render-fit."""
+        self.last_rfit = {}
+        if self.args.render_fit == "none" or demo is None:
+            return contextlib.nullcontext()
+        from sang.render.calibrate import calibrated
+        d = self.codec.extract(np.ascontiguousarray(demo[0]))
+        a, b = d["span"]
+        return calibrated(self.codec, self.codec.source_state(d["crops"][0]), d["M_c2o"].numpy(), demo[0][a:b],
+                          d["m"].float().to(self.dev), self.args.render_fit, log=self.last_rfit, **self.rfit)
 
     def gen_gt_motion(self, frames, wav):
         from sang.render.pipeline import GpuPaster
@@ -257,46 +251,18 @@ def run(args) -> None:
             continue
         try:
             s0, n_test = round(args.start * FPS), round(args.seconds * FPS)
-            n_demo = round(max(args.demo, args.critic_demo) * FPS)  # the critic may see more than the generator
+            n_demo = round(args.demo * FPS)
             frames = decode_clip(str(clip), n_test, start=s0)
             if s0 and len(frames) < n_test:
                 raise ValueError(f"only {len(frames) / FPS:.1f} s after {args.start:g} s")
             wav = load_wav(clip, s0, len(frames))
             demo = None
-            if n_demo and set(SANG_ROWS) & set(todo):
+            renders = {"gt_motion", "sang"} & set(todo)
+            if n_demo and renders:
                 dfr = decode_clip(str(clip), n_demo, start=s0 - n_demo)
                 demo = (dfr, load_wav(clip, s0 - n_demo, len(dfr)))
-            for row in todo:
-                if row == "real":
-                    gen, gt = frames, frames
-                elif row == "gt_motion":
-                    gen, gt = ev.gen_gt_motion(frames, wav)
-                elif row == "ditto":
-                    vid = Path(args.ditto_dir) / f"{clip.stem}.mp4"
-                    if not vid.exists():
-                        raise FileNotFoundError(f"{vid}: no Ditto video")
-                    gen = decode_clip(str(vid), len(frames))
-                    gt = frames[: len(gen)]
-                    # Ditto's motion read back from its video, as the real clip's is
-                    ev.last_stats = (ev.motion_stats(ev.codec.extract(gen)["m"], ev.real_motion(frames))
-                                     if args.real_stats else {})
-                else:
-                    gen, gt = ev.gen_sang(frames, wav, demo, fit_gen=row == "sang_fit")
-                if args.motion_only:
-                    res, feats = {"clip": clip.stem, "frames": len(frames)}, {}
-                else:
-                    res, feats = ev.score(row, clip, out, gen, gt, frames[0], s0)
-                if row in SANG_ROWS:
-                    res.update(ev.last_t)
-                if row in (*SANG_ROWS, "ditto"):
-                    res.update(ev.last_stats)
-                d = out / "clips" / row
-                d.mkdir(parents=True, exist_ok=True)
-                if feats:
-                    np.savez_compressed(d / f"{clip.stem}.npz", **feats)
-                (d / f"{clip.stem}.json").write_text(json.dumps(res))
-                msg = "  ".join(f"{k} {v:.3f}" for k, v in res.items() if isinstance(v, float))
-                print(f"[{i}/{len(clips)}] {clip.stem:<28} {row:<9} {msg}", flush=True)
+            with ev.calibration(demo) if renders else contextlib.nullcontext():
+                rows_of_clip(ev, args, clip, out, i, len(clips), todo, frames, wav, demo, s0)
             scored += 1
         except Exception as e:
             print(f"[{i}/{len(clips)}] SKIP {clip.stem}: {type(e).__name__}: {e}", flush=True)
@@ -304,12 +270,51 @@ def run(args) -> None:
     summarise(out, args)
 
 
+def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0) -> None:
+    """Generate, score and save every row still to do for one clip."""
+    from sang.render.liveportrait import decode_clip
+    for row in todo:
+        if row == "real":
+            gen, gt = frames, frames
+        elif row == "gt_motion":
+            gen, gt = ev.gen_gt_motion(frames, wav)
+        elif row == "ditto":
+            vid = Path(args.ditto_dir) / f"{clip.stem}.mp4"
+            if not vid.exists():
+                raise FileNotFoundError(f"{vid}: no Ditto video")
+            gen = decode_clip(str(vid), len(frames))
+            gt = frames[: len(gen)]
+            # Ditto's motion read back from its video, as the real clip's is
+            ev.last_stats = (ev.motion_stats(ev.codec.extract(gen)["m"], ev.real_motion(frames))
+                             if args.real_stats else {})
+        else:
+            gen, gt = ev.gen_sang(frames, wav, demo)
+        if args.motion_only:
+            res, feats = {"clip": clip.stem, "frames": len(frames)}, {}
+        else:
+            res, feats = ev.score(row, clip, out, gen, gt, frames[0], s0)
+        if row == "sang":
+            res.update(ev.last_t)
+        if row in ("sang", "ditto"):
+            res.update(ev.last_stats)
+        if row in ("gt_motion", "sang"):
+            res.update(ev.last_rfit)
+        d = out / "clips" / row
+        d.mkdir(parents=True, exist_ok=True)
+        if feats:
+            np.savez_compressed(d / f"{clip.stem}.npz", **feats)
+        (d / f"{clip.stem}.json").write_text(json.dumps(res))
+        msg = "  ".join(f"{k} {v:.3f}" for k, v in res.items() if isinstance(v, float))
+        print(f"[{i}/{n}] {clip.stem:<28} {row:<9} {msg}", flush=True)
+
+
 def label(row: str, args) -> str:
-    if row in SANG_ROWS:
-        fit = f", person fit {args.gen_fit_steps} steps" if row == "sang_fit" else ""
+    fit = f", renderer {args.render_fit}" if args.render_fit != "none" else ""
+    if row == "sang":
         return f"SANG-M ({args.name}: {args.sampler or 'run defaults'}{fit})"
     if row == "gt_motion":
-        return "Real motion → LivePortrait (ceiling)" + (f" through {args.gt_k} codes" if args.gt_latent else "")
+        return ("Real motion → LivePortrait (ceiling)" + (f" through {args.gt_k} codes" if args.gt_latent else "")
+                + fit)
     return {"real": "Real video", "ditto": "Ditto"}[row]
 
 
@@ -337,7 +342,7 @@ def summarise(out: Path, args) -> dict:
             m["FID"] = frechet(cat("incep_gt"), cat("incep_gen"))
             m["FVD"] = frechet(cat("i3d_gt"), cat("i3d_gen"))
         rows[row] = {"n_clips": len(js), "m": {k: v for k, v in m.items() if v is not None}}
-        curve = sorted({k for j in js for k in j if k.startswith("fit_mbes_")}, key=lambda k: int(k.rsplit("_", 1)[1]))
+        curve = sorted({k for j in js for k in j if k.startswith("rfit_es_")}, key=lambda k: int(k.rsplit("_", 1)[1]))
         mot = {k: mean(k) for k in (*MOTION_KEYS, *curve) if mean(k) is not None}
         if mot:
             rows[row]["motion"] = mot
@@ -388,38 +393,21 @@ def main() -> None:
     ap.add_argument("--gt-k", type=int, default=None, help="--gt-latent: codes kept")
     ap.add_argument("--save-videos", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--critic", default=None, help="person critic (scripts/train_critic.py): scores, dg / dgs guidance")
-    ap.add_argument("--critic-demo", type=float, default=None,
-                    help="seconds of footage the critic sees (default --demo); the generator still sees --demo")
-    ap.add_argument("--fit-steps", type=int, default=0, help="test-time LoRA fit of the critic to the footage "
-                                                              "(0 = off, the ablation)")
-    ap.add_argument("--fit-rank", type=int, default=4)
-    ap.add_argument("--fit-blocks", type=int, default=1, help="last trunk blocks that get LoRA (plus the head)")
-    ap.add_argument("--fit-lr", type=float, default=1e-3)
-    ap.add_argument("--gen-fit-steps", type=int, default=20, help="sang_fit row: steps of the generator's person fit")
-    ap.add_argument("--gen-fit-lr", type=float, default=1e-3)
-    ap.add_argument("--gen-fit-kl", type=float, default=1.0, help="sang_fit row: path-KL weight to the unadapted model")
+    ap.add_argument("--render-fit", default="none", choices=("none", "recon", "energy"),
+                    help="calibrate LivePortrait's decoder on the footage before each clip (sang.render.calibrate)")
+    ap.add_argument("--render-fit-steps", type=int, default=300)
+    ap.add_argument("--render-fit-lr", type=float, default=3e-4)
     ap.add_argument("--n-clips", type=int, default=0, help="stop after this many scored clips (0 = all)")
-    ap.add_argument("--motion-only", action="store_true", help="sang row motion stats and critic scores only")
-    ap.add_argument("--head-check", type=float, default=None,
-                    help="also score the real motion with its head scaled by this about the photo's pose: all of it, "
-                         "only the drift slower than one critic window, only the rest (does the critic see head range?)")
+    ap.add_argument("--motion-only", action="store_true", help="sang row motion stats only (no rendering)")
     args = ap.parse_args()
-    if args.head_check is not None and not (args.critic and args.real_stats):
-        sys.exit("--head-check needs --critic and --real-stats")
-    if args.motion_only and not set(args.rows) <= set(SANG_ROWS):
-        sys.exit("--motion-only scores the sang rows only: pass --rows sang (and sang_fit)")
-    if "sang_fit" in args.rows and not args.demo:
-        sys.exit("the sang_fit row fits the generator to the footage: pass --demo")
-    args.critic_demo = args.demo if args.critic_demo is None else args.critic_demo
-    if args.critic_demo != args.demo and not args.critic:
-        sys.exit("--critic-demo needs --critic")
-    if args.fit_steps and not (args.critic and args.critic_demo):
-        sys.exit("--fit-steps needs --critic and footage (--demo or --critic-demo): the fit uses the footage")
+    if args.motion_only and args.rows != ["sang"]:
+        sys.exit("--motion-only scores the sang row only: pass --rows sang")
+    if args.render_fit != "none" and (not args.demo or args.motion_only):
+        sys.exit("--render-fit fits the renderer to the footage and renders with it: pass --demo, not --motion-only")
     if args.gt_latent and not args.gt_k:
         sys.exit("--gt-latent needs --gt-k")
-    if max(args.demo, args.critic_demo) > args.start:
-        sys.exit(f"--demo / --critic-demo need --start >= the footage length: the footage comes before the segment")
+    if args.demo > args.start:
+        sys.exit("--demo needs --start >= the footage length: the footage comes before the segment")
     if args.start and "ditto" in args.rows:
         sys.exit("the Ditto videos cover the first seconds of each clip only: no ditto row with --start")
     run(args)

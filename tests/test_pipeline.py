@@ -111,20 +111,14 @@ def test_a_smaller_latent_trains_and_talks(monkeypatch, tiny_cache):
     assert ck["latent"]["K"] == 69 and ck["cfg"]["latent_k"] == 16
 
 
-
-def test_the_person_fit_runs_on_the_footage_and_leaves_the_shared_model_alone(monkeypatch, tiny_cache):
+def test_the_talker_reads_the_footage(monkeypatch, tiny_cache):
     ck = train(tiny_cache, "demo", "demo_tokens=4", "demo_frames=30", "demo_min_frames=10")[0]
     codec, _ = fake_codec(monkeypatch)
     base = torch.zeros(1, M_DIM)
     base[:, 0] = 1.2  # the fake photo's motion
     codec.extract = lambda fr: {"m": base + 0.05 * torch.randn(len(fr), M_DIM, generator=torch.Generator().manual_seed(3)),
                                 "span": (0, len(fr))}
-    t = Talker(ck, "g=2,steps=2", device="cpu", codec=codec, wavlm=FakeWavLM(), gen_fit=dict(steps=2, batch=2, m=2, pool=2))
-    from test_motion_model import _unzero
-    _unzero(t.model)  # 3 training steps leave adaLN-Zero's gates near 0, so no adapter could move the motion yet
+    t = Talker(ck, "g=2,steps=2", device="cpu", codec=codec, wavlm=FakeWavLM())
     demo = (np.zeros((80, 100, 120, 3), np.uint8), torch.randn(80 * 640) * 0.1)
-    _, m0, _ = t.run(SRC, WAV, N, demo=demo, render=False)
-    _, m1, timer = t.run(SRC, WAV, N, demo=demo, render=False, fit_gen=True)
-    assert "fit_gen" in timer.t and torch.isfinite(m1).all() and not torch.allclose(m0, m1)
-    _, m2, _ = t.run(SRC, WAV, N, demo=demo, render=False)
-    assert torch.allclose(m0, m2)  # the fit adapted a copy
+    _, m, timer = t.run(SRC, WAV, N, demo=demo, render=False)
+    assert "demo" in timer.t and t.demo_frames == 80 and torch.isfinite(m).all() and m.shape == (N, M_DIM)

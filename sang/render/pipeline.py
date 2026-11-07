@@ -97,59 +97,35 @@ class GpuPaster:
 
 
 class Talker:
-    def __init__(self, ckpt: str, sampler: str | None = None, device: str = "cuda", codec=None, wavlm=None,
-                 critic: str | None = None, fit: dict | None = None, gen_fit: dict | None = None):
+    def __init__(self, ckpt: str, sampler: str | None = None, device: str = "cuda", codec=None, wavlm=None):
         """sampler: a spec such as 'g=2,steps=6' (sang.model.flow.SAMPLER_KEYS); without one, the run's cfg_audio
-        and sample_steps. critic: a person-critic checkpoint (scripts/train_critic.py), needed by the sampler keys
-        dg / dgs (critic guidance) and scoring every clip (self.last_critic). fit: keyword arguments of
-        sang.model.critic.fit_person (steps, rank, blocks, lr), the test-time fit of the critic to the footage;
-        steps 0 or no fit = the critic as trained (the ablation). gen_fit: keyword arguments of
-        sang.model.critic.fit_generator (steps, lr, kl, ...), the test-time person fit of the generator, used by
-        run(fit_gen=True)."""
+        and sample_steps."""
         from sang.data.audio import load_wavlm
         from sang.model.flow import Norm, build, parse_spec, sampler_kwargs
         from sang.model.latent import MotionLatent
         from sang.render.liveportrait import MotionCodec
         ck = torch.load(ckpt, map_location=device, weights_only=False)
-        spec = parse_spec(sampler)
         self.cfg, self.step, self.dev = ck["cfg"], ck["step"], device
         self.model = build(self.cfg).to(device).eval()
         self.model.load_state_dict(ck["ema"])
         self.norm = Norm(**ck["norm"]).to(device)
         self.latent = MotionLatent.of(ck).to(device)
-        self.sampler = sampler_kwargs(spec, self.cfg)
-        self.guide_w = (float(spec.get("dg", 0.0)), float(spec.get("dgs", 0.0)))
-        self.critic, self.fit, self.gen_fit, self.last_critic = None, dict(fit or {}), dict(gen_fit or {}), {}
-        if critic:
-            from sang.model.critic import load_critic
-            self.critic = load_critic(critic, device)
-        elif any(self.guide_w):
-            raise ValueError("the sampler keys dg / dgs need a person critic (critic=...)")
+        self.sampler = sampler_kwargs(parse_spec(sampler), self.cfg)
         self.codec = codec or MotionCodec(device=device)
         self.wavlm = wavlm or load_wavlm(device=device)
 
     @torch.no_grad()
     def run(self, src: np.ndarray, wav: torch.Tensor, n_frames: int, seed: int = 0, paste: bool = True,
-            batch: int = 16, timer: Timer | None = None, demo: tuple | None = None, render: bool = True,
-            gen_demo: int | None = None, fit_gen: bool = False):
+            batch: int = 16, timer: Timer | None = None, demo: tuple | None = None, render: bool = True):
         """src [H,W,3] uint8, wav [N] 16 kHz -> (frames [n,H,W,3] or, with paste=False, crops [n,512,512,3] uint8,
         motion [n,70], timer). The first window continues from the photo's own motion after `prefix` frames of
         silence. The photo keeps its own lips, as training references do (docs/research_log.md 3.23).
         render=False stops after the motion: (None, motion, timer).
 
         demo = (frames [T,H,W,3] uint8, wav [T*640]): extra footage of the person, read once (stage 'demo': its
-        motion relative to the photo plus its WavLM, encoded to the model's demo tokens). Needs a demo model or a
-        person critic. self.demo_frames is the number of footage frames used (the footage stops at its first shot
-        cut), self.demo_motion their motion [T', 70]. gen_demo: how many of the LAST footage frames the generator
-        sees (0 = none); None = all. The critic always sees all, so runs that vary the generator's footage are
-        scored by the same critic.
-
-        With a person critic: stage 'fit' adapts it to the footage (self.fit), the sampler keys dg / dgs guide the
-        motion by it, and self.last_critic holds its mean logits on the clip (critic_real, critic_sync).
-        fit_gen (with footage): stage 'fit_gen' first adapts a copy of the generator to the footage (self.gen_fit,
-        sang.model.critic.fit_generator) and generates with it; the same seed without it is the no-fit ablation.
-        self.last_fit: the fit's score before / after (fit_mbes0, fit_mbes, fit_kl), {} without a fit."""
-        from sang.model.critic import fit_generator, fit_person, make_guide, score_clip
+        motion relative to the photo plus its WavLM, encoded to the model's demo tokens). Needs a demo model.
+        self.demo_frames is the number of footage frames used (the footage stops at its first shot cut),
+        self.demo_motion their motion [T', 70]."""
         from sang.model.flow import generate
         timer = timer or Timer()
         codec = self.codec
@@ -158,47 +134,26 @@ class Talker:
             sm = codec.source_motion(src, crop=crop)
             m_src = sm["m"].to(self.dev)
             ref = self.norm.ref(sm["kp"].to(self.dev), m_src)
-        tokens, ctokens, self.demo_frames, self.demo_motion, self.last_fit = None, None, 0, None, {}
-        critic, model = self.critic, self.model
+        tokens, self.demo_frames, self.demo_motion = None, 0, None
         if demo is not None:
-            if self.model.demo is None and critic is None:
+            if self.model.demo is None:
                 raise ValueError("this checkpoint has no demo encoder (trained with demo_tokens=0)")
             with timer("demo"):
                 d = codec.extract(np.ascontiguousarray(demo[0]))
                 a, b = d["span"]
                 u = self.latent.from_motion(d["m"].float().to(self.dev), m_src, self.model.t_dim)
                 ad = self.wavlm.encode(demo[1][a * HOP:b * HOP][None, None].to(self.dev)).float()
-                mask = torch.ones(1, len(u), dtype=torch.bool, device=self.dev)
-                n_gen = len(u) if gen_demo is None else min(gen_demo, len(u))
-                s = len(u) - n_gen
-                if self.model.demo is not None and n_gen:
-                    tokens = self.model.demo(u[None, s:], ad[:, 2 * s:2 * len(u)], mask[:, s:])
+                tokens = self.model.demo(u[None], ad[:, :2 * len(u)], torch.ones(1, len(u), dtype=torch.bool, device=self.dev))
                 self.demo_frames, self.demo_motion = len(u), d["m"]
-            if fit_gen and n_gen:  # the adapter sits in the last block, so the footage tokens stay valid
-                with timer("fit_gen"):
-                    model = fit_generator(self.model, u[s:], ad[:, 2 * s:], ref, self.latent.decode,
-                                          P=self.cfg["prefix"], L=self.cfg["frames"], gen_steps=self.sampler["steps"],
-                                          g=self.sampler["cfg_audio"], seed=seed, log=self.last_fit, **self.gen_fit)
-            if critic is not None and self.fit.get("steps", 0) > 0:
-                with timer("fit"):
-                    critic = fit_person(critic, self.model, u, ad, ref, P=self.cfg["prefix"], L=self.cfg["frames"],
-                                        gen_steps=self.sampler["steps"], g=self.sampler["cfg_audio"], seed=seed,
-                                        **self.fit)
-            if critic is not None and critic.trunk.demo is not None:
-                ctokens = critic.trunk.demo(u[None], ad, mask)
         lead = self.cfg["prefix"]
         with timer("audio"):
             audio = self.wavlm.encode(torch.nn.functional.pad(wav, (lead * HOP, 0))[None, None].to(self.dev)).float()
-        guide = make_guide(critic, ctokens, *self.guide_w) if any(self.guide_w) else None
         with timer("motion"):
             first = self.latent.from_motion(m_src, m_src, self.model.t_dim).unsqueeze(1).expand(1, lead, -1)
             g = torch.Generator(device=self.dev).manual_seed(seed)
-            z = generate(model, audio, ref, n_frames, window=self.cfg["frames"], n_prefix=self.cfg["prefix"],
-                         generator=g, start=first, demo=tokens, guide=guide, **self.sampler)[0]
+            z = generate(self.model, audio, ref, n_frames, window=self.cfg["frames"], n_prefix=self.cfg["prefix"],
+                         generator=g, start=first, demo=tokens, **self.sampler)[0]
             m = self.latent.to_motion(z, m_src)
-        self._scoring = (critic, audio, ref, first, ctokens, m_src)
-        self.last_critic = (score_clip(critic, z[None], audio, ref, first, ctokens, self.cfg["frames"])
-                            if critic is not None else {})
         if not render:
             return None, m, timer
         with timer("render"):
@@ -216,20 +171,3 @@ class Talker:
                     b = paster(b)
             out.append(b.cpu().numpy() if torch.is_tensor(b) else b)
         return np.concatenate(out), m, timer
-
-    @torch.no_grad()
-    def score_motion(self, m: torch.Tensor, head: tuple[float, str] | None = None) -> dict:
-        """The person critic's mean logits for motion m [n, 70] (e.g. the real clip's) on the inputs of the last run
-        (same photo, audio, footage, fitted critic): {real_critic_real, real_critic_sync}, {} without a critic.
-        head = (s, part): first scale m's head about the photo's pose (sang.eval.naturalness.shrink_head)."""
-        critic, audio, ref, first, ctokens, m_src = self._scoring
-        if critic is None:
-            return {}
-        m = m.float().to(self.dev)
-        if head is not None:
-            from sang.eval.naturalness import shrink_head
-            m = shrink_head(m, m_src.float(), *head)
-        z = self.latent.from_motion(m, m_src, self.model.t_dim)
-        from sang.model.critic import score_clip
-        return {f"real_{k}": v for k, v in score_clip(critic, z[None], audio, ref, first, ctokens,
-                                                      self.cfg["frames"]).items()}

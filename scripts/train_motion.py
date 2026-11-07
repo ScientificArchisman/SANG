@@ -96,7 +96,7 @@ def lr_at(step, cfg):
 
 def setup_data(cfg: dict, dev: str) -> SimpleNamespace:
     """The speaker split, photo normalisation, motion latent, sync offsets and window datasets of a config (also
-    used by scripts/train_critic.py and scripts/train_rl.py). encode maps a batch's deltas to latent codes."""
+    used by scripts/train_set.py). encode maps a batch's deltas to latent codes."""
     cache = Path(cfg["cache_dir"])
     rows = load_index(cache)
     train_rows, val_rows = split_by_speaker(rows, cfg["val_frac"], cfg["seed"])

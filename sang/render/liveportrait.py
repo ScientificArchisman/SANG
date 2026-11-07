@@ -150,7 +150,7 @@ def ort_report(cropper, threads: int) -> str:
 class MotionCodec:
     """Frozen LivePortrait. `extract` maps frames -> motion; `render` maps source + motion -> frames.
 
-    Nothing here trains. Instantiate once per process: it holds five networks plus an
+    Nothing here trains (sang.render.calibrate fits a per-person adapter on the decoder). Instantiate once per process: it holds five networks plus an
     InsightFace detector (~1.8 GB of VRAM measured on the 4090 in the upstream repo)."""
 
     def __init__(self, device: str = "cuda", weights: Path = WEIGHTS):
@@ -334,14 +334,19 @@ class MotionCodec:
         still."""
         x_d_all = self.driving_keypoints(s, m)
         for i in range(0, len(x_d_all), batch):
-            x_d = x_d_all[i:i + batch]
-            b = len(x_d)
-            x_s = s["x_s"].expand(b, -1, -1)
-            x_d = self.lp.stitching(x_s, x_d)
+            f = self.warped(s, x_d_all[i:i + batch], half)
             with torch.autocast("cuda", dtype=torch.float16, enabled=half and self.device != "cpu"):
-                w = self.lp.warping_module(s["f_s"].expand(b, *s["f_s"].shape[1:]), kp_source=x_s, kp_driving=x_d)
-                img = self.lp.spade_generator(feature=w["out"])
+                img = self.lp.spade_generator(feature=f)
             yield (img.float().clamp(0, 1) * 255).clamp(0, 255).to(torch.uint8).permute(0, 2, 3, 1)
+
+    def warped(self, s: dict, x_d: torch.Tensor, half: bool = False) -> torch.Tensor:
+        """The source's features warped to driving keypoints x_d [b, 21, 3], after stitching: the decoder's input
+        [b, 256, 64, 64]. No grad mode is set here (sang.render.calibrate backpropagates through the decoder only)."""
+        x_s = s["x_s"].expand(len(x_d), -1, -1)
+        x_d = self.lp.stitching(x_s, x_d)
+        with torch.autocast("cuda", dtype=torch.float16, enabled=half and self.device != "cpu"):
+            return self.lp.warping_module(s["f_s"].expand(len(x_d), *s["f_s"].shape[1:]), kp_source=x_s,
+                                          kp_driving=x_d)["out"]
 
 
 NEEDED = {"lp": ("get_kp_info", "extract_feature_3d", "transform_keypoint", "stitching", "prepare_source",

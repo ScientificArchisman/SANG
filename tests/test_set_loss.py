@@ -1,4 +1,5 @@
-"""Proper multi-sample fine-tuning (sang.model.critic.energy / set_loss, PersonSets, scripts/train_set.py). CPU only."""
+"""Proper multi-sample fine-tuning (sang.model.scoring.energy / mbes / set_loss, PersonSets, scripts/train_set.py).
+CPU only."""
 import copy
 import sys
 from pathlib import Path
@@ -9,11 +10,10 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(REPO), str(REPO / "scripts"), str(Path(__file__).resolve().parent)]
 from sang.data.dataset import MotionWindows, PersonSets
 from sang.data.paths import load_index
-from sang.model.critic import (LoRA, Critic, block_scale, energy, fit_generator, footage_windows, haar, mbes,
-                               set_critic_loss, set_loss)
 from sang.model.flow import REF_DIM, Norm
+from sang.model.scoring import block_scale, energy, haar, mbes, set_loss
 from test_demo import M, _demo
-from test_motion_model import A, K, L, P, _batch, _model, _unzero
+from test_motion_model import _batch, _model, _unzero
 from test_train_eval import make_cache, train
 
 
@@ -37,22 +37,6 @@ def test_the_energy_distance_is_zero_for_one_law_and_sees_a_shrunk_coordinate():
     part[..., :6] *= 0.62  # 6 of 30 directions: seen, but weakly (about 3 standard errors over 2000 sets)
     assert 2 * se < float(energy(part, y).mean()) < float(energy(0.62 * x, y).mean())
     assert float(energy(0.62 * x, y).mean()) > 20 * se
-
-
-def test_paired_sets_compare_laws_not_each_sample_with_its_own_window():
-    # windows differ by a large offset (their photo and prefix); a sample shares it with its own real window
-    g = torch.Generator().manual_seed(2)
-    off = 5 * torch.randn(2000, 8, 30, generator=g)
-    y = off + torch.randn(2000, 8, 30, generator=g)
-    x = off + torch.randn(2000, 8, 30, generator=g)
-    se = float(energy(x, y, True).std()) / 2000 ** 0.5
-    assert float(energy(x, y).mean()) < -20 * se  # the bias seen on the cluster (ed_sang -4.3, ed_shrink -14.7)
-    assert abs(float(energy(x, y, True).mean())) < 3 * se
-    narrow = off + 0.62 * torch.randn(2000, 8, 30, generator=g)
-    assert float(energy(narrow, y, True).mean()) < 3 * se  # the offsets swamp the spread ...
-    assert float(energy(narrow - off, y - off, True).mean()) > 10 * se  # ... so set_loss measures from each start
-    two = torch.repeat_interleave(x, 2, 1) + 0.1 * torch.randn(2000, 16, 30, generator=g)  # m = 2 per window
-    assert abs(float(energy(two, y, True).mean())) < 3 * float(energy(two, y, True).std()) / 2000 ** 0.5
 
 
 def test_the_block_score_is_lowest_at_the_real_spread_and_sees_a_two_channel_shrink():
@@ -92,54 +76,22 @@ def test_person_sets_hold_the_real_windows_out_of_the_footage(tmp_path):
     assert torch.equal(sets[3]["target"], sets[3]["target"])  # fixed: the val sets do not change
 
 
-def test_both_losses_train_the_policy_and_the_set_critic():
+def test_both_scores_train_the_policy():
     torch.manual_seed(0)
     policy = _model(demo_tokens=M).eval()
     _unzero(policy)
     ref = copy.deepcopy(policy).requires_grad_(False)
-    critic = Critic(copy.deepcopy(policy)).eval().requires_grad_(False)
-    b = {**_batch(), **_demo()}  # 2 windows = 1 person x K 2
-    loss, parts = set_loss(policy, ref, b, K=2, m=2, steps=2, w_adv=1.0, critic=critic)
+    b = {**_batch(), **_demo()}
+    loss, parts = set_loss(policy, ref, b, m=2, steps=2)
     loss.backward()
     grads = [p.grad for p in policy.parameters() if p.grad is not None]
     assert grads and all(torch.isfinite(gr).all() for gr in grads) and sum(gr.abs().sum() for gr in grads) > 0
-    assert {"path_kl", "ed", "ed_adv"} <= parts.keys() and float(parts["path_kl"]) < 1e-8
+    assert parts.keys() == {"path_kl", "ed"} and float(parts["path_kl"]) < 1e-8
     policy.zero_grad()
     blocks = (lambda u: u, *block_scale(b["target"], b["prefix"][:, -1:], lambda u: u))
-    loss, parts = set_loss(policy, ref, b, K=1, m=2, steps=2, blocks=blocks)  # idea 1 with the block score
+    loss, parts = set_loss(policy, ref, b, m=2, steps=2, blocks=blocks)
     loss.backward()
     assert "mbes" in parts and sum(p.grad.abs().sum() for p in policy.parameters() if p.grad is not None) > 0
-    critic.requires_grad_(True)
-    closs, cparts = set_critic_loss(critic, b, torch.randn_like(b["target"]), K=2, gp=10.0)
-    closs.backward()
-    assert float(cparts["gp"]) > 0 and critic.trunk.in_proj.weight.grad.abs().sum() > 0
-    f = critic.features(b["target"], b, critic.encode_demo(b))
-    assert torch.allclose(f.norm(dim=-1), torch.ones(2), atol=1e-5)
-
-
-def test_the_person_fit_adapts_a_copy_and_masks_each_window_out_of_the_footage():
-    torch.manual_seed(0)
-    gen = _model(demo_tokens=M).eval()
-    _unzero(gen)
-    before = copy.deepcopy(gen.state_dict())
-    n = P + L + 20
-    u, audio, ref = torch.randn(n, K), torch.randn(1, 2 * n, A), torch.randn(1, REF_DIM)
-    b = footage_windows(u, audio, ref, 3, P, L, torch.Generator().manual_seed(1))
-    assert (~b["demo_mask"]).sum(1).tolist() == [P + L] * 3
-    assert all(torch.equal(u[~b["demo_mask"][i]], torch.cat([b["prefix"][i], b["target"][i]])) for i in range(3))
-    kw = dict(batch=2, m=2, pool=4, P=P, L=L, gen_steps=2)
-    assert fit_generator(gen, u, audio, ref, lambda z: z, steps=0, **kw) is gen
-    assert fit_generator(gen, u[: P + L - 1], audio, ref, lambda z: z, **kw) is gen  # shorter than one window
-    log = {}
-    fitted = fit_generator(gen, u, audio, ref, lambda z: z, steps=3, log=log, **kw)
-    assert log.keys() == {"fit_mbes0", "fit_mbes_1", "fit_mbes_2", "fit_mbes", "fit_kl"} and log["fit_kl"] > 0
-    assert all(torch.equal(v, gen.state_dict()[k]) for k, v in before.items())
-    adapters = [mod for mod in fitted.modules() if isinstance(mod, LoRA)]
-    assert len(adapters) == 4 and any(float(mod.b.abs().sum()) > 0 for mod in adapters)
-    x, t = torch.randn(3, L, K), torch.full((3,), 0.5)
-    out = lambda mdl: mdl(x, t, b["audio"], b["ref"], prefix=b["prefix"], demo=mdl.encode_demo(b))
-    with torch.no_grad():
-        assert not torch.allclose(out(fitted), out(gen))
 
 
 def test_train_set_runs_rounds_reports_the_gates_and_stops(tmp_path, monkeypatch, capsys):
@@ -153,17 +105,16 @@ def test_train_set_runs_rounds_reports_the_gates_and_stops(tmp_path, monkeypatch
         return {f"{s}_r_{q}": r for s in ("std", "vc") for q in ("mouth", "rot", "place")}
     monkeypatch.setattr(train_set, "motion_eval", motion_eval)
     monkeypatch.setattr(sys, "argv", ["train_set.py", f"gen={tmp_path / 'gen' / 'last.pt'}", f"out_dir={tmp_path / 'set'}",
-                                      "rounds=3", "alternations=1", "policy_steps=2", "critic_steps=1", "critic_warmup=1",
-                                      "persons=2", "K=2", "m=2", "w_adv=1", "workers=0", "eval_batches=1", "log_every=1",
-                                      "steps=2"])
+                                      "rounds=3", "alternations=1", "policy_steps=2", "persons=2", "m=2", "score=es",
+                                      "workers=0", "eval_batches=1", "log_every=1", "steps=2"])
     train_set.main()
     out = capsys.readouterr().out
-    assert "STOP after round 2" in out and "gate " in out and "gate_adv" in out and "es_s1.6" in out
+    assert "STOP after round 2" in out and "es_s1.6" in out and " ed " in out
     assert "g1z_mbes_head0.62_slow" in out and "mbes_s1.6" in out
-    assert sorted(p.name for p in (tmp_path / "set").iterdir()) == ["critic1.pt", "critic2.pt", "round1.pt", "round2.pt"]
+    assert sorted(p.name for p in (tmp_path / "set").iterdir()) == ["round1.pt", "round2.pt"]
     monkeypatch.setattr(sys, "argv", ["train_set.py", f"gen={tmp_path / 'gen' / 'last.pt'}", f"out_dir={tmp_path / 'mb'}",
-                                      "rounds=1", "alternations=1", "policy_steps=2", "persons=2", "K=1", "m=2",
-                                      "score=mbes", "workers=0", "eval_batches=1", "log_every=1", "steps=2"])
+                                      "rounds=1", "alternations=1", "policy_steps=2", "persons=2", "m=2",
+                                      "workers=0", "eval_batches=1", "log_every=1", "steps=2"])
     train_set.main()
     out = capsys.readouterr().out
     assert "score mbes" in out and "mbes " in out and (tmp_path / "mb" / "round1.pt").exists()

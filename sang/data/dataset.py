@@ -153,9 +153,9 @@ class MotionWindows(Dataset):
 
 class PersonSets(Dataset):
     """K windows of one person (a video directory) that all read the same footage: one stretch of a clip that none of
-    the K windows comes from, so the real windows are held out from what the generator sees (sang.model.critic.
-    set_loss compares a person's generated and real windows as sets). Only persons with two or more clips; K = 1 is
-    one window with footage, as MotionWindows gives."""
+    the K windows comes from, so the real windows are held out from what the generator sees (scripts/train_set.py
+    trains with K = 1, its EVAL reads K = 8). Only persons with two or more clips; K = 1 is one window with footage, as
+    MotionWindows gives."""
 
     def __init__(self, ds: MotionWindows, K: int, fixed: bool = False):
         if not ds.demo:
