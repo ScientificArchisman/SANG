@@ -72,7 +72,7 @@ def test_lse_survives_non_ascii_syncnet_output(tmp_path, monkeypatch):
 
 
 def test_table():
-    args = argparse.Namespace(name="l42", sampler="g=2,steps=6", gt_latent="runs/latent/pca.pt", gt_k=16)
+    args = argparse.Namespace(name="l42", sampler="g=2,steps=6", gt_latent="runs/latent/pca.pt", gt_k=16, scene=False)
     rows = {"real": {"n_clips": 75, "m": {"LSE-C": 7.161, "CSIM": 0.9}},
             "gt_motion": {"n_clips": 75, "m": {"FID": 16.1, "FVD": 28.0}},
             "sang": {"n_clips": 75, "m": {"FID": 17.466, "FVD": 37.607, "LSE-C": 7.454}}}

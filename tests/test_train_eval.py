@@ -12,11 +12,11 @@ sys.path.insert(0, str(REPO))
 from sang.model.latent import fit_pca
 
 
-def make_cache(root: Path, n_spk: int = 6, T: int = 90, clips: int = 2) -> list[dict]:
+def make_cache(root: Path, n_spk: int = 6, T: int = 90) -> list[dict]:
     """A tiny motion cache with its index, sync offsets (all kept, no shift) and a motion latent."""
     rows, g = [], torch.Generator().manual_seed(0)
     for s in range(n_spk):
-        for c in range(clips):
+        for c in range(2):
             p = root / f"spk{s}" / f"c{c}.pt"
             p.parent.mkdir(parents=True, exist_ok=True)
             m = torch.randn(T, 70, generator=g) * 0.05
@@ -25,7 +25,7 @@ def make_cache(root: Path, n_spk: int = 6, T: int = 90, clips: int = 2) -> list[
                         "audio": torch.randn(2 * T, 1024, generator=g).half(), "n": T}, p)
             rows.append({"clip": f"/x/spk{s}/c{c}.mp4", "path": str(p), "n": T})
     (root / "index_000.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
-    clips = {f"spk{s}/c{c}": {"keep": True, "offset": 0.0, "shift_ticks": 0} for s in range(n_spk) for c in range(clips)}
+    clips = {f"spk{s}/c{c}": {"keep": True, "offset": 0.0, "shift_ticks": 0} for s in range(n_spk) for c in range(2)}
     (root / "sync_offsets.json").write_text(json.dumps({"clips": clips}))
     torch.save(fit_pca(torch.randn(500, 69, generator=g), K=69).pack(), root / "pca.pt")
     return rows

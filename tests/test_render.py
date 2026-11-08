@@ -45,17 +45,51 @@ def test_gpu_paste_matches_cv2_paste_back():
     assert (GpuPaster(far, bg, S, device="cpu")(torch.from_numpy(crops)) == bg).all()
 
 
+def test_the_scene_shows_where_neither_person_moves():
+    rng = np.random.default_rng(1)
+    S, H, W = 64, 120, 160
+    crops = torch.from_numpy(rng.integers(0, 256, (2, S, S, 3), dtype=np.uint8))
+    bg, live = rng.integers(0, 256, (H, W, 3), dtype=np.uint8), rng.integers(0, 256, (2, H, W, 3), dtype=np.uint8)
+    M = np.array([[1.3, 0, 30.5], [0, 1.3, 12.25], [0, 0, 1]])  # the crop covers x 30.5-112.4, y 12.25-94.2
+    p = GpuPaster(M, bg, S, device="cpu")
+    still = p(crops)
+    assert (p(crops, scene=(live, torch.ones(2, 8, 8))) == live).all() and p.live_share == 1.0
+    held = p(crops, scene=(live, torch.zeros(2, 8, 8)))  # both persons everywhere: the paste inside the crop
+    assert np.abs(held[:, 20:85, 40:100].astype(int) - still[:, 20:85, 40:100]).max() <= 1  # float weights, uint8 cast
+    assert (held[:, :p.y0] == live[:, :p.y0]).all() and (held[:, :, p.x1:] == live[:, :, p.x1:]).all()
+    assert abs(p.live_share - (1 - (1.3 * 63) ** 2 / (H * W))) < 0.02
+
+
+class FakeDenseMotion(torch.nn.Module):
+    """LivePortrait's dense motion network: a softmax mask over [still, 21 keypoints] per depth slice and pixel."""
+
+    def forward(self, feature, kp_driving, kp_source):
+        d = (kp_driving - kp_source).reshape(len(kp_driving), -1).mean(1)
+        logits = torch.arange(22 * 2 * 16.0).reshape(1, 22, 2, 4, 4).sin() * (1 + d.reshape(-1, 1, 1, 1, 1))
+        return {"mask": logits.softmax(1)}
+
+
+class FakeWarping(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.dense_motion_network = FakeDenseMotion()
+
+    def forward(self, feature_3d, kp_source, kp_driving):
+        self.dense_motion_network(feature=feature_3d, kp_driving=kp_driving, kp_source=kp_source)
+        b = kp_driving.shape[0]
+        v = (kp_driving - kp_source).reshape(b, -1)[:, :8] + feature_3d.reshape(b, -1)[:, :8]
+        return {"out": v[:, :, None, None].expand(b, 8, 4, 4)}
+
+
 class FakeLP:
     """LivePortrait stand-in: stitching nudges x_d by a function of (x_s, x_d); the warping module and
     decoder turn keypoints into an image deterministically, per sample (so batching must not matter)."""
 
+    def __init__(self):
+        self.warping_module = FakeWarping()
+
     def stitching(self, x_s, x_d):
         return x_d + 0.01 * torch.tanh(x_s - x_d)
-
-    def warping_module(self, feature_3d, kp_source, kp_driving):
-        b = kp_driving.shape[0]
-        v = (kp_driving - kp_source).reshape(b, -1)[:, :8] + feature_3d.reshape(b, -1)[:, :8]
-        return {"out": v[:, :, None, None].expand(b, 8, 4, 4)}
 
     def spade_generator(self, feature):
         img = torch.sigmoid(feature[:, :3].repeat_interleave(8, 2).repeat_interleave(8, 3))
@@ -87,6 +121,18 @@ def test_render_does_not_depend_on_the_batch_size(monkeypatch):
     assert isinstance(one, torch.Tensor) and one.dtype == torch.uint8 and one.shape == (10, 32, 32, 3)
     for batch in (4, 16):
         assert torch.equal(codec.render(state, m, batch=batch), one)
+
+
+def test_the_background_weight_is_the_still_channel_at_the_most_moving_depth(monkeypatch):
+    codec, state, m = fake_codec(monkeypatch)
+    bg = []
+    assert len(torch.cat(list(codec.render_iter(state, m, batch=4, bg=bg)))) == 10 and [len(b) for b in bg] == [4, 4, 2]
+    still = codec.background(state, m, batch=3)
+    assert torch.allclose(torch.cat(bg), still)  # batch-free, and the same without decoding
+    x_s = state["x_s"].expand(10, -1, -1)
+    x_d = codec.lp.stitching(x_s, codec.driving_keypoints(state, m))
+    dm = codec.lp.warping_module.dense_motion_network
+    assert torch.allclose(still, dm(None, x_d, x_s)["mask"][:, 0].amin(1)) and not dm._forward_hooks
 
 
 def test_timer_adds_up():

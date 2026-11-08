@@ -329,24 +329,41 @@ class MotionCodec:
         return d["scale"].reshape(-1, 1, 1) * (s["x_c"] @ R_d + d["exp"]) + t.reshape(-1, 1, 3)
 
     @torch.no_grad()
-    def render_iter(self, s: dict, m: torch.Tensor, batch: int = 16, half: bool = False):
+    def render_iter(self, s: dict, m: torch.Tensor, batch: int = 16, half: bool = False, bg: list | None = None):
         """Yields [b, 512, 512, 3] uint8 GPU frames, `batch` at a time (see `render`). Stitching keeps the background
-        still."""
+        still. bg: a list that receives each batch's background weight (warped) before the batch is yielded."""
         x_d_all = self.driving_keypoints(s, m)
         for i in range(0, len(x_d_all), batch):
-            f = self.warped(s, x_d_all[i:i + batch], half)
+            f = self.warped(s, x_d_all[i:i + batch], half, bg)
             with torch.autocast("cuda", dtype=torch.float16, enabled=half and self.device != "cpu"):
                 img = self.lp.spade_generator(feature=f)
             yield (img.float().clamp(0, 1) * 255).clamp(0, 255).to(torch.uint8).permute(0, 2, 3, 1)
 
-    def warped(self, s: dict, x_d: torch.Tensor, half: bool = False) -> torch.Tensor:
+    @torch.no_grad()
+    def background(self, s: dict, m: torch.Tensor, batch: int = 16, half: bool = False) -> torch.Tensor:
+        """Where the source posed by absolute motion m [T,70] leaves the scene still: the background weight [T, h, w]
+        in crop space (warped), without decoding."""
+        bg, x_d = [], self.driving_keypoints(s, m)
+        for i in range(0, len(x_d), batch):
+            self.warped(s, x_d[i:i + batch], half, bg)
+        return torch.cat(bg)
+
+    def warped(self, s: dict, x_d: torch.Tensor, half: bool = False, bg: list | None = None) -> torch.Tensor:
         """The source's features warped to driving keypoints x_d [b, 21, 3], after stitching: the decoder's input
-        [b, 256, 64, 64]."""
+        [b, 256, 64, 64]. bg: a list to append the batch's background weight [b, 64, 64] to, LivePortrait's own: the
+        dense motion's softmax weight on its identity (still) motion, channel 0, at the depth slice that follows the face
+        most (the minimum), so a pixel is background only if no depth of it moves with the keypoints."""
         x_s = s["x_s"].expand(len(x_d), -1, -1)
         x_d = self.lp.stitching(x_s, x_d)
-        with torch.autocast("cuda", dtype=torch.float16, enabled=half and self.device != "cpu"):
-            return self.lp.warping_module(s["f_s"].expand(len(x_d), *s["f_s"].shape[1:]), kp_source=x_s,
-                                          kp_driving=x_d)["out"]
+        wm = self.lp.warping_module
+        hook = None if bg is None else wm.dense_motion_network.register_forward_hook(
+            lambda mod, inp, out: bg.append(out["mask"][:, 0].float().amin(1)))
+        try:
+            with torch.autocast("cuda", dtype=torch.float16, enabled=half and self.device != "cpu"):
+                return wm(s["f_s"].expand(len(x_d), *s["f_s"].shape[1:]), kp_source=x_s, kp_driving=x_d)["out"]
+        finally:
+            if hook is not None:
+                hook.remove()
 
 
 NEEDED = {"lp": ("get_kp_info", "extract_feature_3d", "transform_keypoint", "stitching", "prepare_source",

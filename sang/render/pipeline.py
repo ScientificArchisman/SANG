@@ -65,7 +65,7 @@ class GpuPaster:
         x1, y1 = np.ceil(corners[:2].max(1)).astype(int) + 2
         self.x0, self.y0 = max(0, x0), max(0, y0)
         self.x1, self.y1 = min(W, x1), min(H, y1)
-        self.bg_full = background
+        self.bg_full, self.S = background, S
         self.empty = self.x1 <= self.x0 or self.y1 <= self.y0
         if self.empty:
             return
@@ -82,26 +82,37 @@ class GpuPaster:
         self.device = device
 
     @torch.no_grad()
-    def __call__(self, crops: torch.Tensor) -> np.ndarray:
-        """[b, S, S, 3] uint8 (any device) -> [b, H, W, 3] uint8 numpy."""
+    def __call__(self, crops: torch.Tensor, scene: tuple | None = None) -> np.ndarray:
+        """[b, S, S, 3] uint8 (any device) -> [b, H, W, 3] uint8 numpy.
+
+        scene = (frames [b, H, W, 3] uint8, keep [b, h, w] in crop space): a living background instead of the still
+        one. It shows with weight keep inside the crop and everywhere outside it; self.live_share is the share of
+        output pixels it supplies."""
         b = len(crops)
-        out = np.repeat(self.bg_full[None], b, 0)
+        out = np.repeat(self.bg_full[None], b, 0) if scene is None else scene[0].copy()
+        self.live_share = 1.0
         if self.empty:
             return out
         f = crops.to(self.device).permute(0, 3, 1, 2).float()
-        w = F.grid_sample(f, self.grid.expand(b, -1, -1, -1), mode="bilinear", padding_mode="zeros",
-                          align_corners=True).round()
-        roi = (self.mask * w + (1.0 - self.mask) * self.bg).clamp(0, 255).to(torch.uint8)
+        grid = self.grid.expand(b, -1, -1, -1)
+        w = F.grid_sample(f, grid, mode="bilinear", padding_mode="zeros", align_corners=True).round()
+        roi = self.mask * w + (1.0 - self.mask) * self.bg
+        if scene is not None:
+            hold = F.interpolate((1.0 - scene[1].float())[:, None].to(self.device), size=(self.S, self.S),
+                                 mode="bilinear", align_corners=True)  # at crop size, so it ends where the crop does
+            hold = F.grid_sample(hold, grid, mode="bilinear", padding_mode="zeros", align_corners=True)
+            live = torch.from_numpy(np.ascontiguousarray(scene[0][:, self.y0:self.y1, self.x0:self.x1]))
+            roi = hold * roi + (1.0 - hold) * live.to(self.device).permute(0, 3, 1, 2).float()
+            self.live_share = 1.0 - float(hold.sum()) / (b * out.shape[1] * out.shape[2])
+        roi = roi.clamp(0, 255).to(torch.uint8)
         out[:, self.y0:self.y1, self.x0:self.x1] = roi.permute(0, 2, 3, 1).cpu().numpy()
         return out
 
 
 class Talker:
-    def __init__(self, ckpt: str, sampler: str | None = None, device: str = "cuda", codec=None, wavlm=None,
-                 analog: str | None = None):
+    def __init__(self, ckpt: str, sampler: str | None = None, device: str = "cuda", codec=None, wavlm=None):
         """sampler: a spec such as 'g=2,steps=6' (sang.model.flow.SAMPLER_KEYS); without one, the run's cfg_audio
-        and sample_steps. analog: scripts/build_analog.py's statistics for this checkpoint; with footage, the sampler
-        is calibrated for the person by analog_mode (sang.model.analog.MODES)."""
+        and sample_steps."""
         from sang.data.audio import load_wavlm
         from sang.model.flow import Norm, build, parse_spec, sampler_kwargs
         from sang.model.latent import MotionLatent
@@ -115,17 +126,11 @@ class Talker:
         self.sampler = sampler_kwargs(parse_spec(sampler), self.cfg)
         self.codec = codec or MotionCodec(device=device)
         self.wavlm = wavlm or load_wavlm(device=device)
-        self.analog, self.analog_mode, self.analog_info = None, "own_matched", {}
-        if analog:
-            from pathlib import Path
-            from sang.model.analog import Analog
-            self.analog = Analog(analog, device)
-            if Path(self.analog.a["gen"]).resolve() != Path(ckpt).resolve():
-                raise ValueError(f"{analog} holds the statistics of {self.analog.a['gen']}, not of {ckpt}")
 
     @torch.no_grad()
     def run(self, src: np.ndarray, wav: torch.Tensor, n_frames: int, seed: int = 0, paste: bool = True,
-            batch: int = 16, timer: Timer | None = None, demo: tuple | None = None, render: bool = True):
+            batch: int = 16, timer: Timer | None = None, demo: tuple | None = None, render: bool = True,
+            scene: bool = False):
         """src [H,W,3] uint8, wav [N] 16 kHz -> (frames [n,H,W,3] or, with paste=False, crops [n,512,512,3] uint8,
         motion [n,70], timer). The first window continues from the photo's own motion after `prefix` frames of
         silence. The photo keeps its own lips, as training references do (docs/research_log.md 3.23).
@@ -134,8 +139,16 @@ class Talker:
         demo = (frames [T,H,W,3] uint8, wav [T*640]): extra footage of the person, read once (stage 'demo': its
         motion relative to the photo plus its WavLM, encoded to the model's demo tokens). Needs a demo model.
         self.demo_frames is the number of footage frames used (the footage stops at its first shot cut),
-        self.demo_motion their motion [T', 70]."""
+        self.demo_motion their motion [T', 70].
+
+        scene (with demo and paste; reports/SANG photorealism calibration.md, design 1): the footage's own scene behind
+        the person, so background and torso live. Output frame t shows footage frame f(t) (played forward, then
+        back) wherever LivePortrait's warping marks neither the rendered person nor the footage's person (the photo
+        posed by the footage's motion) as moving; no extra model. Stage 'scene'; self.scene_share = the share of
+        output pixels from the footage."""
         from sang.model.flow import generate
+        if scene and (demo is None or not paste):
+            raise ValueError("scene composites the footage's frames: pass demo, with paste")
         timer = timer or Timer()
         codec = self.codec
         with timer("source"):
@@ -143,7 +156,7 @@ class Talker:
             sm = codec.source_motion(src, crop=crop)
             m_src = sm["m"].to(self.dev)
             ref = self.norm.ref(sm["kp"].to(self.dev), m_src)
-        tokens, self.demo_frames, self.demo_motion, self.analog_info, correct = None, 0, None, {}, None
+        tokens, self.demo_frames, self.demo_motion, self.scene_share = None, 0, None, None
         if demo is not None:
             if self.model.demo is None:
                 raise ValueError("this checkpoint has no demo encoder (trained with demo_tokens=0)")
@@ -155,33 +168,47 @@ class Talker:
                 ad = F.pad(ad, (0, 0, 0, 2 * len(u) - len(ad)))
                 tokens = self.model.demo(u[None], ad[None], torch.ones(1, len(u), dtype=torch.bool, device=self.dev))
                 self.demo_frames, self.demo_motion = len(u), d["m"]
+                live = demo[0][a:b] if scene else None
         lead = self.cfg["prefix"]
         with timer("audio"):
             audio = self.wavlm.encode(torch.nn.functional.pad(wav, (lead * HOP, 0))[None, None].to(self.dev)).float()
-        if tokens is not None and self.analog is not None and self.analog_mode != "none":
-            with timer("analog"):
-                correct, self.analog_info = self.analog(self.model, u, ad, ref, self.analog_mode, lead,
-                                                        self.cfg["frames"], seed=seed, **self.sampler)
         with timer("motion"):
             first = self.latent.from_motion(m_src, m_src, self.model.t_dim).unsqueeze(1).expand(1, lead, -1)
             g = torch.Generator(device=self.dev).manual_seed(seed)
             z = generate(self.model, audio, ref, n_frames, window=self.cfg["frames"], n_prefix=self.cfg["prefix"],
-                         generator=g, start=first, demo=tokens, correct=correct, **self.sampler)[0]
+                         generator=g, start=first, demo=tokens, **self.sampler)[0]
             m = self.latent.to_motion(z, m_src)
         if not render:
             return None, m, timer
         with timer("render"):
             state = codec.source_state(crop["img_crop_256x256"])
-            it = codec.render_iter(state, m.cpu(), batch=batch, half=True)
-        out, paster = [], None
+            bgs = [] if scene else None
+            it = codec.render_iter(state, m.cpu(), batch=batch, half=True, bg=bgs)
+        if scene:
+            with timer("scene"):
+                # shortcut: the footage's motion is relative to its own crop box, posed here in the photo's; the same
+                # video and camera keep the two boxes close. A moving camera needs the footage aligned first.
+                still = codec.background(state, self.demo_motion.float(), batch=batch, half=True)
+                period, shares = max(1, 2 * len(live) - 2), []
+        out, paster, done = [], None, 0
         while True:
             with timer("render"):
-                b = next(it, None)
-            if b is None:
+                fr = next(it, None)
+            if fr is None:
                 break
             if paste:
                 with timer("paste"):
-                    paster = paster or GpuPaster(crop["M_c2o"], src, b.shape[1], device=self.dev)
-                    b = paster(b)
-            out.append(b.cpu().numpy() if torch.is_tensor(b) else b)
+                    paster = paster or GpuPaster(crop["M_c2o"], src, fr.shape[1], device=self.dev)
+                    sc = None
+                    if scene:
+                        p = np.arange(done, done + len(fr)) % period
+                        f = np.minimum(p, period - p)  # forward, then back: the scene never jumps
+                        sc = (live[f], bgs.pop() * still[torch.from_numpy(f).to(still.device)])
+                    done += len(fr)
+                    fr = paster(fr, scene=sc)
+                    if scene:
+                        shares.append(paster.live_share * len(fr))
+            out.append(fr.cpu().numpy() if torch.is_tensor(fr) else fr)
+        if scene:
+            self.scene_share = sum(shares) / done
         return np.concatenate(out), m, timer

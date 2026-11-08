@@ -42,10 +42,10 @@ Protocol (also written to <out>/protocol.json):
             real segment is (sang.eval.naturalness.copy_ratio; << 1 = replaying the footage).
             --motion-only: the sang row's motion statistics only, no rendering or video metrics (the same seed gives
             the same motion as a full run, so its FVD carries over).
-  analog    --analog runs/style/analog.pt (with --demo): the sampler calibrated for the person from the footage and
-            the style memory's nearest speakers (sang.model.analog). Each --analog-mode (none, own, matched, random,
-            own_matched, own_random) is one run, results/hdtf/<name>_<mode>, in the same job; nb_sim = the mean
-            cosine of the chosen speakers' style to the footage's, d_norm = the size of the correction.
+  scene     --scene (with --demo): the sang row's background and torso are the footage's own scene, live, wherever
+            LivePortrait's warping marks neither person as moving (sang.render.pipeline.Talker.run scene); scene_share
+            = the share of output pixels taken from the footage. A footage-conditioned setting: report it apart from
+            the one-shot rows.
 --n-clips N stops after the first N clips that score (a quick paired test).
 Resumable: per-clip results go to <out>/clips/<row>/<clip>.{json,npz}; a rerun skips them.
 """
@@ -66,12 +66,11 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.data.audio import load_wav
-from sang.model.analog import MODES
 
 SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std", "real_rot_std",
-               "rot_vel", "real_rot_vel", "copy_ratio", "nb_sim", "d_norm")
+               "rot_vel", "real_rot_vel", "copy_ratio", "scene_share")
 METRICS = ("FID", "FVD", "CSIM", "LSE-C", "LSE-D", "PSNR", "SSIM")
 
 
@@ -117,7 +116,7 @@ class Evaluator:
                 print(f"no openness readouts ({e}): no blink / lip stats", flush=True)
         if "sang" in args.rows:
             from sang.render.pipeline import Talker
-            self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec, analog=args.analog)
+            self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec)
             print(f"SANG {args.ckpt} (step {self.talker.step}), sampler {self.talker.sampler}", flush=True)
         if args.gt_latent:
             from sang.model.latent import MotionLatent
@@ -129,11 +128,14 @@ class Evaluator:
         go into the clip's json."""
         a = self.args
         real = self.real_motion(frames) if a.real_stats else None
-        gen, m, timer = self.talker.run(frames[0], wav, len(frames), seed=a.seed, demo=demo, render=not a.motion_only)
+        gen, m, timer = self.talker.run(frames[0], wav, len(frames), seed=a.seed, demo=demo, render=not a.motion_only,
+                                        scene=a.scene)
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
         if demo is not None:
             self.last_t["demo_frames"] = self.talker.demo_frames
-        self.last_stats = {**self.motion_stats(m, real), **self.talker.analog_info}
+        self.last_stats = self.motion_stats(m, real)
+        if a.scene:
+            self.last_stats["scene_share"] = self.talker.scene_share
         if real is not None and self.talker.demo_motion is not None:
             from sang.eval.naturalness import copy_ratio
             from sang.model.target import to_target
@@ -211,7 +213,7 @@ class Evaluator:
         return res, feats
 
 
-def run(args, ev) -> None:
+def run(args) -> None:
     out = Path(args.out or REPO / "results" / "hdtf" / args.name)
     (out / "clips").mkdir(parents=True, exist_ok=True)
     clips = read_list(args.list, Path(args.data))
@@ -223,6 +225,7 @@ def run(args, ev) -> None:
     (out / "protocol.json").write_text(json.dumps({**vars(args), "n_clips": len(clips), "commit": commit}, indent=1, default=str))
     print(f"HDTF eval '{args.name}': {len(clips)} clips x {args.seconds:g} s, rows {args.rows} -> {out}", flush=True)
 
+    ev = Evaluator(args)
     from sang.render.liveportrait import decode_clip
     t0, scored = time.time(), 0
     for i, clip in enumerate(clips, 1):
@@ -289,7 +292,7 @@ def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0) -> None
 
 def label(row: str, args) -> str:
     if row == "sang":
-        return f"SANG-M ({args.name}: {args.sampler or 'run defaults'})"
+        return f"SANG-M ({args.name}: {args.sampler or 'run defaults'}{', footage scene' if args.scene else ''})"
     if row == "gt_motion":
         return "Real motion → LivePortrait (ceiling)" + (f" through {args.gt_k} codes" if args.gt_latent else "")
     return {"real": "Real video", "ditto": "Ditto"}[row]
@@ -371,9 +374,7 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--n-clips", type=int, default=0, help="stop after this many scored clips (0 = all)")
     ap.add_argument("--motion-only", action="store_true", help="sang row motion stats only (no rendering)")
-    ap.add_argument("--analog", default=None, help="analog statistics (scripts/build_analog.py) for the sang row")
-    ap.add_argument("--analog-mode", nargs="+", default=["own_matched"], choices=MODES,
-                    help="with --analog: one run per mode, named <name>_<mode>")
+    ap.add_argument("--scene", action="store_true", help="sang row over the footage's own live scene (needs --demo)")
     args = ap.parse_args()
     if args.motion_only and args.rows != ["sang"]:
         sys.exit("--motion-only scores the sang row only: pass --rows sang")
@@ -383,15 +384,9 @@ def main() -> None:
         sys.exit("--demo needs --start >= the footage length: the footage comes before the segment")
     if args.start and "ditto" in args.rows:
         sys.exit("the Ditto videos cover the first seconds of each clip only: no ditto row with --start")
-    if args.analog and (not args.demo or "sang" not in args.rows):
-        sys.exit("--analog calibrates from the footage for the sang row: pass --demo and --rows sang")
-    ev = Evaluator(args)
-    if not args.analog:
-        return run(args, ev)
-    for mode in args.analog_mode:
-        ev.talker.analog_mode = mode
-        out = args.out and str(Path(args.out).with_name(Path(args.out).name + f"_{mode}"))
-        run(argparse.Namespace(**{**vars(args), "name": f"{args.name}_{mode}", "out": out, "analog_mode": mode}), ev)
+    if args.scene and (not args.demo or args.motion_only or "sang" not in args.rows):
+        sys.exit("--scene composites the footage behind the sang row: pass --demo and --rows sang, not --motion-only")
+    run(args)
 
 
 if __name__ == "__main__":
