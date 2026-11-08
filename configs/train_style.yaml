@@ -19,5 +19,4 @@ bf16: true
 workers: 8
 log_every: 100
 eval_every: 500
-stride: 32                 # memory windows every 32 frames
-audio_dims: 64             # principal directions of the mean WavLM tick in the audio key
+stride: 32                 # a clip's style = the mean key of its windows every 32 frames

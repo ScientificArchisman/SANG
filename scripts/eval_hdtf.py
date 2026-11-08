@@ -42,10 +42,10 @@ Protocol (also written to <out>/protocol.json):
             real segment is (sang.eval.naturalness.copy_ratio; << 1 = replaying the footage).
             --motion-only: the sang row's motion statistics only, no rendering or video metrics (the same seed gives
             the same motion as a full run, so its FVD carries over).
-  memory    --memory runs/style/memory.pt (with --demo): other TalkVid speakers' windows join the footage
-            (sang.render.pipeline.Talker.memory_tokens). Each --memory-mode (none, style, style_noaudio, random) is
-            one run, results/hdtf/<name>_<mode>, in the same job; mem_sim = the mean cosine of the chosen speakers'
-            style to the footage's.
+  analog    --analog runs/style/analog.pt (with --demo): the sampler calibrated for the person from the footage and
+            the style memory's nearest speakers (sang.model.analog). Each --analog-mode (none, own, matched, random,
+            own_matched, own_random) is one run, results/hdtf/<name>_<mode>, in the same job; nb_sim = the mean
+            cosine of the chosen speakers' style to the footage's, d_norm = the size of the correction.
 --n-clips N stops after the first N clips that score (a quick paired test).
 Resumable: per-clip results go to <out>/clips/<row>/<clip>.{json,npz}; a rerun skips them.
 """
@@ -66,11 +66,12 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.data.audio import load_wav
+from sang.model.analog import MODES
 
 SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std", "real_rot_std",
-               "rot_vel", "real_rot_vel", "copy_ratio", "mem_sim")
+               "rot_vel", "real_rot_vel", "copy_ratio", "nb_sim", "d_norm")
 METRICS = ("FID", "FVD", "CSIM", "LSE-C", "LSE-D", "PSNR", "SSIM")
 
 
@@ -116,7 +117,7 @@ class Evaluator:
                 print(f"no openness readouts ({e}): no blink / lip stats", flush=True)
         if "sang" in args.rows:
             from sang.render.pipeline import Talker
-            self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec, memory=args.memory)
+            self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec, analog=args.analog)
             print(f"SANG {args.ckpt} (step {self.talker.step}), sampler {self.talker.sampler}", flush=True)
         if args.gt_latent:
             from sang.model.latent import MotionLatent
@@ -132,7 +133,7 @@ class Evaluator:
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
         if demo is not None:
             self.last_t["demo_frames"] = self.talker.demo_frames
-        self.last_stats = {**self.motion_stats(m, real), **self.talker.mem_info}
+        self.last_stats = {**self.motion_stats(m, real), **self.talker.analog_info}
         if real is not None and self.talker.demo_motion is not None:
             from sang.eval.naturalness import copy_ratio
             from sang.model.target import to_target
@@ -370,9 +371,9 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--n-clips", type=int, default=0, help="stop after this many scored clips (0 = all)")
     ap.add_argument("--motion-only", action="store_true", help="sang row motion stats only (no rendering)")
-    ap.add_argument("--memory", default=None, help="style memory (scripts/train_style.py) for the sang row")
-    ap.add_argument("--memory-mode", nargs="+", default=["style"], choices=("none", "style", "style_noaudio", "random"),
-                    help="with --memory: one run per mode, named <name>_<mode>")
+    ap.add_argument("--analog", default=None, help="analog statistics (scripts/build_analog.py) for the sang row")
+    ap.add_argument("--analog-mode", nargs="+", default=["own_matched"], choices=MODES,
+                    help="with --analog: one run per mode, named <name>_<mode>")
     args = ap.parse_args()
     if args.motion_only and args.rows != ["sang"]:
         sys.exit("--motion-only scores the sang row only: pass --rows sang")
@@ -382,15 +383,15 @@ def main() -> None:
         sys.exit("--demo needs --start >= the footage length: the footage comes before the segment")
     if args.start and "ditto" in args.rows:
         sys.exit("the Ditto videos cover the first seconds of each clip only: no ditto row with --start")
-    if args.memory and (not args.demo or "sang" not in args.rows):
-        sys.exit("--memory finds neighbours from the footage for the sang row: pass --demo and --rows sang")
+    if args.analog and (not args.demo or "sang" not in args.rows):
+        sys.exit("--analog calibrates from the footage for the sang row: pass --demo and --rows sang")
     ev = Evaluator(args)
-    if not args.memory:
+    if not args.analog:
         return run(args, ev)
-    for mode in args.memory_mode:
-        ev.talker.mem_mode = mode
+    for mode in args.analog_mode:
+        ev.talker.analog_mode = mode
         out = args.out and str(Path(args.out).with_name(Path(args.out).name + f"_{mode}"))
-        run(argparse.Namespace(**{**vars(args), "name": f"{args.name}_{mode}", "out": out, "memory_mode": mode}), ev)
+        run(argparse.Namespace(**{**vars(args), "name": f"{args.name}_{mode}", "out": out, "analog_mode": mode}), ev)
 
 
 if __name__ == "__main__":

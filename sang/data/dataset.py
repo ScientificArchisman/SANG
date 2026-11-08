@@ -10,7 +10,6 @@ from torch.utils.data import Dataset
 
 from sang.data.sync import clip_key, shift_ticks
 from sang.model.flow import Norm
-from sang.model.memory import N_SPK, N_WIN
 from sang.model.target import to_target, wide
 
 TPF = 2
@@ -81,17 +80,11 @@ class MotionWindows(Dataset):
     demo=N > 0 adds extra footage of the same person: a random stretch of demo_min..N frames of ANOTHER clip of the
     same video directory (so never the target's own frames), as 69-d deltas to the same photo frame, with its
     audio, padded to N frames (demo_mask marks the real ones). demo_keep is False where the video has no other
-    clip.
-
-    memory (a sang.model.memory.Memory) appends N_WIN windows of other speakers after the N footage frames
-    (demo_nb marks them): the N_SPK speakers nearest to the footage clip's style, never this speaker, and of theirs
-    the windows whose audio is nearest to this window's. Their motion is re-centred on the footage's mean delta (on
-    the photo where the footage is dropped). The neighbours are dropped with p_nb, and where they stay the own
-    footage is dropped with p_own, so the model learns to read both."""
+    clip."""
 
     def __init__(self, rows, L: int, P: int, norm: Norm, per_clip: int, fixed: bool = False,
                  preload: bool = True, threads: int = 16, shifts: dict | None = None, demo: int = 0,
-                 demo_min: int = 25, memory=None, p_own: float = 0.25, p_nb: float = 0.25):
+                 demo_min: int = 25):
         self.rows = [r for r in rows if r["n"] >= L + P]
         self.L, self.P, self.norm, self.per_clip = L, P, norm, per_clip
         self.demo, self.demo_min = demo, min(demo_min, demo)
@@ -101,10 +94,6 @@ class MotionWindows(Dataset):
         self.peers = [[j for j in by_video[Path(r["path"]).parent.name] if j != i] for i, r in enumerate(self.rows)]
         self.shifts = shifts or {}
         self.fixed = fixed
-        self.memory, self.p_own, self.p_nb = memory, p_own, p_nb
-        if memory is not None:
-            self.query = [memory.query.get(r["path"]) for r in self.rows]
-            self.own_spk = [memory.spk_index.get(Path(r["path"]).parent.name) for r in self.rows]
         if not self.rows:
             raise ValueError(f"no clip has {L + P} frames")
         self.mem = None
@@ -144,9 +133,8 @@ class MotionWindows(Dataset):
                "audio": audio[TPF * s: TPF * (s + span)]}
         if self.demo:
             N = self.demo
-            tot = N + (N_WIN * self.memory.L if self.memory is not None else 0)
-            dm, mask = torch.zeros(tot, y_all.shape[1]), torch.zeros(tot, dtype=torch.bool)
-            da = torch.zeros(TPF * tot, audio.shape[1], dtype=audio.dtype)
+            dm, mask = torch.zeros(N, y_all.shape[1]), torch.zeros(N, dtype=torch.bool)
+            da = torch.zeros(TPF * N, audio.shape[1], dtype=audio.dtype)
             if peer is None and self.peers[j]:
                 peer = rng.choice(self.peers[j])
             if peer is not None:
@@ -160,22 +148,6 @@ class MotionWindows(Dataset):
                 da[:len(a)] = a
                 mask[:n] = True
             out.update(demo_motion=dm, demo_audio=da, demo_mask=mask, demo_keep=torch.tensor(peer is not None))
-            if self.memory is not None:
-                nbm = torch.zeros(tot, dtype=torch.bool)
-                q = self.query[peer] if peer is not None else None
-                if q is not None and rng.random() >= self.p_nb:
-                    mem = self.memory
-                    own = rng.random() >= self.p_own
-                    centre = dm[:n].mean(0) if own else 0.0
-                    spk = mem.neighbours(mem.query_z[q], N_SPK, exclude=self.own_spk[j])
-                    for i, w in enumerate(mem.windows(spk, mem.akey(audio[TPF * (s + self.P): TPF * (s + span)]), N_WIN)):
-                        yw, aw = mem.fetch(int(w))
-                        o = N + i * mem.L
-                        dm[o:o + len(yw)], nbm[o:o + len(yw)] = yw + centre, True
-                        da[TPF * o:TPF * o + len(aw)] = aw
-                    mask[:N] &= own
-                    mask |= nbm
-                out["demo_nb"] = nbm
         return out
 
 

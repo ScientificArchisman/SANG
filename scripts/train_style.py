@@ -12,8 +12,8 @@ EVAL on the unseen val speakers, 8 windows each:
   top1_win   a window's nearest other window is the same speaker's
   top1_half  the mean key of 4 windows finds the mean of the speaker's other 4 among all val speakers (chance =
              1 / speakers): how well a stretch of footage finds its person, the memory's first key
-Then memory.pt: every training clip's style (the mean key of its windows), every speaker's, and the audio key of every
-L-frame window at `stride` frames; the val clips' styles too, as the queries of a fine-tune's val windows.
+Then memory.pt: every training clip's style (the mean key of its windows at `stride` frames) and every speaker's; the
+val clips' styles too, for scripts/build_analog.py's held-out gate.
 """
 import argparse
 import random
@@ -29,7 +29,6 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from sang.data.dataset import load_cfg
-from sang.data.sync import clip_key
 from sang.model.flow import build
 from sang.model.memory import StyleKey, embed, key_input, supcon
 from train_motion import lr_at, setup_data
@@ -85,8 +84,7 @@ def evaluate(key, gen, vdl, d, dev, kind, amp, tau) -> dict:
 def build_memory(key, gen, d, cfg, dev, amp) -> dict:
     key.eval()
     kind, stride, P, L = cfg["key"], int(cfg["stride"]), d.P, d.L
-    query_paths, query_z, clip_z, paths, shift, clip_spk, names = [], [], [], [], [], [], {}
-    win_clip, win_start, means = [], [], []
+    query_paths, query_z, clip_z, paths, clip_spk, names = [], [], [], [], [], {}
     for ds, retrievable in ((d.train_ds, True), (d.val_ds, False)):
         for j, r in enumerate(ds.rows):
             y, refs, audio = ds.clip(j)
@@ -98,28 +96,16 @@ def build_memory(key, gen, d, cfg, dev, amp) -> dict:
                 continue
             query_paths.append(r["path"])
             query_z.append(z.float().cpu())
-            if not retrievable:
-                continue
-            starts = range(0, len(y) - L + 1, stride)
-            win_clip += [len(paths)] * len(starts)
-            win_start += list(starts)
-            means.append(torch.stack([audio[2 * s:2 * (s + L)].float().mean(0) for s in starts]))
-            paths.append(r["path"])
-            shift.append(ds.shifts.get(clip_key(r), 0))
-            clip_spk.append(names.setdefault(Path(r["path"]).parent.name, len(names)))
-            clip_z.append(query_z[-1])
+            if retrievable:
+                paths.append(r["path"])
+                clip_spk.append(names.setdefault(Path(r["path"]).parent.name, len(names)))
+                clip_z.append(query_z[-1])
     spk = torch.tensor(clip_spk)
     cz = torch.stack(clip_z)
     spk_z = F.normalize(torch.zeros(len(names), cz.shape[1]).index_add_(0, spk, cz), dim=-1)
-    mt = torch.cat(means)
-    mu = mt.mean(0)
-    sub = mt[torch.randperm(len(mt), generator=torch.Generator().manual_seed(0))[:50000]] - mu
-    proj = torch.pca_lowrank(sub, q=int(cfg["audio_dims"]), center=False)[2]
-    return {"L": L, "paths": paths, "shift": torch.tensor(shift), "clip_spk": spk, "spk_names": list(names),
-            "spk_z": spk_z, "win_clip": torch.tensor(win_clip), "win_start": torch.tensor(win_start),
-            "win_key": F.normalize((mt - mu) @ proj, dim=-1).half(), "a_mu": mu, "a_proj": proj,
-            "query_paths": query_paths, "query_z": torch.stack(query_z).half(), "key": kind,
-            "key_cfg": key.cfg, "key_state": key.state_dict(), "gen": cfg["gen"]}
+    return {"paths": paths, "clip_spk": spk, "spk_names": list(names), "spk_z": spk_z, "query_paths": query_paths,
+            "query_z": torch.stack(query_z).half(), "key": kind, "key_cfg": key.cfg, "key_state": key.state_dict(),
+            "gen": cfg["gen"]}
 
 
 def main() -> None:
@@ -139,7 +125,7 @@ def main() -> None:
     random.seed(cfg["seed"])
     out = Path(cfg["out_dir"])
     out.mkdir(parents=True, exist_ok=True)
-    d = setup_data({**cfg, "demo_tokens": 0, "memory": None}, dev)
+    d = setup_data({**cfg, "demo_tokens": 0}, dev)
     gen = build(ck["cfg"]).to(dev).eval().requires_grad_(False)
     gen.load_state_dict(ck["ema"])
     key = StyleKey(d.k * (2 if cfg["key"] == "residual" else 1), int(cfg["dim"]), int(cfg["out"]), int(cfg["heads"])).to(dev)
@@ -178,8 +164,7 @@ def main() -> None:
     mem = build_memory(key, gen, d, cfg, dev, amp)
     torch.save(mem, out / "memory.pt")
     print(f"memory -> {out / 'memory.pt'}: {len(mem['spk_names'])} speakers, {len(mem['paths'])} clips, "
-          f"{len(mem['win_key'])} windows of {mem['L']} frames, {len(mem['query_paths'])} clip styles, "
-          f"{time.time() - t0:.0f} s", flush=True)
+          f"{len(mem['query_paths'])} clip styles, {time.time() - t0:.0f} s", flush=True)
 
 
 if __name__ == "__main__":

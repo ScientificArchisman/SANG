@@ -103,10 +103,8 @@ class DemoEncoder(nn.Module):
     tokens can carry how THIS person moves for the speech they make, not only how much. Two convolutions mix
     +-4 frames so velocities are visible; learned queries then cross-attend to all frames. No positional
     embedding, so any length of footage gives the same number of tokens. Nothing in it is hand-picked: what the
-    tokens carry is learned from the flow loss alone.
-
-    nb [B, N] (optional) marks frames of OTHER speakers (sang.model.memory) with a learned tag. It starts at zero, so
-    a model trained before the memory reads them as more footage."""
+    tokens carry is learned from the flow loss alone. audio_dim 0 reads the motion alone (sang.model.memory's style
+    key)."""
 
     def __init__(self, dim: int, t_dim: int, audio_dim: int, tpf: int, n_tokens: int, heads: int, depth: int = 2):
         super().__init__()
@@ -119,16 +117,9 @@ class DemoEncoder(nn.Module):
         self.layers = nn.ModuleList(nn.ModuleList([nn.LayerNorm(dim), nn.MultiheadAttention(dim, heads, batch_first=True),
                                                    nn.LayerNorm(dim), SwiGLU(dim)]) for _ in range(depth))
         self.out_norm = nn.LayerNorm(dim)
-        self.nb = nn.Parameter(torch.zeros(dim))
 
-    def _load_from_state_dict(self, sd, prefix, *args, **kw):
-        sd.setdefault(prefix + "nb", torch.zeros_like(self.nb))  # checkpoints from before the memory
-        super()._load_from_state_dict(sd, prefix, *args, **kw)
-
-    def forward(self, motion: torch.Tensor, audio: torch.Tensor, mask: torch.Tensor,
-                nb: torch.Tensor | None = None) -> torch.Tensor:
-        """motion [B, N, t_dim], audio [B, tpf*N, audio_dim], mask [B, N] (True = a real frame), nb [B, N] (True = a
-        memory frame) -> [B, n_tokens, dim]."""
+    def forward(self, motion: torch.Tensor, audio: torch.Tensor | None, mask: torch.Tensor) -> torch.Tensor:
+        """motion [B, N, t_dim], audio [B, tpf*N, audio_dim], mask [B, N] (True = a real frame) -> [B, n_tokens, dim]."""
         B, N, _ = motion.shape
         mask = mask.clone()
         mask[:, 0] |= ~mask.any(1)  # an empty demo would make attention NaN; its tokens are unused anyway
@@ -138,8 +129,6 @@ class DemoEncoder(nn.Module):
             if a.shape[1] < N * self.tpf:
                 a = F.pad(a, (0, 0, 0, N * self.tpf - a.shape[1]))
             h = h + self.audio(a.reshape(B, N, -1))
-        if nb is not None:
-            h = h + nb.unsqueeze(-1) * self.nb
         h = h * mask.unsqueeze(-1)
         h = self.kv_norm(h + self.mix(h.transpose(1, 2)).transpose(1, 2))
         q = self.queries.expand(B, -1, -1)
@@ -202,11 +191,10 @@ class MotionFlowTransformer(nn.Module):
         return self.audio(a).transpose(1, 2)
 
     def encode_demo(self, batch: dict) -> torch.Tensor | None:
-        """The demo tokens of a batch with demo_motion / demo_audio / demo_mask (and demo_nb); None without a demo
-        encoder or demo."""
+        """The demo tokens of a batch with demo_motion / demo_audio / demo_mask; None without a demo encoder or demo."""
         if self.demo is None or "demo_motion" not in batch:
             return None
-        return self.demo(batch["demo_motion"], batch["demo_audio"], batch["demo_mask"], batch.get("demo_nb"))
+        return self.demo(batch["demo_motion"], batch["demo_audio"], batch["demo_mask"])
 
     def forward(self, x_t, t, audio, ref, prefix=None, prefix_keep=None, drop_audio=None, drop_ref=None, beta=None,
                 demo=None, demo_keep=None):
@@ -314,13 +302,14 @@ def flow_times(steps: int) -> list[float]:
 def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps: int = 10,
            cfg_audio: float = 2.0, generator: torch.Generator | None = None,
            prefix_keep: torch.Tensor | None = None, demo: torch.Tensor | None = None,
-           demo_keep: torch.Tensor | None = None) -> torch.Tensor:
+           demo_keep: torch.Tensor | None = None, correct=None) -> torch.Tensor:
     """Euler from t = 1 (noise) to 0, one pass per step at beta = 1/cfg_audio: the guided velocity
     v_u + gamma (v_c - v_u), whose unconditional branch drops the audio and keeps the photo and the prefix.
 
     prefix_keep [B] bool (optional): False = the prefix slot is present but DROPPED, exactly as
     flow_loss drops it -- which is how training represents 'no previous frames'. demo: encode_demo tokens, or None;
-    demo_keep [B] bool: False ignores that sample's demo."""
+    demo_keep [B] bool: False ignores that sample's demo. correct: a function (step i, v) -> v', e.g. a person's
+    analog calibration (sang.model.analog)."""
     B, dev = ref.shape[0], ref.device
     x = torch.randn(B, L, model.t_dim, device=dev, generator=generator)
     keep = None
@@ -331,6 +320,8 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
     for i in range(steps):
         t = torch.full((B,), ts[i], device=dev)
         v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, beta=beta, demo=demo, demo_keep=demo_keep)
+        if correct is not None:
+            v = correct(i, v.float())
         x = x - (ts[i] - ts[i + 1]) * v
     return x
 
@@ -339,10 +330,10 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
 def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tensor, n_frames: int,
              window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio: float = 2.0,
              generator: torch.Generator | None = None, start: torch.Tensor | None = None,
-             demo=None) -> torch.Tensor:
+             demo: torch.Tensor | None = None, correct=None) -> torch.Tensor:
     """Any length. Windows of `window` NEW frames, each conditioned on the previous `n_prefix`
-    generated frames (FLOAT's L'). audio [B, 2*n_frames, 1024] -> [B, n_frames, t_dim]. demo: tokens, or a function
-    of a window's first frame that returns that window's tokens (sang.render.pipeline's memory).
+    generated frames (FLOAT's L'). audio [B, 2*n_frames, 1024] -> [B, n_frames, t_dim]. demo: footage tokens;
+    correct: sample's velocity correction.
 
     How the FIRST window starts (`start`):
       None     the prefix slot is present and dropped, exactly how training shows 'no previous frames'.
@@ -367,7 +358,7 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
             a0 = lead + pos - n_prefix
             a = audio[:, a0 * tpf:(lead + pos + window) * tpf]
         y = sample(model, a, ref, window, prefix=prefix, steps=steps, cfg_audio=cfg_audio,
-                   generator=generator, prefix_keep=keep, demo=demo(pos) if callable(demo) else demo)
+                   generator=generator, prefix_keep=keep, demo=demo, correct=correct)
         out.append(y[:, : n_frames - pos])
         pos += window
     return torch.cat(out, 1)
