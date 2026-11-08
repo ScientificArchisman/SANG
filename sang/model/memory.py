@@ -103,7 +103,8 @@ class Memory:
     def encoders(self, device) -> tuple[StyleKey, torch.nn.Module]:
         """The style key and its frozen residual generator, for a new person's footage (embed)."""
         key = StyleKey(**self.m["key_cfg"]).to(device).eval()
-        key.load_state_dict(self.m["key_state"])
+        # memories saved before the neighbour tag was deleted carry its unused (zero) weight
+        key.load_state_dict({k: v for k, v in self.m["key_state"].items() if k != "enc.nb"})
         ck = torch.load(self.m["gen"], map_location=device, weights_only=False)
         gen = build(ck["cfg"]).to(device).eval()
         gen.load_state_dict(ck["ema"])
