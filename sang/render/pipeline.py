@@ -168,7 +168,7 @@ class Talker:
                 ad = F.pad(ad, (0, 0, 0, 2 * len(u) - len(ad)))
                 tokens = self.model.demo(u[None], ad[None], torch.ones(1, len(u), dtype=torch.bool, device=self.dev))
                 self.demo_frames, self.demo_motion = len(u), d["m"]
-                live = demo[0][a:b] if scene else None
+                live = demo[0][a:b][:n_frames] if scene else None  # playback never reaches past n_frames
         lead = self.cfg["prefix"]
         with timer("audio"):
             audio = self.wavlm.encode(torch.nn.functional.pad(wav, (lead * HOP, 0))[None, None].to(self.dev)).float()
@@ -188,7 +188,7 @@ class Talker:
             with timer("scene"):
                 # shortcut: the footage's motion is relative to its own crop box, posed here in the photo's; the same
                 # video and camera keep the two boxes close. A moving camera needs the footage aligned first.
-                still = codec.background(state, self.demo_motion.float(), batch=batch, half=True)
+                still = codec.background(state, self.demo_motion[:len(live)].float(), batch=batch, half=True)
                 period, shares = max(1, 2 * len(live) - 2), []
         out, paster, done = [], None, 0
         while True:

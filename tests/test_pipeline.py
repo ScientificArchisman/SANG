@@ -122,9 +122,12 @@ def test_the_talker_reads_the_footage(monkeypatch, tiny_cache):
     demo = (np.zeros((80, 100, 120, 3), np.uint8), torch.randn(80 * 640) * 0.1)
     _, m, timer = t.run(SRC, WAV, N, demo=demo, render=False)
     assert "demo" in timer.t and t.demo_frames == 80 and torch.isfinite(m).all() and m.shape == (N, M_DIM)
-    live = (np.full((80, 100, 120, 3), 200, np.uint8), demo[1])
-    frames, m2, timer = t.run(SRC, WAV, N, demo=live, scene=True, batch=8)
+    numbered = np.broadcast_to(np.arange(80, dtype=np.uint8)[:, None, None, None], (80, 100, 120, 3)).copy()
+    frames, m2, timer = t.run(SRC, WAV, N, demo=(numbered, demo[1]), scene=True, batch=8)
     assert torch.allclose(m, m2) and "scene" in timer.t and frames.shape == (N, 100, 120, 3) and 0 < t.scene_share <= 1
-    assert (frames[:, :14] == 200).all() and (frames[:, :, 84:] == 200).all()  # outside the crop: the footage
+    assert (frames[:, :14] == np.arange(N)[:, None, None, None]).all()  # outside the crop: footage frame t
+    short, _, _ = t.run(SRC, WAV, N, demo=(numbered[:40], demo[1][:40 * 640]), scene=True, batch=8)
+    back = np.minimum(np.arange(N), 78 - np.arange(N))  # 40 frames played forward, then back
+    assert (short[:, :14, :, 0] == back[:, None, None]).all()
     with pytest.raises(ValueError, match="scene"):
         t.run(SRC, WAV, N, scene=True)
