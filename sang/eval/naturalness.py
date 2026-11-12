@@ -245,3 +245,60 @@ def copy_ratio(gen: torch.Tensor, real: torch.Tensor, footage: torch.Tensor, chu
     lib = (f.unfold(0, chunk, 1) / sd).flatten(1)
     near = lambda y: torch.cdist((y.float().cpu().unfold(0, chunk, chunk) / sd).flatten(1), lib).min(1).values.mean()
     return float(near(gen) / near(real).clamp_min(1e-9))
+
+
+PANEL_KEYS = ("head_fast", "gaze_fast", "head_rho", "gaze_rho", "fix_speed", "sacc_per_min", "vor_yaw", "vor_pitch")
+
+
+def _speed_mixture(ls: np.ndarray, iters: int = 50):
+    """A two-component Gaussian mixture on log speeds [n] -> (means, sds, weights), the slow component first."""
+    mu, sd, w = np.percentile(ls, [50, 95]), np.full(2, ls.std() + 1e-6), np.array([0.9, 0.1])
+    for _ in range(iters):
+        lp = -0.5 * ((ls[:, None] - mu) / sd) ** 2 - np.log(sd) + np.log(w)
+        r = np.exp(lp - lp.max(1, keepdims=True))
+        r /= r.sum(1, keepdims=True)
+        n = r.sum(0) + 1e-9
+        w, mu = n / n.sum(), (r * ls[:, None]).sum(0) / n
+        sd = np.sqrt((r * (ls[:, None] - mu) ** 2).sum(0) / n) + 1e-6
+    o = np.argsort(mu)
+    return mu[o], sd[o], w[o]
+
+
+def eye_head_panel(gen: np.ndarray, real: np.ndarray) -> dict:
+    """Jitter and gaze statistics of wide motion [n, 69] (sang.model.target.wide), and the real clip's as real_*.
+    head_fast / gaze_fast: power above 3 Hz (jitter), linear trend removed. head_rho / gaze_rho: lag-1 correlation
+    of second differences (-2/3 for white noise, near 1 for smooth motion). fix_speed: median gaze speed in
+    fixations; sacc_per_min: saccades (runs of fast frames). vor_yaw / vor_pitch: slope of eye-in-head gaze on head
+    angle within fixations (negative: the eyes counter-rotate). Fixations and saccades come from a two-component
+    mixture on the REAL clip's log gaze speed, used for both."""
+    from scipy.signal import detrend
+
+    from sang.model.automaton import Automaton
+
+    def fast(x):
+        p = np.abs(np.fft.rfft(detrend(x, axis=0), axis=0)) ** 2 / len(x) ** 2
+        return float(p[np.fft.rfftfreq(len(x), 1 / FPS) > 3.0].sum(0).mean())
+
+    def rho(x):
+        dd = np.diff(x, 2, axis=0)
+        a, b = dd[1:], dd[:-1]
+        return float(((a * b).sum(0) / np.sqrt((a * a).sum(0) * (b * b).sum(0)).clip(1e-12)).mean())
+
+    sig = lambda w: [s.numpy().astype(np.float64) for s in Automaton.signals(torch.as_tensor(w))[:2]]
+    logspeed = lambda g: np.log(np.linalg.norm(np.diff(g, axis=0), axis=1) + 1e-9)
+    mu, sd, wt = _speed_mixture(logspeed(sig(real)[1]))
+    out = {}
+    for tag, w in (("", gen), ("real_", real)):
+        head, gaze = sig(w)
+        ls = logspeed(gaze)
+        lp = -0.5 * ((ls[:, None] - mu) / sd) ** 2 - np.log(sd) + np.log(wt)
+        sacc = lp[:, 1] > lp[:, 0]
+        fix = ~sacc
+        dh, dg = np.diff(head, axis=0)[fix][:, [1, 0]], np.diff(gaze, axis=0)[fix]
+        slope = (dh * dg).sum(0) / (dh * dh).sum(0).clip(1e-12)
+        out.update({f"{tag}head_fast": fast(head), f"{tag}gaze_fast": fast(gaze), f"{tag}head_rho": rho(head),
+                    f"{tag}gaze_rho": rho(gaze),
+                    f"{tag}fix_speed": float(np.median(np.exp(ls[fix]))) if fix.any() else float("nan"),
+                    f"{tag}sacc_per_min": len(_runs(sacc)) * 60.0 * FPS / len(w),
+                    f"{tag}vor_yaw": float(slope[0]), f"{tag}vor_pitch": float(slope[1])})
+    return out

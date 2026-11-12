@@ -97,9 +97,11 @@ class GpuPaster:
 
 
 class Talker:
-    def __init__(self, ckpt: str, sampler: str | None = None, device: str = "cuda", codec=None, wavlm=None):
+    def __init__(self, ckpt: str, sampler: str | None = None, device: str = "cuda", codec=None, wavlm=None,
+                 automaton: str | None = None, post: str | None = None):
         """sampler: a spec such as 'g=2,steps=6' (sang.model.flow.SAMPLER_KEYS); without one, the run's cfg_audio
-        and sample_steps."""
+        and sample_steps. automaton: the fit_automaton.py file its shield, particles and ratio keys use. post: a
+        hand-set smoother on the head, gaze and lids of the finished motion (sang.model.automaton.HANDSET)."""
         from sang.data.audio import load_wavlm
         from sang.model.flow import Norm, build, parse_spec, sampler_kwargs
         from sang.model.latent import MotionLatent
@@ -111,6 +113,13 @@ class Talker:
         self.norm = Norm(**ck["norm"]).to(device)
         self.latent = MotionLatent.of(ck).to(device)
         self.sampler = sampler_kwargs(parse_spec(sampler), self.cfg)
+        n, k, ratio = self.sampler.pop("n_shield", 0), self.sampler.get("particles", 1), self.sampler.pop("ratio", 1)
+        if n or k > 1:
+            from sang.model.automaton import Shield
+            if automaton is None:
+                raise ValueError("the sampler's shield and particles need an automaton file (fit_automaton.py)")
+            self.sampler["shield"] = Shield.load(automaton, self.latent, self.model.t_dim, n, bool(ratio))
+        self.post = post
         self.codec = codec or MotionCodec(device=device)
         self.wavlm = wavlm or load_wavlm(device=device)
 
@@ -155,6 +164,9 @@ class Talker:
             z = generate(self.model, audio, ref, n_frames, window=self.cfg["frames"], n_prefix=self.cfg["prefix"],
                          generator=g, start=first, demo=tokens, **self.sampler)[0]
             m = self.latent.to_motion(z, m_src)
+            if self.post:
+                from sang.model.automaton import handset_motion
+                m = handset_motion(m, self.post)
         if not render:
             return None, m, timer
         with timer("render"):

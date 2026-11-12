@@ -298,13 +298,14 @@ def flow_times(steps: int) -> list[float]:
 def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps: int = 10,
            cfg_audio: float = 2.0, generator: torch.Generator | None = None,
            prefix_keep: torch.Tensor | None = None, demo: torch.Tensor | None = None,
-           demo_keep: torch.Tensor | None = None) -> torch.Tensor:
+           demo_keep: torch.Tensor | None = None, shield=None) -> torch.Tensor:
     """Euler from t = 1 (noise) to 0, one pass per step at beta = 1/cfg_audio: the guided velocity
     v_u + gamma (v_c - v_u), whose unconditional branch drops the audio and keeps the photo and the prefix.
 
     prefix_keep [B] bool (optional): False = the prefix slot is present but DROPPED, exactly as
     flow_loss drops it -- which is how training represents 'no previous frames'. demo: encode_demo tokens, or None;
-    demo_keep [B] bool: False ignores that sample's demo."""
+    demo_keep [B] bool: False ignores that sample's demo. shield (sang.model.automaton.Shield): in the last shield.n
+    steps the clean estimate x - t v is corrected and the step lands on the corrected one with the same noise."""
     B, dev = ref.shape[0], ref.device
     x = torch.randn(B, L, model.t_dim, device=dev, generator=generator)
     keep = None
@@ -315,7 +316,11 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
     for i in range(steps):
         t = torch.full((B,), ts[i], device=dev)
         v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, beta=beta, demo=demo, demo_keep=demo_keep)
-        x = x - (ts[i] - ts[i + 1]) * v
+        if shield is not None and i >= steps - shield.n:
+            x0 = shield(x - ts[i] * v, prefix if keep is not None and bool(keep.all()) else None)
+            x = (1 - ts[i + 1]) * x0 + ts[i + 1] * (x + (1 - ts[i]) * v)
+        else:
+            x = x - (ts[i] - ts[i + 1]) * v
     return x
 
 
@@ -323,7 +328,7 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
 def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tensor, n_frames: int,
              window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio: float = 2.0,
              generator: torch.Generator | None = None, start: torch.Tensor | None = None,
-             demo: torch.Tensor | None = None) -> torch.Tensor:
+             demo: torch.Tensor | None = None, shield=None, particles: int = 1) -> torch.Tensor:
     """Any length. Windows of `window` NEW frames, each conditioned on the previous `n_prefix`
     generated frames (FLOAT's L'). audio [B, 2*n_frames, 1024] -> [B, n_frames, t_dim]. demo: footage tokens.
 
@@ -333,7 +338,15 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
                a clean prefix the clip continues from, e.g. the source frame's own (normalised)
                target repeated: the video then starts at the photo's pose and expression. `audio`
                must then carry n_prefix frames BEFORE frame 0 (e.g. WavLM of prepended silence).
+
+    shield: the automaton in each window's last Euler steps (`sample`). particles K > 1 (B = 1): K copies run side
+    by side and after every window are resampled by the shield's event score; the first survivor is returned.
     """
+    if particles > 1:
+        if ref.shape[0] != 1 or shield is None:
+            raise ValueError("particles need one clip and a shield")
+        rep = lambda x: None if x is None else x.repeat(particles, *[1] * (x.dim() - 1))
+        audio, ref, start, demo = rep(audio), rep(ref), rep(start), rep(demo)
     tpf, B, dev = model.tpf, ref.shape[0], ref.device
     lead = 0 if start is None else start.shape[1]
     if start is not None and start.shape[1] != n_prefix:
@@ -350,10 +363,13 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
             a0 = lead + pos - n_prefix
             a = audio[:, a0 * tpf:(lead + pos + window) * tpf]
         y = sample(model, a, ref, window, prefix=prefix, steps=steps, cfg_audio=cfg_audio,
-                   generator=generator, prefix_keep=keep, demo=demo)
+                   generator=generator, prefix_keep=keep, demo=demo, shield=shield)
+        if particles > 1:
+            idx = shield.resample(y, None if keep is not None else prefix, generator)
+            y, out = y[idx], [o[idx] for o in out]
         out.append(y[:, : n_frames - pos])
         pos += window
-    return torch.cat(out, 1)
+    return torch.cat(out, 1)[:1] if particles > 1 else torch.cat(out, 1)
 
 
 class Norm(nn.Module):
@@ -389,6 +405,9 @@ def build(cfg: dict) -> MotionFlowTransformer:
 SAMPLER_KEYS = {
     "g": "audio guidance scale gamma (default: the run's cfg_audio), sampled in one pass at beta = 1/gamma",
     "steps": "Euler steps (default: the run's sample_steps)",
+    "shield": "the gaze-head automaton in the last n Euler steps (default 0 = off; needs an automaton file)",
+    "particles": "particles per clip, resampled after every window by the automaton's event score (default 1 = off)",
+    "ratio": "particle weight: 1 = real-over-SANG event ratio (default), 0 = the real grammar alone",
 }
 
 
@@ -407,5 +426,9 @@ def parse_spec(s: str | None) -> dict:
 
 
 def sampler_kwargs(spec: dict, cfg: dict) -> dict:
-    """A parsed spec -> keyword arguments for `generate`; keys left out keep the run's cfg_audio and sample_steps."""
-    return {"cfg_audio": float(spec.get("g", cfg["cfg_audio"])), "steps": int(spec.get("steps", cfg["sample_steps"]))}
+    """A parsed spec -> keyword arguments for `generate`; keys left out keep the run's cfg_audio and sample_steps.
+    The automaton's keys come back as n_shield, particles and ratio, for the caller to build its Shield from."""
+    out = {"cfg_audio": float(spec.get("g", cfg["cfg_audio"])), "steps": int(spec.get("steps", cfg["sample_steps"]))}
+    out.update({n: int(spec[k]) for k, n in (("shield", "n_shield"), ("particles", "particles"), ("ratio", "ratio"))
+                if k in spec})
+    return out
