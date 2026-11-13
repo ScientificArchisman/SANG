@@ -3,8 +3,8 @@
 
     python scripts/paired.py jem_ctrl_s0 jem_own_s0 jem_rand_s0 jem_orc_s0
 
-Per run: mean lip CCC, head range and speed as % of real, blinks, median copy_ratio, guide diagnostics, and the
-clips whose head std error |rot_std - real_rot_std| is smaller than the reference's (37 of 57 is a two-sided sign
+Per run: FVD, FID, CSIM and LSE-C (rendered runs), mean lip CCC, head range and speed as % of real, blinks, median
+copy_ratio, guide diagnostics, and the clips whose head std error |rot_std - real_rot_std| is smaller than the reference's (37 of 57 is a two-sided sign
 test at p = 0.033). With footage (--demo) it also prints whether the footage predicts the segment: the leave-one-out
 R^2 of each real statistic from the footage's own, over the population mean (reports/SANG joint embedding
 matching.md, stage 0a).
@@ -59,6 +59,9 @@ def main() -> None:
                "blinks": np.nanmean(col(r, "blinks_per_min")), "copy_ratio": np.nanmedian(col(r, "copy_ratio")),
                "head err": np.nanmean(err), "guide_d": np.nanmean(col(r, "guide_d")),
                "mu_spread": np.nanmean(col(r, "mu_spread")), "t_motion": np.nanmedian(col(r, "t_motion"))}
+        sj = Path(args.root) / r / "summary.json"  # FVD / FID are pooled over a run's clips, so per run, not per clip
+        vid = json.loads(sj.read_text())["rows"].get("sang", {}).get("m", {}) if sj.exists() else {}
+        out = {k: vid[k] for k in ("FVD", "FID", "CSIM", "LSE-C") if k in vid} | out
         wins = "" if r == ref else f"  head err better on {int((err < err0).sum())}/{len(clips)}"
         print(f"{r:<24} " + "  ".join(f"{k} {v:.3f}" for k, v in out.items() if np.isfinite(v)) + wins)
     for k in ("rot_std", "rot_vel", "blinks_per_min"):
