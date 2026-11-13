@@ -1,5 +1,5 @@
-cache_dir: data/talkvid/preprocessed
-sync_offsets: data/talkvid/preprocessed/sync_offsets.json
+cache_dir: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed
+sync_offsets: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets_c10.json
 out_dir: runs/demo
 val_frac: 0.05
 seed: 0
