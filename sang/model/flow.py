@@ -15,14 +15,13 @@ has none -- is in distribution.
 
 The target is the first `latent_k` codes of the PCA motion latent (sang.model.latent): everything LivePortrait
 renders, relative to the photo. The loss is a plain MSE over the codes. The photo is described by its x_c and its
-42-d target (sang.model.target.to_target; describing it by its 69 wide numbers, or weighting codes by their
-variance, did no better on HDTF: docs/research_log.md 3.24).
+42-d target (sang.model.target.to_target).
 
 Guidance is trained in (Guidance-Free Training, GFT, Chen et al., ICML 2025, arXiv 2501.15420): the network takes
 a guidance temperature beta = 1/gamma as an extra condition and is trained so that
 beta v(x | audio, beta) + (1 - beta) sg[v(x | no audio, 1)] is the conditional velocity. At sampling one pass
-with beta = 1/gamma IS the classifier-free-guided velocity (HDTF: same metrics as CFG at the same gamma,
-docs/research_log.md 3.22). The audio is still dropped with p_audio, so v(x | no audio) stays trained.
+with beta = 1/gamma is the classifier-free-guided velocity. The audio is still dropped with p_audio, so
+v(x | no audio) stays trained.
 """
 import math
 
@@ -124,7 +123,7 @@ class DemoEncoder(nn.Module):
         if a.shape[1] < N * self.tpf:
             a = F.pad(a, (0, 0, 0, N * self.tpf - a.shape[1]))
         mask = mask.clone()
-        mask[:, 0] |= ~mask.any(1)  # an empty demo would make attention NaN; its tokens are unused anyway
+        mask[:, 0] |= ~mask.any(1)
         h = (self.motion(motion.float()) + self.audio(a.reshape(B, N, -1))) * mask.unsqueeze(-1)
         h = self.kv_norm(h + self.mix(h.transpose(1, 2)).transpose(1, 2))
         q = self.queries.expand(B, -1, -1)
@@ -289,46 +288,33 @@ def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
     return loss, out
 
 
-def flow_times(steps: int, split: int = 1) -> list[float]:
-    """steps + 1 uniform flow times from 1 (noise) down to 0. split > 1 cuts the first step into that many equal
-    sub-steps: one step from t = 1 moves every sample to the same clean estimate, which shrinks the head (§3.39)."""
-    ts = (1.0 - torch.linspace(0.0, 1.0, steps + 1, dtype=torch.float64)).tolist()
-    return [1.0 - (1.0 - ts[1]) * i / split for i in range(split)] + ts[1:]
+def flow_times(steps: int) -> list[float]:
+    """steps + 1 uniform flow times from 1 (noise) down to 0."""
+    return (1.0 - torch.linspace(0.0, 1.0, steps + 1, dtype=torch.float64)).tolist()
 
 
 @torch.no_grad()
 def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps: int = 10,
            cfg_audio: float = 2.0, generator: torch.Generator | None = None,
            prefix_keep: torch.Tensor | None = None, demo: torch.Tensor | None = None,
-           demo_keep: torch.Tensor | None = None, split: int = 1, guide=None) -> torch.Tensor:
+           demo_keep: torch.Tensor | None = None) -> torch.Tensor:
     """Euler from t = 1 (noise) to 0, one pass per step at beta = 1/cfg_audio: the guided velocity
     v_u + gamma (v_c - v_u), whose unconditional branch drops the audio and keeps the photo and the prefix.
 
     prefix_keep [B] bool (optional): False = the prefix slot is present but DROPPED, exactly as
     flow_loss drops it -- which is how training represents 'no previous frames'. demo: encode_demo tokens, or None;
-    demo_keep [B] bool: False ignores that sample's demo.
-
-    guide(x0_hat, mu, t) -> a change of the clean estimate [B, L, k] or None (sang.model.scoring.FootageGuide):
-    mu is the t = 1 clean estimate. The step keeps the noise estimate and moves the clean one, so the next state is
-    the unguided one plus (1 - t_next) times the change."""
+    demo_keep [B] bool: False ignores that sample's demo."""
     B, dev = ref.shape[0], ref.device
     x = torch.randn(B, L, model.t_dim, device=dev, generator=generator)
     keep = None
     if prefix is not None:
         keep = torch.ones(B, dtype=torch.bool, device=dev) if prefix_keep is None else prefix_keep.to(dev)
     beta = torch.full((B,), 1.0 / float(cfg_audio), device=dev)
-    ts, mu = flow_times(steps, split), None
-    for i in range(len(ts) - 1):
+    ts = flow_times(steps)
+    for i in range(steps):
         t = torch.full((B,), ts[i], device=dev)
         v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, beta=beta, demo=demo, demo_keep=demo_keep)
-        x_next = x - (ts[i] - ts[i + 1]) * v
-        if guide is not None:
-            x0 = x - ts[i] * v
-            mu = x0 if mu is None else mu
-            d = guide(x0, mu, ts[i])
-            if d is not None:
-                x_next = x_next + (1 - ts[i + 1]) * d
-        x = x_next
+        x = x - (ts[i] - ts[i + 1]) * v
     return x
 
 
@@ -336,10 +322,9 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
 def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tensor, n_frames: int,
              window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio: float = 2.0,
              generator: torch.Generator | None = None, start: torch.Tensor | None = None,
-             demo: torch.Tensor | None = None, split: int = 1, guide=None) -> torch.Tensor:
+             demo: torch.Tensor | None = None) -> torch.Tensor:
     """Any length. Windows of `window` NEW frames, each conditioned on the previous `n_prefix`
     generated frames (FLOAT's L'). audio [B, 2*n_frames, 1024] -> [B, n_frames, t_dim]. demo: footage tokens.
-    split, guide: see `sample`; a guide compares the B samples of each window as one set.
 
     How the FIRST window starts (`start`):
       None     the prefix slot is present and dropped, exactly how training shows 'no previous frames'.
@@ -364,7 +349,7 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
             a0 = lead + pos - n_prefix
             a = audio[:, a0 * tpf:(lead + pos + window) * tpf]
         y = sample(model, a, ref, window, prefix=prefix, steps=steps, cfg_audio=cfg_audio,
-                   generator=generator, prefix_keep=keep, demo=demo, split=split, guide=guide)
+                   generator=generator, prefix_keep=keep, demo=demo)
         out.append(y[:, : n_frames - pos])
         pos += window
     return torch.cat(out, 1)
@@ -403,10 +388,6 @@ def build(cfg: dict) -> MotionFlowTransformer:
 SAMPLER_KEYS = {
     "g": "audio guidance scale gamma (default: the run's cfg_audio), sampled in one pass at beta = 1/gamma",
     "steps": "Euler steps (default: the run's sample_steps)",
-    "split": "cut the first Euler step into this many sub-steps",
-    "copies": "samples per window; copy 0 is the output (the others are the set a guide compares)",
-    "guide": "footage guidance strength (Polyak fraction, sang.model.scoring.FootageGuide); needs footage, copies >= 2",
-    "gt": "guide at every flow time down to this one (default: the first Euler step only)",
 }
 
 
@@ -425,7 +406,5 @@ def parse_spec(s: str | None) -> dict:
 
 
 def sampler_kwargs(spec: dict, cfg: dict) -> dict:
-    """A parsed spec -> keyword arguments for `generate`; keys left out keep the run's cfg_audio and sample_steps.
-    copies and guide are read by the caller (sang.render.pipeline.Talker)."""
-    out = {"cfg_audio": float(spec.get("g", cfg["cfg_audio"])), "steps": int(spec.get("steps", cfg["sample_steps"]))}
-    return out | ({"split": int(spec["split"])} if "split" in spec else {})
+    """A parsed spec -> keyword arguments for `generate`; keys left out keep the run's cfg_audio and sample_steps."""
+    return {"cfg_audio": float(spec.get("g", cfg["cfg_audio"])), "steps": int(spec.get("steps", cfg["sample_steps"]))}

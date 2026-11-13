@@ -74,8 +74,8 @@ class MotionWindows(Dataset):
     encodes into latent codes on the GPU. The reference is described to the model as Norm.ref of its x_c and
     motion.
 
-    preload=True reads every clip once at start-up and keeps it in RAM (~2 MB per 20 s clip): reading
-    one .pt per SAMPLE from BeeGFS capped the first run at ~1.4 it/s.
+    preload=True reads every clip once at start-up and keeps it in RAM (~2 MB per 20 s clip), because reading
+    one .pt per sample from a network file system starves the GPU.
 
     demo=N > 0 adds extra footage of the same person: a random stretch of demo_min..N frames of ANOTHER clip of the
     same video directory (so never the target's own frames), as 69-d deltas to the same photo frame, with its
@@ -153,7 +153,7 @@ class MotionWindows(Dataset):
 
 class PersonSets(Dataset):
     """K windows of one person (a video directory) that all read the same footage: one stretch of a clip that none of
-    the K windows comes from, so the real windows are held out from what the generator sees (scripts/train_set.py
+    the K windows comes from, so the real windows are held out from what the generator sees (scripts/train/train_set.py
     trains with K = 1, its EVAL reads K = 8). Only persons with two or more clips; K = 1 is one window with footage, as
     MotionWindows gives."""
 

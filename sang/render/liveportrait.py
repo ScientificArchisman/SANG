@@ -1,12 +1,12 @@
 """LivePortrait as a frozen motion codec: frames -> 70-d motion vectors -> frames.
 
-This is the only representation SANG-M predicts (sang.model.target). Appearance never enters the model: it is
+This is the only representation SANG predicts (sang.model.target). Appearance never enters the model: it is
 carried by the source frame's `f_s` / `x_s` tensors, which stay inside the frozen renderer.
 
 Crops: every clip is cropped with ONE fixed box (upstream's driving convention, DRIVE, averaged over landmark
 boxes, no rotation), truncated at the first shot cut (CUT_JUMP / CUT_SCALE / MAX_WANDER, in median box sides).
 Per-frame source-style crops chase and counter-rotate with the head and cancel translation and roll out of the
-motion (M0: 14.7 dB). The source photo is cropped the same way, so cached motion and the photo share a frame.
+motion. The source photo is cropped the same way, so cached motion and the photo share a frame.
 
 Upstream symbols follow KwaiVGI/LivePortrait as of 2026-09; `api_check()` checks them at construction.
 """
@@ -36,7 +36,7 @@ def _require_repo() -> None:
     if not (LP / "src" / "live_portrait_wrapper.py").exists():
         raise FileNotFoundError(
             f"LivePortrait is not installed at {LP}.\n"
-            "Run:  bash bash_scripts/env.sh install"
+            "Follow the installation steps in README.md."
         )
     if str(LP) not in sys.path:
         sys.path.insert(0, str(LP))
@@ -109,7 +109,7 @@ def ort_threads(n: int):
     """ONNX Runtime sessions created inside get an explicit thread count n. By default ONNX Runtime starts one
     pinned thread per core of the whole MACHINE: inside a Slurm CPU allocation the pinning fails
     ('pthread_setaffinity_np failed ... Specify the number of threads explicitly') and the threads
-    oversubscribe the job's CPUs (job 2026-10-16: source photo 3.7 s, ~100 s per cached clip)."""
+    oversubscribe the job's CPUs."""
     try:
         import onnxruntime as ort
     except ImportError:
@@ -144,7 +144,7 @@ def ort_report(cropper, threads: int) -> str:
     prov = {k: s.get_providers()[0].replace("ExecutionProvider", "") for k, s in used.items() if s is not None}
     gpu = all(v != "CPU" for v in prov.values())
     return (f"ONNX Runtime {ver}, {threads} CPU threads: " + ", ".join(f"{k} on {v}" for k, v in prov.items())
-            + ("" if gpu else "  <- face models on the CPU (slow): install onnxruntime-gpu, bash bash_scripts/env.sh install"))
+            + ("" if gpu else "  <- face models on the CPU (slow): install onnxruntime-gpu"))
 
 
 class MotionCodec:
@@ -172,7 +172,7 @@ class MotionCodec:
         cfg.device_id = 0
         for p in (cfg.checkpoint_F, cfg.checkpoint_M, cfg.checkpoint_G, cfg.checkpoint_W, cfg.checkpoint_S):
             if not Path(p).exists():
-                raise FileNotFoundError(f"missing renderer weight {p}; see bash bash_scripts/env.sh install")
+                raise FileNotFoundError(f"missing renderer weight {p}; follow the installation steps in README.md")
 
         self.lp = LivePortraitWrapper(inference_cfg=cfg)
         crop_cfg = CropConfig()
@@ -299,7 +299,7 @@ class MotionCodec:
     @torch.no_grad()
     def source_motion(self, source: np.ndarray, crop: dict | None = None) -> dict:
         """One source image -> {'m': [1,70], 'kp': [1,63]}. The photo keeps its own lips, as training references
-        do (LivePortrait's lip normalisation cost FVD 45.0 vs 37.6, docs/research_log.md 3.23)."""
+        do."""
         c = crop or self.crop_image(np.ascontiguousarray(source))
         m, kp = self.motion_from_crops(c["img_crop_256x256"][None])
         return {"m": m, "kp": kp}

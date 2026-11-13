@@ -3,7 +3,7 @@
 MotionLatent is a PCA over everything LivePortrait renders (sang.model.target.wide, 69 numbers per frame), taken
 RELATIVE to a reference frame (the photo), so identity stays out of the code. Its dimensions come out ordered by
 how much variance they keep, so every prefix of k codes decodes. The generator uses 42: the smallest k whose
-render ceiling (eval_hdtf.py --gt-latent) matches the full motion's (docs/research_log.md 3.26).
+rendered reconstruction is as good as that of the full motion.
 
 Codes are standardised per dimension so the flow model sees unit-scale targets; a dropped dimension is zero in
 the raw code space, as in training.

@@ -1,15 +1,10 @@
---extra-index-url https://download.pytorch.org/whl/cu121
-torch==2.4.1+cu121
-torchaudio==2.4.1+cu121
-transformers        # WavLM audio encoder
-mediapipe           # face detection for the face crop (needs libGLESv2; see bash_scripts/env.sh)
-decord              # video/audio decoding
-diffusers==0.33.1   # Wan2.1 VAE, continuous track only
-omegaconf           # VidTok config
+torch>=2.4
+transformers>=4.38
+decord
 pyyaml
-tqdm
-numpy
+numpy<2
 pillow
-imageio[ffmpeg]     # inference mp4 writing
-huggingface_hub     # scripts/fetch_loss_weights.py
-pytest
+imageio[ffmpeg]
+opencv-python
+onnxruntime-gpu
+mediapipe

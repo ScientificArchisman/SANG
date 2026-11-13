@@ -38,7 +38,7 @@ class WavLMEncoder:
     def __init__(self, device: str = "cpu"):
         from transformers import WavLMModel
 
-        self.m = WavLMModel.from_pretrained("microsoft/wavlm-large", local_files_only=True).to(device).eval()
+        self.m = WavLMModel.from_pretrained("microsoft/wavlm-large").to(device).eval()
 
     @torch.no_grad()
     def encode(self, wav: torch.Tensor) -> torch.Tensor:
@@ -46,6 +46,7 @@ class WavLMEncoder:
 
 
 def load_wavlm(device: str = "cpu") -> WavLMEncoder:
-    """Load the frozen WavLM from the local HF cache (the cluster has no HF access)."""
+    """Load the frozen WavLM. It is downloaded from the Hugging Face Hub on first use; with HF_HUB_OFFLINE=1 it is
+    read from the local cache only."""
     return WavLMEncoder(device)
 

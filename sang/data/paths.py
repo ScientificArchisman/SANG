@@ -1,15 +1,15 @@
-"""Where SANG's data lives. One place, so moving the data means changing one line (or setting SANG_DATA).
+"""Where SANG's data lives: <repo>/data, or the folder in the environment variable SANG_DATA.
 
     <DATA_ROOT>/talkvid/clips/<video>/<clip>.mp4 + .m4a   segmented TalkVid clips (video and audio)
-    <DATA_ROOT>/talkvid/preprocessed/                    scripts/cache_motion.py: per clip LivePortrait motion,
-                                                         keypoints and WavLM features, index_*.jsonl, and the
-                                                         derived files (sync_offsets.json, openness.json, norm42.pt)
+    <DATA_ROOT>/talkvid/preprocessed/                    scripts/preprocess/cache_motion.py: per clip LivePortrait
+                                                         motion, keypoints and WavLM features, index_*.jsonl, and the
+                                                         derived files (audio_check.json, sync_offsets.json, norm42.pt)
 """
 import json
 import os
 from pathlib import Path
 
-DATA_ROOT = Path(os.environ.get("SANG_DATA", "/beegfs/work_fast/shared/li_shared/archi_data"))
+DATA_ROOT = Path(os.environ.get("SANG_DATA", Path(__file__).resolve().parents[2] / "data"))
 MOTION_CACHE = DATA_ROOT / "talkvid" / "preprocessed"
 
 
@@ -21,7 +21,7 @@ def load_index(cache_dir: Path) -> list[dict]:
     for f in sorted(cache_dir.glob("index_*.jsonl")):
         rows += [json.loads(l) for l in f.read_text().splitlines() if l.strip()]
     if not rows:
-        raise SystemExit(f"no index_*.jsonl in {cache_dir}; run scripts/cache_motion.py first")
+        raise SystemExit(f"no index_*.jsonl in {cache_dir}; run scripts/preprocess/cache_motion.py first")
     for r in rows:
         p = Path(r["path"])
         r["path"] = str(cache_dir / p.parent.name / p.name)

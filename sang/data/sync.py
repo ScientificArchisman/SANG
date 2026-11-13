@@ -1,15 +1,11 @@
 """Audio-video offset correction for the TalkVid motion cache.
 
-The lip-sync diagnosis (scripts/diagnose_lips.py, job 176657) found that 41 % of real val clips are
-off by >= 2 frames according to SyncNet, that the offset is a property of the SOURCE VIDEO (one
-video: 13 clips, all -2), and that lip correlation falls with it: 0.66 at offsets 0/-1, 0.57 at -2,
-0.28 at -3/-4, ~0 where SyncNet finds no sync. scripts/sync_offsets.py measures 2 clips per video
-and writes <cache>/sync_offsets.json; training and evaluation then shift the cached audio.
+SyncNet finds 41 % of TalkVid validation clips off by 2 or more frames. The offset is a property of the source
+video, and the lip correlation of real clips falls as it grows. scripts/preprocess/sync_offsets.py measures 2 clips
+per video and writes <cache>/sync_offsets.json; training then shifts the cached audio.
 
 Convention. `offset` is SyncNet's "AV offset" in 25 fps frames (joonson/syncnet_python): NEGATIVE
-when the audio is LATE. (Checked on job 176657: the model's own loss-minimising audio shift has the
-same sign, corr 0.65, and generated lips lag the real ones on negative-offset clips.) The
-correction moves the audio by `offset` frames:
+when the audio is LATE. The correction moves the audio by `offset` frames:
     out[t] = audio[t - offset]        offset -2 -> out[t] = audio[t + 2]: late audio pulled forward
 
 WavLM features tick at 50 Hz (2 per frame), so the shift is round(2 * offset) ticks, which lets a
@@ -17,7 +13,11 @@ video's mean offset (e.g. -0.5 from clips at 0 and -1) be applied at half-frame 
 """
 import json
 import math
+import os
+import shutil
 import subprocess
+import sys
+import tempfile
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -25,6 +25,7 @@ import torch
 
 FPS, TPF, SR = 25, 2, 16000
 TICK = SR // (FPS * TPF)
+SYNCNET = Path(__file__).resolve().parents[2] / "third_party" / "syncnet_python"
 
 
 def clip_key(row: dict) -> str:
@@ -193,3 +194,53 @@ class SyncOffsets:
                 why[rec.get("why", "dropped")] += 1
         return out, dict(why)
 
+
+
+def lse(video: Path, workdir: Path | None = None, ref: str = "sang", verbose: bool = False) -> tuple[float, float, float]:
+    """(offset, LSE-D, LSE-C) for one mp4 WITH audio, via joonson/syncnet_python.
+
+    LSE-D is 'Min dist' and LSE-C is 'Confidence' in run_syncnet.py's output. Returns nans when the pipeline finds
+    no usable face track rather than raising, so one bad clip does not abort a sweep."""
+    if not (SYNCNET / "run_syncnet.py").exists():
+        raise FileNotFoundError(f"syncnet_python not at {SYNCNET}; follow the installation steps in README.md")
+    own = workdir is None
+    tmp = Path(workdir or tempfile.mkdtemp(prefix="lse_"))
+    (tmp / "work").mkdir(parents=True, exist_ok=True)
+    common = ["--data_dir", str(tmp / "work"), "--reference", ref, "--videofile", str(Path(video).resolve())]
+    io = dict(capture_output=True, encoding="utf-8", errors="replace", timeout=600,
+              env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"})
+    try:
+        subprocess.run([sys.executable, "run_pipeline.py", *common], cwd=SYNCNET, check=True, **io)
+        r = subprocess.run([sys.executable, "run_syncnet.py", *common], cwd=SYNCNET, check=True, **io)
+        out = r.stdout + "\n" + r.stderr
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        tail = ((getattr(e, "stderr", "") or "") + (getattr(e, "stdout", "") or ""))[-800:]
+        print(f"  [lse] syncnet_python failed on {Path(video).name}: {type(e).__name__}\n{tail}", flush=True)
+        return float("nan"), float("nan"), float("nan")
+    finally:
+        if own:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    res, lines = parse_syncnet(out)
+    if verbose:
+        print("  [lse] matched lines:\n    " + "\n    ".join(lines), flush=True)
+    if any(math.isnan(r) for r in res):
+        print(f"  [lse] could not parse run_syncnet.py output for {Path(video).name}:\n{out[-800:]}", flush=True)
+    return res
+
+
+def parse_syncnet(out: str) -> tuple[tuple[float, float, float], list[str]]:
+    """(AV offset, Min dist, Confidence) from run_syncnet.py's text, plus the lines they came from.
+
+    The number is the one right after the label: syncnet_python logs each line with a timestamp, so the line's first
+    number would be the hour."""
+    import re
+    vals, lines = [], []
+    for label in ("AV offset", "Min dist", "Confidence"):
+        m = re.search(rf"{re.escape(label)}\s*:?\s*([-+]?\d+(?:\.\d+)?)", out, flags=re.IGNORECASE)
+        vals.append(float(m.group(1)) if m else float("nan"))
+        if m:
+            start = out.rfind("\n", 0, m.start()) + 1
+            end = out.find("\n", m.end())
+            lines.append(out[start:end if end >= 0 else None].strip())
+    return tuple(vals), lines

@@ -1,6 +1,6 @@
-cache_dir: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed
-sync_offsets: /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets_c10.json
-out_dir: runs/motion_bidir
+cache_dir: data/talkvid/preprocessed
+sync_offsets: data/talkvid/preprocessed/sync_offsets.json
+out_dir: runs/demo
 val_frac: 0.05
 seed: 0
 init_seed: null
@@ -18,8 +18,7 @@ dropout: 0.1
 max_frames: 512
 latent: runs/latent/pca.pt
 latent_k: 42
-# extra footage of the person (0 = off): tokens, frames of another clip per window (min..max), drop rate
-demo_tokens: 0
+demo_tokens: 32
 demo_frames: 250
 demo_min_frames: 25
 p_demo: 0.2

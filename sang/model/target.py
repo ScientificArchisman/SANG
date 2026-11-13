@@ -5,8 +5,7 @@
 `wide` is everything the renderer reads except t_z: the 69 numbers the motion latent (sang.model.latent) is fitted
 on, and so what the model generates. `to_target` is a 42-d description, the head rotation plus the head-frame
 expression of the 13 keypoints LivePortrait's expression transfer drives (EXPR_KP; AVTR-1, arXiv 2609.22913). It
-is no longer generated; it describes the photo to the model (sang.model.flow.Norm.ref) and is what the lip / eye
-openness readouts (sang.eval.naturalness) are fitted on. REGIONS are its mouth / eye / brow / rotation columns.
+describes the photo to the model (sang.model.flow.Norm.ref). REGIONS are its mouth / eye / brow / rotation columns.
 """
 import torch
 

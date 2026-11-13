@@ -1,20 +1,18 @@
-# Proper multi-sample fine-tuning of the 6-step sampler (scripts/train_set.py; reports/SANG RL for video realism.md).
-# Data settings come from the generator run's own config; these keys override it. Default = runs/mbes.
-gen: runs/demo/last.pt     # starting policy
+gen: runs/demo/last.pt
 out_dir: runs/set
-rounds: 6                  # each fixes the KL reference, ends with EVAL + checkpoint + the stop check
-alternations: 10           # per round: policy_steps this many times, each ending with a log line
+rounds: 6
+alternations: 10
 policy_steps: 25
-persons: 8                 # batch = persons windows x m samples = 64 rollouts
-m: 8                       # samples per window
+persons: 8
+m: 8
 w_set: 1.0
-score: mbes                # mbes = the multiscale-block energy score; es = the plain energy score on the codes
-kl: 1.0                    # path-KL weight: a velocity trust region to the round's start
+score: mbes
+kl: 1.0
 lr: 1.0e-5
-g: 2.0                     # the policy is the guided sampler at beta = 1/g
+g: 2.0
 steps: 6
 grad_clip: 1.0
 bf16: true
 workers: 8
 log_every: 25
-eval_batches: 8            # 8 persons x 8 windows x 8 samples each for the set EVAL
+eval_batches: 8
