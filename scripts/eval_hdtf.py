@@ -62,12 +62,11 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "third_party"))
 
 from sang.data.audio import load_wav
-from sang.eval.naturalness import PANEL_KEYS
 
 SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std", "real_rot_std",
-               "rot_vel", "real_rot_vel", "copy_ratio") + tuple(f"{p}{k}" for k in PANEL_KEYS for p in ("", "real_"))
+               "rot_vel", "real_rot_vel", "copy_ratio")
 METRICS = ("FID", "FVD", "CSIM", "LSE-C", "LSE-D", "PSNR", "SSIM")
 
 
@@ -113,8 +112,7 @@ class Evaluator:
                 print(f"no openness readouts ({e}): no blink / lip stats", flush=True)
         if "sang" in args.rows:
             from sang.render.pipeline import Talker
-            self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec, automaton=args.automaton,
-                                 post=args.post)
+            self.talker = Talker(args.ckpt, args.sampler, self.dev, codec=self.codec)
             print(f"SANG {args.ckpt} (step {self.talker.step}), sampler {self.talker.sampler}", flush=True)
         if args.gt_latent:
             from sang.model.latent import MotionLatent
@@ -151,8 +149,8 @@ class Evaluator:
         """Blinks and lip opening of the generated motion [n, 70]; against the real clip's when given."""
         if self.read is None:
             return {}
-        from sang.eval.naturalness import blink_events, ccc, eye_head_panel
-        from sang.model.target import to_target, wide
+        from sang.eval.naturalness import blink_events, ccc
+        from sang.model.target import to_target
         y = to_target(m.float())
         lip, eye = self.read["lip"](y).cpu().numpy(), self.read["eye"](y).cpu().numpy()
         out = {"blinks_per_min": len(blink_events(eye)) * 60.0 * FPS / len(eye), "lip_std": float(lip.std())}
@@ -166,7 +164,6 @@ class Evaluator:
             out.update(real_blinks_per_min=len(blink_events(real["eye"])) * 60.0 * FPS / len(real["eye"]),
                        lip_ccc=ccc(g, r), lip_corr=float(np.corrcoef(g, r)[0, 1]),
                        rot_std=s_1, real_rot_std=s_r, rot_vel=v_1, real_rot_vel=v_r)
-            out.update(eye_head_panel(wide(m.float().cpu())[s0:s0 + k].numpy(), wide(real["m"].float())[:k].numpy()))
         return out
 
     def gen_gt_motion(self, frames, wav):
@@ -288,7 +285,7 @@ def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0) -> None
 
 def label(row: str, args) -> str:
     if row == "sang":
-        return f"SANG-M ({args.name}: {args.sampler or 'run defaults'}{', ' + args.post if getattr(args, 'post', None) else ''})"
+        return f"SANG-M ({args.name}: {args.sampler or 'run defaults'})"
     if row == "gt_motion":
         return "Real motion → LivePortrait (ceiling)" + (f" through {args.gt_k} codes" if args.gt_latent else "")
     return {"real": "Real video", "ditto": "Ditto"}[row]
@@ -362,9 +359,6 @@ def main() -> None:
                     help="ditto needs --ditto-dir, so it is opt-in")
     ap.add_argument("--sampler", default=None, help="sampler spec, e.g. 'g=2,steps=6' "
                                                     "(sang.model.flow.SAMPLER_KEYS); default: the run's guidance and steps")
-    ap.add_argument("--automaton", default=None, help="fit_automaton.py file for the sampler's shield/particles keys")
-    ap.add_argument("--post", default=None, choices=("one_euro", "kalman", "mean3", "savgol"),
-                    help="hand-set smoother on the head, gaze and lids after sampling (baselines)")
     ap.add_argument("--real-stats", action="store_true",
                     help="also extract each clip's real motion for the lip / blink / head-rotation stats (~10 s a clip)")
     ap.add_argument("--gt-latent", default=None, help="ceiling row through a motion latent (scripts/fit_latent.py)")
