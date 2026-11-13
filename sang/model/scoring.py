@@ -203,6 +203,9 @@ class FootageGuide:
         return (-step * grad / gn).to(x0.dtype)
 
 
-def guided_times(steps: int, split: int) -> list[float]:
-    """The flow times a FootageGuide acts at: after t = 1, inside the first Euler step (where the head is decided)."""
-    return [t for t in flow_times(steps, split)[1:-1] if t >= 1 - 1 / steps - 1e-9]
+def guided_times(steps: int, split: int, until: float | None = None) -> list[float]:
+    """The flow times a FootageGuide acts at: after t = 1, down to `until` (default: the end of the first Euler step,
+    where the head is decided). Near t = 1 the noised footage keeps little of its own motion (HDTF: own footage and
+    the real segment guide alike, §6 #66), so a later `until` lets the target carry the person."""
+    lo = 1 - 1 / steps if until is None else until
+    return [t for t in flow_times(steps, split)[1:-1] if t >= lo - 1e-9]

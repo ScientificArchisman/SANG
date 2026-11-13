@@ -406,6 +406,7 @@ SAMPLER_KEYS = {
     "split": "cut the first Euler step into this many sub-steps",
     "copies": "samples per window; copy 0 is the output (the others are the set a guide compares)",
     "guide": "footage guidance strength (Polyak fraction, sang.model.scoring.FootageGuide); needs footage, copies >= 2",
+    "gt": "guide at every flow time down to this one (default: the first Euler step only)",
 }
 
 

@@ -30,6 +30,7 @@ def test_split_and_the_guided_times():
     assert flow_times(6, 1) == flow_times(6)
     assert flow_times(4, 2) == pytest.approx([1.0, 0.875, 0.75, 0.5, 0.25, 0.0])
     assert guided_times(6, 2) == pytest.approx([11 / 12, 5 / 6]) and guided_times(6, 1) == pytest.approx([5 / 6])
+    assert guided_times(6, 2, 0.5) == pytest.approx([11 / 12, 5 / 6, 4 / 6, 3 / 6])
     spec = parse_spec("g=2,steps=6,split=2,copies=8,guide=0.5")
     assert sampler_kwargs(spec, {"cfg_audio": 2.0, "sample_steps": 4}) == {"cfg_audio": 2.0, "steps": 6, "split": 2}
 
@@ -65,7 +66,7 @@ def test_talker_builds_footage_windows_that_hide_their_own_stretch():
     from sang.render.pipeline import Talker
     m, lat, _ = _setup()
     tk = Talker.__new__(Talker)
-    tk.cfg, tk.model, tk.latent, tk.dev, tk.lam = {"prefix": P, "frames": L}, m, lat, "cpu", 0.5
+    tk.cfg, tk.model, tk.latent, tk.dev, tk.lam, tk.gt = {"prefix": P, "frames": L}, m, lat, "cpu", 0.5, None
     tk.sampler = sampler_kwargs(parse_spec("steps=6,split=2"), {"cfg_audio": 2.0, "sample_steps": 6})
     n = P + L + 3 * 16
     gd = tk.footage_guide(torch.randn(1, REF_DIM), None, torch.randn(n, K), torch.randn(2 * n, A),

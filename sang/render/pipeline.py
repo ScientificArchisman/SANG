@@ -112,7 +112,7 @@ class Talker:
         self.latent = MotionLatent.of(ck).to(device)
         spec = parse_spec(sampler)
         self.sampler = sampler_kwargs(spec, self.cfg)
-        self.copies, self.lam = int(spec.get("copies", 1)), float(spec.get("guide", 0.0))
+        self.copies, self.lam, self.gt = int(spec.get("copies", 1)), float(spec.get("guide", 0.0)), spec.get("gt")
         if self.lam and self.copies < 2:
             raise ValueError("guide= compares the copies of each window as a set: it needs copies >= 2")
         self.codec = codec or MotionCodec(device=device)
@@ -144,7 +144,7 @@ class Talker:
         else:
             demo = tokens.expand(K, -1, -1)
         w = u[idx]
-        times = guided_times(self.sampler["steps"], self.sampler.get("split", 1))
+        times = guided_times(self.sampler["steps"], self.sampler.get("split", 1), self.gt)
         return FootageGuide(self.model, self.latent.decode, w[:, P:], w[:, :P], ad[tick], ref.expand(K, -1), demo,
                             times, self.lam, g=self.sampler["cfg_audio"], seed=seed)
 
