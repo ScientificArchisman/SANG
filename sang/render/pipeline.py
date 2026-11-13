@@ -118,7 +118,7 @@ class Talker:
             from sang.model.automaton import Shield
             if automaton is None:
                 raise ValueError("the sampler's shield and particles need an automaton file (fit_automaton.py)")
-            self.sampler["shield"] = Shield.load(automaton, self.latent, self.model.t_dim, n, bool(ratio))
+            self.sampler["shield"] = Shield.load(automaton, self.latent, self.model.t_dim, n, ratio)
         self.post = post
         self.codec = codec or MotionCodec(device=device)
         self.wavlm = wavlm or load_wavlm(device=device)

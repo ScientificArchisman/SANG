@@ -407,7 +407,7 @@ SAMPLER_KEYS = {
     "steps": "Euler steps (default: the run's sample_steps)",
     "shield": "the gaze-head automaton in the last n Euler steps (default 0 = off; needs an automaton file)",
     "particles": "particles per clip, resampled after every window by the automaton's event score (default 1 = off)",
-    "ratio": "particle weight: 1 = real-over-SANG event ratio (default), 0 = the real grammar alone",
+    "ratio": "particle weight: 1 = real-over-SANG event ratio (default), 0 = the real grammar alone, -1 = uniform (control)",
 }
 
 

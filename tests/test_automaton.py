@@ -100,6 +100,8 @@ def test_particles_return_one_clip():
     y = generate(m, torch.randn(1, 2 * n, 16), torch.randn(1, REF_DIM), n, window=16, n_prefix=4, steps=2,
                  generator=torch.Generator().manual_seed(0), shield=sh, particles=3)
     assert y.shape == (1, n, 40) and torch.isfinite(y).all()
+    sh.ratio = -1  # the control selects nothing: every particle survives in place
+    assert torch.equal(sh.resample(torch.randn(6, 20, 40)), torch.arange(6))
 
 
 def test_sampler_spec_carries_the_automaton_keys():

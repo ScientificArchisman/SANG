@@ -387,8 +387,10 @@ class Shield:
     at 1e3). It also weights particles (sang.model.flow.generate's `particles`) by the real-over-SANG event ratio.
     The automaton itself runs on the CPU: a window is 74 frames."""
 
-    def __init__(self, gha: Automaton, latent, k: int, n: int = 2, sang: Automaton | None = None, ratio: bool = True):
-        self.gha, self.sang, self.latent, self.n, self.ratio = gha.to("cpu"), sang, latent, int(n), bool(ratio)
+    def __init__(self, gha: Automaton, latent, k: int, n: int = 2, sang: Automaton | None = None, ratio: int = 1):
+        """ratio: particle weights by 1 the real-over-SANG event ratio, 0 the real grammar alone, -1 none (uniform: the
+        control, which keeps particle 0 of an unselected batch)."""
+        self.gha, self.sang, self.latent, self.n, self.ratio = gha.to("cpu"), sang, latent, int(n), int(ratio)
         W = (latent.sd[:, None] * latent.dec.weight[:, :k] * latent.c_sd[:k][None]).detach().double()
         rows = COLS + WIDE_REGIONS["mouth"]
         wts = torch.ones(len(rows), dtype=W.dtype, device=W.device)
@@ -396,7 +398,7 @@ class Shield:
         self.lift = torch.linalg.pinv(wts[:, None] * W[rows])[:, :len(COLS)].float()  # [k, 9]
 
     @classmethod
-    def load(cls, path: str, latent, k: int, n: int = 2, ratio: bool = True) -> "Shield":
+    def load(cls, path: str, latent, k: int, n: int = 2, ratio: int = 1) -> "Shield":
         d = torch.load(path, map_location="cpu", weights_only=False)
         return cls(Automaton.load(d["real"]), latent, k, n, Automaton.load(d["sang"]) if d.get("sang") else None, ratio)
 
@@ -413,10 +415,10 @@ class Shield:
                  generator: torch.Generator | None = None) -> torch.Tensor:
         """Particle indices [K]: systematic resampling by the tempered event score, the temperature the largest in
         (0, 1] that keeps the effective sample size >= K / 2."""
-        if self.ratio and self.sang is None:
+        if self.ratio > 0 and self.sang is None:
             raise ValueError("the particle ratio needs the automaton's SANG grammar (fit_automaton.py without --no-sang)")
         w, _ = self._wide(y, prefix)
-        s = self.gha.event_score(w, self.sang if self.ratio else None).double()
+        s = (torch.zeros(len(w)) if self.ratio < 0 else self.gha.event_score(w, self.sang if self.ratio else None)).double()
         K = len(s)
         ess = lambda lam: float(1.0 / (torch.softmax(lam * s, 0) ** 2).sum())
         lam, lo, hi = 1.0, 0.0, 1.0
