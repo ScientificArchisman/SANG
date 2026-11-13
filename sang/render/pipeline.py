@@ -110,13 +110,48 @@ class Talker:
         self.model.load_state_dict(ck["ema"])
         self.norm = Norm(**ck["norm"]).to(device)
         self.latent = MotionLatent.of(ck).to(device)
-        self.sampler = sampler_kwargs(parse_spec(sampler), self.cfg)
+        spec = parse_spec(sampler)
+        self.sampler = sampler_kwargs(spec, self.cfg)
+        self.copies, self.lam = int(spec.get("copies", 1)), float(spec.get("guide", 0.0))
+        if self.lam and self.copies < 2:
+            raise ValueError("guide= compares the copies of each window as a set: it needs copies >= 2")
         self.codec = codec or MotionCodec(device=device)
         self.wavlm = wavlm or load_wavlm(device=device)
 
+    def _ticks(self, wav: torch.Tensor, n: int) -> torch.Tensor:
+        """WavLM ticks [2n, 1024] of n frames of 16 kHz audio (a short wav is padded)."""
+        a = self.wavlm.encode(wav[None, None].to(self.dev)).float()[0, :2 * n]
+        return F.pad(a, (0, 0, 0, 2 * n - len(a)))
+
+    def footage_guide(self, ref, m_src, u, ad, tokens, target, seed: int):
+        """A FootageGuide over 64-frame windows (stride 16, each with its real prefix and audio) of the footage codes u
+        [T, k] and ticks ad [2T, A], whose windows hide their own stretch from the footage tokens; or of target =
+        (motion, wav), read with the footage tokens as they are. None when fewer than 2 windows fit."""
+        from sang.model.scoring import FootageGuide, guided_times
+        P, L, tpf, dev = self.cfg["prefix"], self.cfg["frames"], self.model.tpf, self.dev
+        if target is not None:
+            u = self.latent.from_motion(target[0].float().to(dev), m_src, self.model.t_dim)
+            ad = self._ticks(target[1], len(u))
+        s = torch.arange(P, len(u) - L + 1, 16, device=dev)
+        K = len(s)
+        if K < 2:
+            return None
+        idx = s[:, None] + torch.arange(-P, L, device=dev)
+        tick = tpf * (s[:, None] - P) + torch.arange(tpf * (P + L), device=dev)
+        if target is None:
+            mask = torch.ones(K, len(u), dtype=torch.bool, device=dev).scatter_(1, idx, False)
+            demo = self.model.demo(u[None].expand(K, -1, -1), ad[None].expand(K, -1, -1), mask)
+        else:
+            demo = tokens.expand(K, -1, -1)
+        w = u[idx]
+        times = guided_times(self.sampler["steps"], self.sampler.get("split", 1))
+        return FootageGuide(self.model, self.latent.decode, w[:, P:], w[:, :P], ad[tick], ref.expand(K, -1), demo,
+                            times, self.lam, g=self.sampler["cfg_audio"], seed=seed)
+
     @torch.no_grad()
     def run(self, src: np.ndarray, wav: torch.Tensor, n_frames: int, seed: int = 0, paste: bool = True,
-            batch: int = 16, timer: Timer | None = None, demo: tuple | None = None, render: bool = True):
+            batch: int = 16, timer: Timer | None = None, demo: tuple | None = None, render: bool = True,
+            target: tuple | None = None):
         """src [H,W,3] uint8, wav [N] 16 kHz -> (frames [n,H,W,3] or, with paste=False, crops [n,512,512,3] uint8,
         motion [n,70], timer). The first window continues from the photo's own motion after `prefix` frames of
         silence. The photo keeps its own lips, as training references do (docs/research_log.md 3.23).
@@ -125,7 +160,11 @@ class Talker:
         demo = (frames [T,H,W,3] uint8, wav [T*640]): extra footage of the person, read once (stage 'demo': its
         motion relative to the photo plus its WavLM, encoded to the model's demo tokens). Needs a demo model.
         self.demo_frames is the number of footage frames used (the footage stops at its first shot cut),
-        self.demo_motion their motion [T', 70]."""
+        self.demo_motion their motion [T', 70].
+
+        A sampler with guide= steers each window's copies toward the footage (FootageGuide, built in stage 'demo'),
+        or toward target = (motion [n,70], wav aligned to it) instead: another person's footage or the test segment
+        itself (the controls). self.guide_log: its distances, copy spread of the t = 1 estimate and target windows."""
         from sang.model.flow import generate
         timer = timer or Timer()
         codec = self.codec
@@ -142,19 +181,28 @@ class Talker:
                 d = codec.extract(np.ascontiguousarray(demo[0]))
                 a, b = d["span"]
                 u = self.latent.from_motion(d["m"].float().to(self.dev), m_src, self.model.t_dim)
-                ad = self.wavlm.encode(demo[1][a * HOP:b * HOP][None, None].to(self.dev)).float()[0, :2 * len(u)]
-                ad = F.pad(ad, (0, 0, 0, 2 * len(u) - len(ad)))
+                ad = self._ticks(demo[1][a * HOP:b * HOP], len(u))
                 tokens = self.model.demo(u[None], ad[None], torch.ones(1, len(u), dtype=torch.bool, device=self.dev))
                 self.demo_frames, self.demo_motion = len(u), d["m"]
+        guide, self.guide_log = None, None
+        if self.lam:
+            if tokens is None:
+                raise ValueError("guide= needs the person's footage (demo=)")
+            with timer("demo"):
+                guide = self.footage_guide(ref, m_src, u, ad, tokens, target, seed)
         lead = self.cfg["prefix"]
         with timer("audio"):
             audio = self.wavlm.encode(torch.nn.functional.pad(wav, (lead * HOP, 0))[None, None].to(self.dev)).float()
         with timer("motion"):
-            first = self.latent.from_motion(m_src, m_src, self.model.t_dim).unsqueeze(1).expand(1, lead, -1)
+            B = self.copies
+            first = self.latent.from_motion(m_src, m_src, self.model.t_dim).unsqueeze(1).expand(B, lead, -1)
             g = torch.Generator(device=self.dev).manual_seed(seed)
-            z = generate(self.model, audio, ref, n_frames, window=self.cfg["frames"], n_prefix=self.cfg["prefix"],
-                         generator=g, start=first, demo=tokens, **self.sampler)[0]
+            z = generate(self.model, audio.expand(B, -1, -1), ref.expand(B, -1), n_frames, window=self.cfg["frames"],
+                         n_prefix=self.cfg["prefix"], generator=g, start=first,
+                         demo=None if tokens is None else tokens.expand(B, -1, -1), guide=guide, **self.sampler)[0]
             m = self.latent.to_motion(z, m_src)
+        if guide is not None:
+            self.guide_log = guide.log
         if not render:
             return None, m, timer
         with timer("render"):
