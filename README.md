@@ -6,17 +6,28 @@ If you also give a short video of the person, the model reads it and moves the f
 
 ## Installation
 
-SANG needs Linux, Python 3.10 and an NVIDIA GPU.
-Install PyTorch for your CUDA version first, then run these commands from the repository root.
+SANG needs Linux, an NVIDIA GPU and conda.
+Create a conda environment with Python 3.10, and install PyTorch for your CUDA version into it.
 
 ```bash
-git clone https://github.com/KwaiVGI/LivePortrait third_party/LivePortrait
-pip install -r third_party/LivePortrait/requirements_base.txt
-pip install -r requirements.txt
-huggingface-cli download KlingTeam/LivePortrait --local-dir third_party/LivePortrait/pretrained_weights --exclude "*animal*" "*.git*"
+conda create -n sang python=3.10 -y
+conda activate sang
+pip install torch==2.4.1 --index-url https://download.pytorch.org/whl/cu121
 ```
 
+The setup script `bash_scripts/env.sh` installs everything else.
+It clones LivePortrait and SyncNet into `third_party/`, installs the Python packages, downloads the LivePortrait and MediaPipe weights, and runs two self-checks.
+
+```bash
+bash bash_scripts/env.sh install
+```
+
+The script uses the conda environment named `sang`.
+To use another environment, set `SANG_ENV`, as in `SANG_ENV=myenv bash bash_scripts/env.sh install`.
 The WavLM audio encoder downloads itself from the Hugging Face Hub the first time it runs.
+
+Run every command below from the repository root with the environment active.
+`source bash_scripts/env.sh` activates it and sets the paths that the scripts need.
 
 ## Inference
 
@@ -50,11 +61,8 @@ To keep the data somewhere else, set the environment variable `SANG_DATA` to tha
 ### Preprocessing
 
 The clip filter drops clips where the face is missing, too small, moving out of frame, or cut.
-It needs the MediaPipe face landmark model.
 
 ```bash
-mkdir -p checkpoints
-curl -L -o checkpoints/face_landmarker.task https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
 find data/talkvid/clips -name "*.mp4" > data/clips_all.txt
 python scripts/preprocess/filter_clips.py --clips data/clips_all.txt --out data/clips_filtered_all.txt
 ```
@@ -72,9 +80,6 @@ SyncNet then measures how far the audio is shifted against the video in each sou
 
 ```bash
 python scripts/preprocess/check_audio.py
-git clone https://github.com/joonson/syncnet_python third_party/syncnet_python
-(cd third_party/syncnet_python && sh download_model.sh)
-pip install scipy python_speech_features scenedetect
 python scripts/preprocess/sync_offsets.py
 python scripts/preprocess/sync_offsets.py --merge --exclude data/talkvid/preprocessed/audio_check.json
 ```
@@ -110,12 +115,40 @@ python scripts/train/train_set.py gen=runs/set_es2/round2.pt score=mbes eval_bat
 
 The final model is `runs/mbes/round4.pt`.
 
+## Running on a Slurm cluster
+
+The job script `bash_scripts/run.sh` runs any Python script as a Slurm job on one GPU.
+It activates the environment through `bash_scripts/env.sh`, writes the log to `slurm_logs/`, and passes every argument on to Python.
+It asks for 8 CPUs, 64 GB of memory and 24 hours, and any `sbatch` option overrides these.
+Add the partition and account of your cluster when it needs them, as in `sbatch --partition=gpu --account=myproject bash_scripts/run.sh scripts/infer.py ...`.
+
+```bash
+sbatch bash_scripts/run.sh scripts/infer.py --ckpt runs/mbes/round4.pt --ref face.jpg --audio speech.wav --out out.mp4
+```
+
+These jobs run the whole training pipeline.
+Submit each job after the one before it has finished.
+The array jobs split the work into shards, and each task reads its shard number from `SLURM_ARRAY_TASK_ID`.
+
+```bash
+sbatch bash_scripts/run.sh scripts/preprocess/filter_clips.py --clips data/clips_all.txt --out data/clips_filtered_all.txt
+sbatch --array=0-7 bash_scripts/run.sh scripts/preprocess/cache_motion.py --clips data/clips_filtered_all.txt --chunks 10 --nshards 8
+sbatch bash_scripts/run.sh scripts/preprocess/check_audio.py
+sbatch --array=0-2 bash_scripts/run.sh scripts/preprocess/sync_offsets.py --nshards 3
+sbatch bash_scripts/run.sh scripts/preprocess/sync_offsets.py --merge --exclude data/talkvid/preprocessed/audio_check.json
+sbatch bash_scripts/run.sh scripts/preprocess/fit_latent.py --out runs/latent
+sbatch --mem=128gb bash_scripts/run.sh scripts/train/train_motion.py
+sbatch --mem=128gb bash_scripts/run.sh scripts/train/train_set.py gen=runs/demo/last.pt score=es out_dir=runs/set_es
+sbatch --mem=128gb bash_scripts/run.sh scripts/train/train_set.py gen=runs/set_es/round5.pt score=es eval_batches=32 out_dir=runs/set_es2
+sbatch --mem=128gb bash_scripts/run.sh scripts/train/train_set.py gen=runs/set_es2/round2.pt score=mbes eval_batches=32 out_dir=runs/mbes
+```
+
 ## Repository layout
 
 The package `sang/data` reads audio, video and the motion cache.
 The package `sang/model` holds the flow transformer, the motion latent and the energy scores.
 The package `sang/render` wraps LivePortrait and runs the full generation pipeline.
-The folder `scripts` holds the preprocessing, training and inference scripts, and `configs` holds the training settings.
+The folder `scripts` holds the preprocessing, training and inference scripts, `bash_scripts` holds the setup and job scripts, and `configs` holds the training settings.
 Evaluation code and current experiments live on the `dev` branch.
 
 ## License
