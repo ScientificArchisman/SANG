@@ -1,6 +1,4 @@
 #!/bin/bash
-# Every SANG job, training and evaluation alike:
-#   sbatch [--time=.. --job-name=..] bash_scripts/run.sh scripts/<script>.py [args]
 #SBATCH --job-name=sang
 #SBATCH --partition=ifn
 #SBATCH --account=ifn

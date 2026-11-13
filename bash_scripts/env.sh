@@ -1,7 +1,4 @@
 #!/bin/bash
-# The SANG environment.
-#   source bash_scripts/env.sh          activate it (run.sh does this for every job); SANG_ENV picks the conda env
-#   bash bash_scripts/env.sh install    one-time setup of the avcodec env: LivePortrait, SyncNet, ArcFace, I3D, tests
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 cd "$REPO_ROOT"
 mkdir -p slurm_logs
