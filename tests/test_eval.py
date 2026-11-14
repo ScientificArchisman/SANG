@@ -81,3 +81,21 @@ def test_table():
     assert md[2] == "| Real video | 75 | – | – | 0.900 | 7.161 | – | – | – |"
     assert md[3].startswith("| Real motion → LivePortrait (ceiling) through 16 codes | 75 | 16.100 | 28.000")
     assert md[4].startswith("| SANG-M (l42: g=2,steps=6) | 75 | 17.466 | 37.607 | – | 7.454")
+
+
+def test_calibrated_rows_are_labelled_and_paired_gives_a_bootstrap_dfvd(tmp_path):
+    args = argparse.Namespace(name="spc", sampler="g=2,steps=6", gt_latent=None, gt_k=None)
+    assert ev.label("sang+own", args) == "SANG-M (spc: g=2,steps=6), calibrated renderer: own"
+    assert ev.label("gt_motion", args) == "Real motion → LivePortrait (ceiling)"
+    pd = _load("paired")
+    g = np.random.default_rng(0)
+    feats = {c: (g.normal(size=(6, 4)), g.normal(size=(6, 4))) for c in "xyz"}
+    for run, shift in (("ref", 0.0), ("same", 0.0), ("off", 3.0)):
+        d = tmp_path / run / "clips" / "sang+own"
+        d.mkdir(parents=True)
+        for c, (gt, gen) in feats.items():
+            np.savez(d / f"{c}.npz", i3d_gt=gt, i3d_gen=gen + shift)
+    d = lambda r: pd.clip_dir(f"{r}:sang+own", tmp_path)
+    assert pd.dfvd(d("ref"), d("same"), list("xyz"), n=20) == (0.0, 0.0, 0.0)
+    delta, lo, hi = pd.dfvd(d("ref"), d("off"), list("xyz"), n=20)
+    assert delta > 0 and lo <= delta <= hi

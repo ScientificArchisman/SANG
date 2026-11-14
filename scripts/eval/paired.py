@@ -2,8 +2,10 @@
 """Paired comparison of eval_hdtf.py runs on the same clips and seed (the first run is the reference).
 
     python scripts/eval/paired.py r4_s60_d30_s0 other_run_s0
+    python scripts/eval/paired.py spc_s0:sang spc_s0:sang+own spc_s0:sang+swap   # rows of one run (default row: sang)
 
-Per run: FVD, FID, CSIM and LSE-C (rendered runs), mean lip CCC, head range and speed as % of real, blinks, median
+Per run: FVD, FID, CSIM and LSE-C (rendered runs), dFVD against the reference with a 95 % bootstrap interval over
+clips (each resample re-pools the I3D features of the same clips for both runs), mean lip CCC, head range and speed as % of real, blinks, median
 copy_ratio, and the clips whose head std error |rot_std - real_rot_std| is smaller than the reference's (37 of 57 is a two-sided sign
 test at p = 0.033). With footage (--demo) it also prints whether the footage predicts the segment: the leave-one-out
 R^2 of each real statistic from the footage's own, over the population mean.
@@ -17,13 +19,31 @@ from pathlib import Path
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO))
+
+
+def clip_dir(run: str, root: Path) -> Path:
+    name, _, row = run.partition(":")
+    return root / name / "clips" / (row or "sang")
 
 
 def load(run: str, root: Path) -> dict:
-    d = root / run / "clips" / "sang"
+    d = clip_dir(run, root)
     if not d.exists():
-        sys.exit(f"{d}: no sang clips")
+        sys.exit(f"{d}: no clips")
     return {p.stem: json.loads(p.read_text()) for p in d.glob("*.json")}
+
+
+def dfvd(ref: Path, run: Path, clips: list, n: int = 200, seed: int = 0) -> tuple[float, float, float]:
+    """FVD(run) - FVD(ref) on the shared clips, and its 95 % bootstrap interval over clips."""
+    from sang.eval.metrics import frechet
+    z = {d: [np.load(d / f"{c}.npz") for c in clips] for d in (ref, run)}
+    f = {d: ([v["i3d_gt"] for v in z[d]], [v["i3d_gen"] for v in z[d]]) for d in z}
+    fvd = lambda d, i: frechet(np.concatenate([f[d][0][k] for k in i]), np.concatenate([f[d][1][k] for k in i]))
+    delta = lambda i: fvd(run, i) - fvd(ref, i)
+    rng = np.random.default_rng(seed)
+    boot = [delta(rng.integers(0, len(clips), len(clips))) for _ in range(n)]
+    return delta(range(len(clips))), *np.percentile(boot, [2.5, 97.5])
 
 
 def loo_r2(x: np.ndarray, y: np.ndarray) -> float:
@@ -57,10 +77,14 @@ def main() -> None:
                "speed %": 100 * np.nanmean(col(r, "rot_vel")) / np.nanmean(col(r, "real_rot_vel")),
                "blinks": np.nanmean(col(r, "blinks_per_min")), "copy_ratio": np.nanmedian(col(r, "copy_ratio")),
                "head err": np.nanmean(err), "t_motion": np.nanmedian(col(r, "t_motion"))}
-        sj = Path(args.root) / r / "summary.json"
-        vid = json.loads(sj.read_text())["rows"].get("sang", {}).get("m", {}) if sj.exists() else {}
+        name, _, row = r.partition(":")
+        sj = Path(args.root) / name / "summary.json"
+        vid = json.loads(sj.read_text())["rows"].get(row or "sang", {}).get("m", {}) if sj.exists() else {}
         out = {k: vid[k] for k in ("FVD", "FID", "CSIM", "LSE-C") if k in vid} | out
-        wins = "" if r == ref else f"  head err better on {int((err < err0).sum())}/{len(clips)}"
+        wins = "" if r == ref or not np.isfinite(err).any() else f"  head err better on {int((err < err0).sum())}/{len(clips)}"
+        d0, d1 = clip_dir(ref, Path(args.root)), clip_dir(r, Path(args.root))
+        if r != ref and all((d / f"{c}.npz").exists() for d in (d0, d1) for c in clips):
+            wins += "  dFVD {:.2f} [{:.2f}, {:.2f}]".format(*dfvd(d0, d1, clips))
         print(f"{r:<24} " + "  ".join(f"{k} {v:.3f}" for k, v in out.items() if np.isfinite(v)) + wins)
     for k in ("rot_std", "rot_vel", "blinks_per_min"):
         x, y = col(ref, f"demo_{k}"), col(ref, f"real_{k}")

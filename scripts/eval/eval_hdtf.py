@@ -43,6 +43,13 @@ Protocol (also written to <out>/protocol.json):
             head rotation std / change and blink rate (demo_*: does the footage predict the segment? scripts/eval/paired.py).
             --motion-only: the sang row's motion statistics only, no rendering or video metrics (the same seed gives
             the same motion as a full run, so its FVD carries over).
+  renderer  --calib own gated swap oracle (with --demo): pass 1 fits shape-locked SPADE offsets on LivePortrait's
+            decoder per clip (sang.render.calibrate) to <out>/calib/<clip>.pt, own on the footage re-rendered from the
+            test photo, oracle on the test segment itself (a diagnostic). The first 5 clips run the pre-flight first
+            (noise and blur must raise the loss) and the run stops if it fails. Pass 2 adds rows <row>+<arm> for
+            gt_motion and sang: the same motion (the same seed) rendered with the calibrated decoder. gated copies
+            +own where the held-out footage loss fell (cal_accept), else the frozen row; swap uses the next clip's
+            own offsets (is the gain personal?). Compare rows with scripts/eval/paired.py run:row.
 --n-clips N stops after the first N clips that score (a quick paired test).
 Resumable: per-clip results go to <out>/clips/<row>/<clip>.{json,npz}; a rerun skips them.
 """
@@ -50,6 +57,7 @@ import argparse
 import csv
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -66,8 +74,10 @@ from sang.data.audio import load_wav
 
 SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
+ARMS = ("own", "gated", "swap", "oracle")
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std", "real_rot_std",
-               "rot_vel", "real_rot_vel", "copy_ratio", "demo_rot_std", "demo_rot_vel", "demo_blinks_per_min")
+               "rot_vel", "real_rot_vel", "copy_ratio", "demo_rot_std", "demo_rot_vel", "demo_blinks_per_min",
+               "pre_ok", "cal_accept", "cal_held0", "cal_held", "cal_theta", "cal_s", "gated_own")
 METRICS = ("FID", "FVD", "CSIM", "LSE-C", "LSE-D", "PSNR", "SSIM")
 
 
@@ -120,15 +130,18 @@ class Evaluator:
             self.gt_latent = MotionLatent.unpack(torch.load(args.gt_latent, map_location="cpu",
                                                             weights_only=False)).to(self.dev)
 
-    def gen_sang(self, frames, wav, demo=None):
+    def gen_sang(self, frames, wav, demo=None, stats=True):
         """sang.render.pipeline.Talker; the stage times (source, demo, audio, motion, render, paste; CUDA-synchronised)
-        go into the clip's json."""
+        go into the clip's json. stats=False skips the motion statistics (a calibrated row: the same motion)."""
         a = self.args
-        real = self.real_motion(frames) if a.real_stats else None
+        real = self.real_motion(frames) if a.real_stats and stats else None
         gen, m, timer = self.talker.run(frames[0], wav, len(frames), seed=a.seed, demo=demo, render=not a.motion_only)
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
         if demo is not None:
             self.last_t["demo_frames"] = self.talker.demo_frames
+        self.last_stats = {}
+        if not stats:
+            return gen, frames
         self.last_stats = self.motion_stats(m, real)
         if real is not None and self.talker.demo_motion is not None:
             from sang.eval.naturalness import copy_ratio
@@ -173,6 +186,44 @@ class Evaluator:
                        lip_ccc=ccc(g, r), lip_corr=float(np.corrcoef(g, r)[0, 1]),
                        rot_std=s_1, real_rot_std=s_r, rot_vel=v_1, real_rot_vel=v_r)
         return out
+
+    def calibrate(self, frames, footage, arms, preflight: bool) -> dict:
+        """One clip's decoder offsets (sang.render.calibrate), both fitted from the test photo as SANG renders it: own
+        on the footage (every 4th frame, the last 5 s held out), oracle on the test segment (every 2nd frame).
+        preflight: return before any fit if the noise / blur check fails."""
+        from sang.render import calibrate as cal
+        from sang.render.pipeline import crop_mask
+        codec, lp = self.codec, self.codec.lp
+        G, fx = lp.spade_generator, lp.appearance_feature_extractor
+        lp.motion_extractor.requires_grad_(False)
+        kw = dict(stage_w=self.args.calib_stages)
+        state = codec.source_state(codec.crop_image(np.ascontiguousarray(frames[0]))["img_crop_256x256"])
+        with torch.no_grad():
+            anchor = codec.warped(state, state["x_s"]).float()
+        kp_of = lambda img: cal.keypoints(lp, img)
+        d = codec.extract(np.ascontiguousarray(footage))
+        a, b = d["span"]
+        T, hold = len(d["m"]), 5 * FPS
+        if T - hold < 32:
+            raise ValueError(f"only {T} footage frames before a shot cut")
+        idx = np.arange(0, T, 4)
+        src = (codec, state, footage[a:b], d["m"], d["M_c2o"].numpy())
+        train, held = cal.pairs(*src, idx[idx < T - hold]), cal.pairs(*src, idx[idx >= T - hold])
+        w = torch.from_numpy(crop_mask(train["Y"].shape[-1])).to(self.dev)
+        log = cal.check(G, fx, held, w, **kw)
+        if preflight and not log["pre_ok"]:
+            return {"log": log}
+        out = {}
+        out["own"], fl = cal.fit(G, fx, kp_of, train, held, anchor, w, **kw)
+        log |= fl
+        del train, held
+        if "oracle" in arms:
+            s = codec.extract(np.ascontiguousarray(frames))
+            a, b = s["span"]
+            seg = cal.pairs(codec, state, frames[a:b], s["m"], s["M_c2o"].numpy(), np.arange(0, len(s["m"]), 2))
+            out["oracle"], fl = cal.fit(G, fx, kp_of, seg, None, anchor, w, **kw)
+            log |= {f"oracle_{k}": v for k, v in fl.items()}
+        return out | {"log": log}
 
     def gen_gt_motion(self, frames, wav):
         from sang.render.pipeline import GpuPaster
@@ -230,6 +281,8 @@ def run(args) -> None:
 
     ev = Evaluator(args)
     from sang.render.liveportrait import decode_clip
+    cal_dir = out / "calib"
+    fitted = fit_all(ev, args, clips, cal_dir) if args.calib else []
     t0, scored = time.time(), 0
     for i, clip in enumerate(clips, 1):
         if args.n_clips and scored >= args.n_clips:
@@ -246,10 +299,16 @@ def run(args) -> None:
                 raise ValueError(f"only {len(frames) / FPS:.1f} s after {args.start:g} s")
             wav = load_wav(clip, s0, len(frames))
             demo = None
-            if n_demo and "sang" in todo:
+            if n_demo and any(r.partition("+")[0] == "sang" for r in todo):
                 dfr = decode_clip(str(clip), n_demo, start=s0 - n_demo)
                 demo = (dfr, load_wav(clip, s0 - n_demo, len(dfr)))
-            rows_of_clip(ev, args, clip, out, i, len(clips), todo, frames, wav, demo, s0)
+            calib = None
+            if args.calib:
+                if clip.stem not in fitted:
+                    raise ValueError("no renderer calibration (see its [calib] line)")
+                calib = torch.load(cal_dir / f"{clip.stem}.pt")
+                calib["swap"] = torch.load(cal_dir / f"{fitted[(fitted.index(clip.stem) + 1) % len(fitted)]}.pt")["own"]
+            rows_of_clip(ev, args, clip, out, i, len(clips), todo, frames, wav, demo, s0, calib)
             scored += 1
         except Exception as e:
             print(f"[{i}/{len(clips)}] SKIP {clip.stem}: {type(e).__name__}: {e}", flush=True)
@@ -257,34 +316,81 @@ def run(args) -> None:
     summarise(out, args)
 
 
-def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0) -> None:
-    """Generate, score and save every row still to do for one clip."""
+def fit_all(ev, args, clips, cal_dir) -> list[str]:
+    """--calib pass 1: every clip's offsets to <out>/calib/<clip>.pt before any row, so swap can take the next clip's.
+    The first 5 clips check the loss before fitting, and the run stops if that pre-flight fails on any of them.
+    Returns the clips with an own fit, in list order."""
+    from sang.render.liveportrait import decode_clip
+    cal_dir.mkdir(exist_ok=True)
+    s0, n_test, n_demo = round(args.start * FPS), round(args.seconds * FPS), round(args.demo * FPS)
+    todo, fitted = (clips[:args.n_clips + 1] if args.n_clips else clips), []
+    for i, clip in enumerate(todo):
+        f = cal_dir / f"{clip.stem}.pt"
+        try:
+            if not f.exists():
+                frames = decode_clip(str(clip), n_test, start=s0)
+                if len(frames) < n_test:
+                    raise ValueError(f"only {len(frames) / FPS:.1f} s after {args.start:g} s")
+                footage = decode_clip(str(clip), n_demo, start=s0 - n_demo)
+                torch.save(ev.calibrate(frames, footage, args.calib, preflight=i < 5), f)
+            cal = torch.load(f)
+        except Exception as e:
+            print(f"[calib {i + 1}/{len(todo)}] SKIP {clip.stem}: {type(e).__name__}: {e}", flush=True)
+            continue
+        print(f"[calib {i + 1}/{len(todo)}] {clip.stem:<28} "
+              + "  ".join(f"{k} {v:.4g}" for k, v in cal["log"].items()), flush=True)
+        if i < 5 and not cal["log"]["pre_ok"]:
+            sys.exit(f"pre-flight failed on {clip.stem}: noise or blur lowers the calibration loss. Drop the finest "
+                     "stage (--calib-stages 0 0.5 0.25) under a new --name")
+        if "own" in cal:
+            fitted.append(clip.stem)
+    if not fitted:
+        sys.exit("--calib: no clip was fitted")
+    return fitted
+
+
+def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0, calib=None) -> None:
+    """Generate, score and save every row still to do for one clip. <row>+<arm> renders <row> with the decoder offsets
+    calib[arm]; <row>+gated copies <row>+own where its held-out check passed, else <row>."""
+    from sang.render.calibrate import offsets
     from sang.render.liveportrait import decode_clip
     for row in todo:
-        if row == "real":
-            gen, gt = frames, frames
-        elif row == "gt_motion":
-            gen, gt = ev.gen_gt_motion(frames, wav)
-        elif row == "ditto":
-            vid = Path(args.ditto_dir) / f"{clip.stem}.mp4"
-            if not vid.exists():
-                raise FileNotFoundError(f"{vid}: no Ditto video")
-            gen = decode_clip(str(vid), len(frames))
-            gt = frames[: len(gen)]
-            ev.last_stats = (ev.motion_stats(ev.codec.extract(gen)["m"], ev.real_motion(frames))
-                             if args.real_stats else {})
-        else:
-            gen, gt = ev.gen_sang(frames, wav, demo)
+        base, _, arm = row.partition("+")
+        d = out / "clips" / row
+        d.mkdir(parents=True, exist_ok=True)
+        if arm == "gated":
+            ok = bool(calib["log"]["cal_accept"])
+            src = out / "clips" / (f"{base}+own" if ok else base)
+            shutil.copy(src / f"{clip.stem}.npz", d / f"{clip.stem}.npz")
+            res = json.loads((src / f"{clip.stem}.json").read_text()) | {"gated_own": float(ok)}
+            (d / f"{clip.stem}.json").write_text(json.dumps(res))
+            print(f"[{i}/{n}] {clip.stem:<28} {row:<9} = {src.name}", flush=True)
+            continue
+        with offsets(ev.codec.lp.spade_generator, calib[arm] if arm else None):
+            if base == "real":
+                gen, gt = frames, frames
+            elif base == "gt_motion":
+                gen, gt = ev.gen_gt_motion(frames, wav)
+            elif base == "ditto":
+                vid = Path(args.ditto_dir) / f"{clip.stem}.mp4"
+                if not vid.exists():
+                    raise FileNotFoundError(f"{vid}: no Ditto video")
+                gen = decode_clip(str(vid), len(frames))
+                gt = frames[: len(gen)]
+                ev.last_stats = (ev.motion_stats(ev.codec.extract(gen)["m"], ev.real_motion(frames))
+                                 if args.real_stats else {})
+            else:
+                gen, gt = ev.gen_sang(frames, wav, demo, stats=not arm)
         if args.motion_only:
             res, feats = {"clip": clip.stem, "frames": len(frames)}, {}
         else:
             res, feats = ev.score(row, clip, out, gen, gt, frames[0], s0)
-        if row == "sang":
+        if base == "sang":
             res.update(ev.last_t)
-        if row in ("sang", "ditto"):
+        if base in ("sang", "ditto"):
             res.update(ev.last_stats)
-        d = out / "clips" / row
-        d.mkdir(parents=True, exist_ok=True)
+        if arm == "own":
+            res.update(calib["log"])
         if feats:
             np.savez_compressed(d / f"{clip.stem}.npz", **feats)
         (d / f"{clip.stem}.json").write_text(json.dumps(res))
@@ -293,11 +399,14 @@ def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0) -> None
 
 
 def label(row: str, args) -> str:
-    if row == "sang":
-        return f"SANG-M ({args.name}: {args.sampler or 'run defaults'})"
-    if row == "gt_motion":
-        return "Real motion → LivePortrait (ceiling)" + (f" through {args.gt_k} codes" if args.gt_latent else "")
-    return {"real": "Real video", "ditto": "Ditto"}[row]
+    base, _, arm = row.partition("+")
+    if base == "sang":
+        s = f"SANG-M ({args.name}: {args.sampler or 'run defaults'})"
+    elif base == "gt_motion":
+        s = "Real motion → LivePortrait (ceiling)" + (f" through {args.gt_k} codes" if args.gt_latent else "")
+    else:
+        s = {"real": "Real video", "ditto": "Ditto"}[base]
+    return s + (f", calibrated renderer: {arm}" if arm else "")
 
 
 def markdown(rows: dict, args) -> str:
@@ -311,7 +420,7 @@ def markdown(rows: dict, args) -> str:
 def summarise(out: Path, args) -> dict:
     from sang.eval.metrics import frechet
     rows = {}
-    for row in ROWS:
+    for row in [r for b in ROWS for r in (b, *(f"{b}+{a}" for a in ARMS))]:
         d = out / "clips" / row
         js = [json.loads(p.read_text()) for p in sorted(d.glob("*.json"))] if d.exists() else []
         if not js:
@@ -374,11 +483,25 @@ def main() -> None:
     ap.add_argument("--gt-k", type=int, default=None, help="--gt-latent: codes kept")
     ap.add_argument("--save-videos", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--calib", nargs="+", default=[], choices=ARMS,
+                    help="renderer calibration arms (sang.render.calibrate): gt_motion and sang are also rendered with "
+                         "LivePortrait's decoder calibrated per clip; needs --demo")
+    ap.add_argument("--calib-stages", nargs=3, type=float, default=[1.0, 0.5, 0.25],
+                    help="--calib: loss weights of the appearance extractor's three stages, finest first")
     ap.add_argument("--n-clips", type=int, default=0, help="stop after this many scored clips (0 = all)")
     ap.add_argument("--motion-only", action="store_true", help="sang row motion stats only (no rendering)")
     args = ap.parse_args()
     if args.motion_only and args.rows != ["sang"]:
         sys.exit("--motion-only scores the sang row only: pass --rows sang")
+    if args.calib:
+        if not args.demo or args.motion_only:
+            sys.exit("--calib fits the renderer on the footage and renders with it: pass --demo, not --motion-only")
+        if "gated" in args.calib and "own" not in args.calib:
+            sys.exit("--calib gated chooses between own and the frozen renderer: add own")
+        if not {"gt_motion", "sang"} & set(args.rows):
+            sys.exit("--calib renders the gt_motion and sang rows: pass one of them")
+        args.rows = [r for b in args.rows for r in (b, *(f"{b}+{a}" for a in ARMS
+                                                          if a in args.calib and b in ("gt_motion", "sang")))]
     if args.gt_latent and not args.gt_k:
         sys.exit("--gt-latent needs --gt-k")
     if args.demo > args.start:

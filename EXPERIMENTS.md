@@ -113,7 +113,25 @@ It needs `openness.json` in the motion cache, which `scripts/eval/calibrate_open
 sbatch bash_scripts/run.sh scripts/eval/naturalness.py --ckpt runs/mbes/round4.pt --sync-offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets_c10.json --variants g=2,steps=6 --name r4
 ```
 
+## Current experiment
 
+Shape-locked SPADE calibration fits per-channel offsets on the modulation of LivePortrait's 18 SPADE layers to each person's footage, rendered from the test photo.
+The code is in `sang/render/calibrate.py`, and `--calib` in the HDTF evaluation adds the calibrated rows.
+The three jobs below share one set of options: one renders the real motion, and the other two render r4's motion at seeds 0 and 1.
+
+```bash
+CAL="--data $HDTF --ckpt runs/mbes/round4.pt --sampler g=2,steps=6 --start 60 --demo 30 --calib own gated swap oracle"
+sbatch --time=12:00:00 bash_scripts/run.sh scripts/eval/eval_hdtf.py $CAL --rows gt_motion --name spc_gt
+sbatch --time=12:00:00 bash_scripts/run.sh scripts/eval/eval_hdtf.py $CAL --rows sang --real-stats --seed 0 --name spc_s0
+sbatch --time=12:00:00 bash_scripts/run.sh scripts/eval/eval_hdtf.py $CAL --rows sang --real-stats --seed 1 --name spc_s1
+```
+
+Each job first fits every clip and stops within minutes if the pre-flight check fails on any of the first five clips.
+Compare each arm with the frozen renderer in the same run.
+
+```bash
+python scripts/eval/paired.py spc_s0:sang spc_s0:sang+own spc_s0:sang+gated spc_s0:sang+swap spc_s0:sang+oracle
+```
 
 ## Moving work between branches
 
