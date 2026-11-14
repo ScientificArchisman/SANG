@@ -113,11 +113,7 @@ It needs `openness.json` in the motion cache, which `scripts/eval/calibrate_open
 sbatch bash_scripts/run.sh scripts/eval/naturalness.py --ckpt runs/mbes/round4.pt --sync-offsets /beegfs/work_fast/shared/li_shared/archi_data/talkvid/preprocessed/sync_offsets_c10.json --variants g=2,steps=6 --name r4
 ```
 
-## Current experiment
 
-Footage guidance steers the sampler toward the motion statistics of the person's footage at test time.
-It is switched on through the sampler, for example `--sampler g=2,steps=6,split=2,copies=8,guide=0.5,gt=0.5`, and `--guide-target random` gives the control that guides toward another person's footage.
-The code is in `FootageGuide` in `sang/model/scoring.py`.
 
 ## Moving work between branches
 

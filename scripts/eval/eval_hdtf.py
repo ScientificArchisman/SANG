@@ -41,9 +41,6 @@ Protocol (also written to <out>/protocol.json):
             With --demo and --real-stats: copy_ratio, how close SANG's motion is to the footage over how close the
             real segment is (sang.eval.naturalness.copy_ratio; << 1 = replaying the footage), and the footage's own
             head rotation std / change and blink rate (demo_*: does the footage predict the segment? scripts/eval/paired.py).
-  guide     a sampler with guide= (sang.model.scoring.FootageGuide) steers toward --guide-target: own (the footage),
-            random (the next clip's footage, another person: control) or oracle (the test segment itself, needs
-            --real-stats). guide_d: mean guided distance, mu_spread: spread of the copies' t = 1 estimate.
             --motion-only: the sang row's motion statistics only, no rendering or video metrics (the same seed gives
             the same motion as a full run, so its FVD carries over).
 --n-clips N stops after the first N clips that score (a quick paired test).
@@ -70,8 +67,7 @@ from sang.data.audio import load_wav
 SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std", "real_rot_std",
-               "rot_vel", "real_rot_vel", "copy_ratio", "demo_rot_std", "demo_rot_vel", "demo_blinks_per_min",
-               "guide_d", "mu_spread", "guide_windows")
+               "rot_vel", "real_rot_vel", "copy_ratio", "demo_rot_std", "demo_rot_vel", "demo_blinks_per_min")
 METRICS = ("FID", "FVD", "CSIM", "LSE-C", "LSE-D", "PSNR", "SSIM")
 
 
@@ -124,17 +120,12 @@ class Evaluator:
             self.gt_latent = MotionLatent.unpack(torch.load(args.gt_latent, map_location="cpu",
                                                             weights_only=False)).to(self.dev)
 
-    def gen_sang(self, frames, wav, demo=None, other=None):
+    def gen_sang(self, frames, wav, demo=None):
         """sang.render.pipeline.Talker; the stage times (source, demo, audio, motion, render, paste; CUDA-synchronised)
-        go into the clip's json. other: another clip's footage (frames, wav), the random guide target."""
+        go into the clip's json."""
         a = self.args
         real = self.real_motion(frames) if a.real_stats else None
-        target = None
-        if a.guide_target != "own":
-            d, w = (real, wav) if a.guide_target == "oracle" else (self.codec.extract(other[0]), other[1])
-            target = (d["m"], w[d["span"][0] * HOP:d["span"][1] * HOP])
-        gen, m, timer = self.talker.run(frames[0], wav, len(frames), seed=a.seed, demo=demo, render=not a.motion_only,
-                                        target=target)
+        gen, m, timer = self.talker.run(frames[0], wav, len(frames), seed=a.seed, demo=demo, render=not a.motion_only)
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
         if demo is not None:
             self.last_t["demo_frames"] = self.talker.demo_frames
@@ -151,10 +142,6 @@ class Evaluator:
             fs = self.motion_stats(self.talker.demo_motion)
             if "blinks_per_min" in fs:
                 self.last_stats["demo_blinks_per_min"] = fs["blinks_per_min"]
-        lg = self.talker.guide_log
-        if lg:
-            self.last_stats.update(guide_d=float(np.mean(lg["d"])), mu_spread=float(np.mean(lg["mu_spread"])),
-                                   guide_windows=float(lg["windows"]))
         return gen, frames
 
     def real_motion(self, frames) -> dict:
@@ -258,13 +245,11 @@ def run(args) -> None:
             if s0 and len(frames) < n_test:
                 raise ValueError(f"only {len(frames) / FPS:.1f} s after {args.start:g} s")
             wav = load_wav(clip, s0, len(frames))
-            demo = other = None
+            demo = None
             if n_demo and "sang" in todo:
                 dfr = decode_clip(str(clip), n_demo, start=s0 - n_demo)
                 demo = (dfr, load_wav(clip, s0 - n_demo, len(dfr)))
-                if args.guide_target == "random":
-                    other = next_footage(clips, i, s0, n_demo)
-            rows_of_clip(ev, args, clip, out, i, len(clips), todo, frames, wav, demo, s0, other)
+            rows_of_clip(ev, args, clip, out, i, len(clips), todo, frames, wav, demo, s0)
             scored += 1
         except Exception as e:
             print(f"[{i}/{len(clips)}] SKIP {clip.stem}: {type(e).__name__}: {e}", flush=True)
@@ -272,18 +257,7 @@ def run(args) -> None:
     summarise(out, args)
 
 
-def next_footage(clips: list[Path], i: int, s0: int, n_demo: int) -> tuple:
-    """The footage window of the first later clip (wrapping) that has at least half of it: another person."""
-    from sang.render.liveportrait import decode_clip
-    for j in range(i, i + len(clips) - 1):
-        c = clips[j % len(clips)]
-        fr = decode_clip(str(c), n_demo, start=s0 - n_demo)
-        if len(fr) >= n_demo // 2:
-            return fr, load_wav(c, s0 - n_demo, len(fr))
-    raise ValueError("no other clip has footage")
-
-
-def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0, other=None) -> None:
+def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0) -> None:
     """Generate, score and save every row still to do for one clip."""
     from sang.render.liveportrait import decode_clip
     for row in todo:
@@ -300,7 +274,7 @@ def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0, other=N
             ev.last_stats = (ev.motion_stats(ev.codec.extract(gen)["m"], ev.real_motion(frames))
                              if args.real_stats else {})
         else:
-            gen, gt = ev.gen_sang(frames, wav, demo, other)
+            gen, gt = ev.gen_sang(frames, wav, demo)
         if args.motion_only:
             res, feats = {"clip": clip.stem, "frames": len(frames)}, {}
         else:
@@ -402,15 +376,7 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--n-clips", type=int, default=0, help="stop after this many scored clips (0 = all)")
     ap.add_argument("--motion-only", action="store_true", help="sang row motion stats only (no rendering)")
-    ap.add_argument("--guide-target", default="own", choices=("own", "random", "oracle"),
-                    help="what a guide= sampler steers toward (own footage; the controls: another person's, the segment)")
     args = ap.parse_args()
-    if "guide=" in (args.sampler or "") and not args.demo:
-        sys.exit("a guide= sampler steers toward the person's footage: pass --demo")
-    if args.guide_target != "own" and "guide=" not in (args.sampler or ""):
-        sys.exit("--guide-target needs a sampler with guide=")
-    if args.guide_target == "oracle" and not args.real_stats:
-        sys.exit("--guide-target oracle reads the segment's real motion: pass --real-stats")
     if args.motion_only and args.rows != ["sang"]:
         sys.exit("--motion-only scores the sang row only: pass --rows sang")
     if args.gt_latent and not args.gt_k:

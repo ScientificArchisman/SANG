@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Paired comparison of eval_hdtf.py runs on the same clips and seed (the first run is the reference).
 
-    python scripts/eval/paired.py jem_ctrl_s0 jem_own_s0 jem_rand_s0 jem_orc_s0
+    python scripts/eval/paired.py r4_s60_d30_s0 other_run_s0
 
 Per run: FVD, FID, CSIM and LSE-C (rendered runs), mean lip CCC, head range and speed as % of real, blinks, median
-copy_ratio, guide diagnostics, and the clips whose head std error |rot_std - real_rot_std| is smaller than the reference's (37 of 57 is a two-sided sign
+copy_ratio, and the clips whose head std error |rot_std - real_rot_std| is smaller than the reference's (37 of 57 is a two-sided sign
 test at p = 0.033). With footage (--demo) it also prints whether the footage predicts the segment: the leave-one-out
-R^2 of each real statistic from the footage's own, over the population mean (reports/SANG joint embedding
-matching.md, stage 0a).
+R^2 of each real statistic from the footage's own, over the population mean.
 """
 import argparse
 import json
@@ -57,8 +56,7 @@ def main() -> None:
                "head %": 100 * np.nanmean(col(r, "rot_std")) / np.nanmean(real),
                "speed %": 100 * np.nanmean(col(r, "rot_vel")) / np.nanmean(col(r, "real_rot_vel")),
                "blinks": np.nanmean(col(r, "blinks_per_min")), "copy_ratio": np.nanmedian(col(r, "copy_ratio")),
-               "head err": np.nanmean(err), "guide_d": np.nanmean(col(r, "guide_d")),
-               "mu_spread": np.nanmean(col(r, "mu_spread")), "t_motion": np.nanmedian(col(r, "t_motion"))}
+               "head err": np.nanmean(err), "t_motion": np.nanmedian(col(r, "t_motion"))}
         sj = Path(args.root) / r / "summary.json"
         vid = json.loads(sj.read_text())["rows"].get("sang", {}).get("m", {}) if sj.exists() else {}
         out = {k: vid[k] for k in ("FVD", "FID", "CSIM", "LSE-C") if k in vid} | out
