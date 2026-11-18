@@ -293,29 +293,13 @@ def flow_times(steps: int) -> list[float]:
     return (1.0 - torch.linspace(0.0, 1.0, steps + 1, dtype=torch.float64)).tolist()
 
 
-def lowpass(d: torch.Tensor, sigma: float) -> torch.Tensor:
-    """Gaussian low-pass over the frames of [B, L, K] (std sigma frames, edges replicated); sigma <= 0 returns d."""
-    if sigma <= 0:
-        return d
-    r = int(3 * sigma)
-    k = torch.exp(-torch.arange(-r, r + 1, device=d.device, dtype=torch.float32) ** 2 / (2 * sigma ** 2))
-    k = (k / k.sum()).view(1, 1, -1).expand(d.shape[-1], 1, -1)
-    x = F.pad(d.float().transpose(1, 2), (r, r), mode="replicate")
-    return F.conv1d(x, k, groups=d.shape[-1]).transpose(1, 2).to(d.dtype)
-
-
 @torch.no_grad()
 def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps: int = 10,
            cfg_audio: float = 2.0, generator: torch.Generator | None = None,
            prefix_keep: torch.Tensor | None = None, demo: torch.Tensor | None = None,
-           demo_keep: torch.Tensor | None = None, lo: float = 1.0, hi: float = 1.0,
-           sigma: float = 6.0) -> torch.Tensor:
+           demo_keep: torch.Tensor | None = None) -> torch.Tensor:
     """Euler from t = 1 (noise) to 0, one pass per step at beta = 1/cfg_audio: the guided velocity
     v_u + gamma (v_c - v_u), whose unconditional branch drops the audio and keeps the photo and the prefix.
-
-    Band-split guidance (lo or hi != 1, a second pass per step for v_u): the guidance update d = v - v_u is split
-    over time into its slow part d_lo (lowpass, std sigma frames) and the rest, and v = v_u + lo d_lo + hi (d - d_lo).
-    lo = hi = 1 is the one-pass sampler; lo = hi = a is plain guidance at a x gamma.
 
     prefix_keep [B] bool (optional): False = the prefix slot is present but DROPPED, exactly as
     flow_loss drops it -- which is how training represents 'no previous frames'. demo: encode_demo tokens, or None;
@@ -326,16 +310,10 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
     if prefix is not None:
         keep = torch.ones(B, dtype=torch.bool, device=dev) if prefix_keep is None else prefix_keep.to(dev)
     beta = torch.full((B,), 1.0 / float(cfg_audio), device=dev)
-    band, no_audio = lo != 1.0 or hi != 1.0, torch.ones(B, dtype=torch.bool, device=dev)
-    kw = dict(prefix=prefix, prefix_keep=keep, demo=demo, demo_keep=demo_keep)
     ts = flow_times(steps)
     for i in range(steps):
         t = torch.full((B,), ts[i], device=dev)
-        v = model(x, t, audio, ref, beta=beta, **kw)
-        if band:
-            v_u = model(x, t, audio, ref, drop_audio=no_audio, **kw)
-            d_lo = lowpass(v - v_u, sigma)
-            v = v_u + lo * d_lo + hi * (v - v_u - d_lo)
+        v = model(x, t, audio, ref, prefix=prefix, prefix_keep=keep, beta=beta, demo=demo, demo_keep=demo_keep)
         x = x - (ts[i] - ts[i + 1]) * v
     return x
 
@@ -344,7 +322,7 @@ def sample(model: MotionFlowTransformer, audio, ref, L: int, prefix=None, steps:
 def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tensor, n_frames: int,
              window: int = 64, n_prefix: int = 10, steps: int = 10, cfg_audio: float = 2.0,
              generator: torch.Generator | None = None, start: torch.Tensor | None = None,
-             demo: torch.Tensor | None = None, lo: float = 1.0, hi: float = 1.0, sigma: float = 6.0) -> torch.Tensor:
+             demo: torch.Tensor | None = None) -> torch.Tensor:
     """Any length. Windows of `window` NEW frames, each conditioned on the previous `n_prefix`
     generated frames (FLOAT's L'). audio [B, 2*n_frames, 1024] -> [B, n_frames, t_dim]. demo: footage tokens.
 
@@ -371,7 +349,7 @@ def generate(model: MotionFlowTransformer, audio: torch.Tensor, ref: torch.Tenso
             a0 = lead + pos - n_prefix
             a = audio[:, a0 * tpf:(lead + pos + window) * tpf]
         y = sample(model, a, ref, window, prefix=prefix, steps=steps, cfg_audio=cfg_audio,
-                   generator=generator, prefix_keep=keep, demo=demo, lo=lo, hi=hi, sigma=sigma)
+                   generator=generator, prefix_keep=keep, demo=demo)
         out.append(y[:, : n_frames - pos])
         pos += window
     return torch.cat(out, 1)
@@ -410,11 +388,6 @@ def build(cfg: dict) -> MotionFlowTransformer:
 SAMPLER_KEYS = {
     "g": "audio guidance scale gamma (default: the run's cfg_audio), sampled in one pass at beta = 1/gamma",
     "steps": "Euler steps (default: the run's sample_steps)",
-    "lo": "band-split guidance: gain on the slow part of the guidance update (default 1; lo or hi != 1 adds a pass "
-          "per step)",
-    "hi": "band-split guidance: gain on the fast part of the guidance update (default 1)",
-    "sigma": "band-split guidance: std in frames of the low-pass that defines the slow part (default 6: half gain at "
-             "0.8 Hz)",
 }
 
 
@@ -434,5 +407,4 @@ def parse_spec(s: str | None) -> dict:
 
 def sampler_kwargs(spec: dict, cfg: dict) -> dict:
     """A parsed spec -> keyword arguments for `generate`; keys left out keep the run's cfg_audio and sample_steps."""
-    return ({"cfg_audio": float(spec.get("g", cfg["cfg_audio"])), "steps": int(spec.get("steps", cfg["sample_steps"]))}
-            | {k: spec[k] for k in ("lo", "hi", "sigma") if k in spec})
+    return {"cfg_audio": float(spec.get("g", cfg["cfg_audio"])), "steps": int(spec.get("steps", cfg["sample_steps"]))}

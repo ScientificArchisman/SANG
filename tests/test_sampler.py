@@ -21,5 +21,3 @@ def test_specs():
             parse_spec(bad)
     assert sampler_kwargs(parse_spec("g=3,steps=6"), CFG) == {"cfg_audio": 3.0, "steps": 6}
     assert sampler_kwargs({}, CFG) == {"cfg_audio": 2.0, "steps": 4}
-    assert sampler_kwargs(parse_spec("g=2,steps=6,lo=1.25,sigma=3"), CFG) == {"cfg_audio": 2.0, "steps": 6,
-                                                                            "lo": 1.25, "sigma": 3.0}

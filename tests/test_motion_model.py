@@ -115,22 +115,6 @@ def test_overfits_one_batch():
     assert set(parts) == {"fm", "vel", "loss"}
 
 
-def test_band_split_guidance_scales_the_slow_and_fast_parts_of_the_update():
-    m = _model().eval()
-    _unzero(m)
-    audio, ref = torch.randn(1, 2 * L, A), torch.randn(1, REF_DIM)
-    run = lambda **kw: sample(m, audio, ref, L, steps=1, generator=torch.Generator().manual_seed(0), **kw)
-    base = run()
-    x, t = torch.randn(1, L, K, generator=torch.Generator().manual_seed(0)), torch.ones(1)
-    with torch.no_grad():
-        d = m(x, t, audio, ref, beta=torch.full((1,), 0.5)) - m(x, t, audio, ref, drop_audio=torch.ones(1, dtype=torch.bool))
-    lo, hi, both = (run(**kw) - base for kw in ({"lo": 1.5}, {"hi": 1.5}, {"lo": 1.5, "hi": 1.5}))
-    assert torch.allclose(both, -0.5 * d, atol=1e-5)  # one Euler step of dt 1: x - (v + 0.5 d)
-    assert torch.allclose(lo + hi, both, atol=1e-5)
-    rough = lambda y: float((y[:, 1:] - y[:, :-1]).abs().mean() / y.abs().mean())
-    assert rough(lo) < 0.5 * rough(hi)
-
-
 def test_sample_and_long_generation():
     m = _model()
     _unzero(m)

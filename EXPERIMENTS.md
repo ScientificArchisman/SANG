@@ -133,24 +133,6 @@ Compare each arm with the frozen renderer in the same run.
 python scripts/eval/paired.py spc_s0:sang spc_s0:sang+own spc_s0:sang+gated spc_s0:sang+swap spc_s0:sang+oracle
 ```
 
-### Band-split guidance
-
-Band-split guidance splits the guidance update d = v − v_u over time into a slow part (a Gaussian low-pass over frames with std `sigma`) and the rest, and scales them separately: v = v_u + lo·d_lo + hi·(d − d_lo).
-With `lo` and `hi` at 1 it is r4's sampler; otherwise it adds a no-audio pass per step.
-`--variants` adds one row per setting to the same run, so every row shares the clips and the seed.
-
-```bash
-B="--data $HDTF --ckpt runs/mbes/round4.pt --sampler g=2,steps=6 --start 60 --demo 30 --rows sang --real-stats --variants lo=1.25 lo=1.5 lo=1.25,hi=1.25 hi=0.85 lo=1.25,sigma=3 lo=1.25,sigma=12"
-sbatch --time=16:00:00 bash_scripts/run.sh scripts/eval/eval_hdtf.py $B --seed 0 --name bsg_s0
-sbatch --time=16:00:00 bash_scripts/run.sh scripts/eval/eval_hdtf.py $B --seed 1 --name bsg_s1
-```
-
-Compare every row with the plain `sang` row of the same run.
-
-```bash
-python scripts/eval/paired.py bsg_s0:sang bsg_s0:sang+lo=1.25 bsg_s0:sang+lo=1.5 bsg_s0:sang+lo=1.25,hi=1.25 bsg_s0:sang+hi=0.85 bsg_s0:sang+lo=1.25,sigma=3 bsg_s0:sang+lo=1.25,sigma=12
-```
-
 ## Moving work between branches
 
 Run the tests before every commit.
