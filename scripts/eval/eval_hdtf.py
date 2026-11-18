@@ -28,6 +28,8 @@ Protocol (also written to <out>/protocol.json):
             ditto      Ditto (antgroup/ditto-talkinghead, ACM MM 2025) videos on the same clips (same source frame,
                        same audio; generated with scripts/eval/ditto_hdtf.py), scored from --ditto-dir
                        through the identical metric code
+            sang+<spec> (--variants) the sang row with sampler keys added to --sampler, e.g. sang+lo=1.25; same seed, so
+                       the rows of one run differ only in the sampler
   metrics   FID     Inception-v3 pool3 over all frames, generated vs ground truth, pooled over clips
             FVD     I3D (StyleGAN-V port), non-overlapping 16-frame clips, pooled over clips
             CSIM    ArcFace (buffalo_l) cosine, source frame vs every 5th output frame
@@ -351,7 +353,9 @@ def fit_all(ev, args, clips, cal_dir) -> list[str]:
 
 def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0, calib=None) -> None:
     """Generate, score and save every row still to do for one clip. <row>+<arm> renders <row> with the decoder offsets
-    calib[arm]; <row>+gated copies <row>+own where its held-out check passed, else <row>."""
+    calib[arm]; <row>+gated copies <row>+own where its held-out check passed, else <row>. sang+<spec> (not an arm)
+    samples with <spec> added to --sampler."""
+    from sang.model.flow import parse_spec, sampler_kwargs
     from sang.render.calibrate import offsets
     from sang.render.liveportrait import decode_clip
     for row in todo:
@@ -366,7 +370,7 @@ def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0, calib=N
             (d / f"{clip.stem}.json").write_text(json.dumps(res))
             print(f"[{i}/{n}] {clip.stem:<28} {row:<9} = {src.name}", flush=True)
             continue
-        with offsets(ev.codec.lp.spade_generator, calib[arm] if arm else None):
+        with offsets(ev.codec.lp.spade_generator, calib[arm] if arm in ARMS else None):
             if base == "real":
                 gen, gt = frames, frames
             elif base == "gt_motion":
@@ -380,7 +384,9 @@ def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0, calib=N
                 ev.last_stats = (ev.motion_stats(ev.codec.extract(gen)["m"], ev.real_motion(frames))
                                  if args.real_stats else {})
             else:
-                gen, gt = ev.gen_sang(frames, wav, demo, stats=not arm)
+                spec = "" if arm in ARMS else arm
+                ev.talker.sampler = sampler_kwargs(parse_spec(f"{args.sampler or ''},{spec}"), ev.talker.cfg)
+                gen, gt = ev.gen_sang(frames, wav, demo, stats=arm not in ARMS)
         if args.motion_only:
             res, feats = {"clip": clip.stem, "frames": len(frames)}, {}
         else:
@@ -401,12 +407,13 @@ def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0, calib=N
 def label(row: str, args) -> str:
     base, _, arm = row.partition("+")
     if base == "sang":
-        s = f"SANG-M ({args.name}: {args.sampler or 'run defaults'})"
+        spec = ",".join(filter(None, (args.sampler, "" if arm in ARMS else arm)))
+        s = f"SANG-M ({args.name}: {spec or 'run defaults'})"
     elif base == "gt_motion":
         s = "Real motion → LivePortrait (ceiling)" + (f" through {args.gt_k} codes" if args.gt_latent else "")
     else:
         s = {"real": "Real video", "ditto": "Ditto"}[base]
-    return s + (f", calibrated renderer: {arm}" if arm else "")
+    return s + (f", calibrated renderer: {arm}" if arm in ARMS else "")
 
 
 def markdown(rows: dict, args) -> str:
@@ -420,7 +427,7 @@ def markdown(rows: dict, args) -> str:
 def summarise(out: Path, args) -> dict:
     from sang.eval.metrics import frechet
     rows = {}
-    for row in [r for b in ROWS for r in (b, *(f"{b}+{a}" for a in ARMS))]:
+    for row in dict.fromkeys([*(r for b in ROWS for r in (b, *(f"{b}+{a}" for a in ARMS))), *args.rows]):
         d = out / "clips" / row
         js = [json.loads(p.read_text()) for p in sorted(d.glob("*.json"))] if d.exists() else []
         if not js:
@@ -488,6 +495,9 @@ def main() -> None:
                          "LivePortrait's decoder calibrated per clip; needs --demo")
     ap.add_argument("--calib-stages", nargs=3, type=float, default=[1.0, 0.5, 0.25],
                     help="--calib: loss weights of the appearance extractor's three stages, finest first")
+    ap.add_argument("--variants", nargs="+", default=[],
+                    help="extra sang rows, each sampled with these keys added to --sampler, e.g. lo=1.25 "
+                         "lo=1.25,hi=1.25 (rows sang+lo=1.25, ...)")
     ap.add_argument("--n-clips", type=int, default=0, help="stop after this many scored clips (0 = all)")
     ap.add_argument("--motion-only", action="store_true", help="sang row motion stats only (no rendering)")
     args = ap.parse_args()
@@ -502,6 +512,13 @@ def main() -> None:
             sys.exit("--calib renders the gt_motion and sang rows: pass one of them")
         args.rows = [r for b in args.rows for r in (b, *(f"{b}+{a}" for a in ARMS
                                                           if a in args.calib and b in ("gt_motion", "sang")))]
+    if args.variants:
+        from sang.model.flow import parse_spec
+        if "sang" not in args.rows:
+            sys.exit("--variants adds sang rows: pass --rows sang")
+        for v in args.variants:
+            parse_spec(f"{args.sampler or ''},{v}")
+        args.rows = [r for b in args.rows for r in (b, *(f"sang+{v}" for v in args.variants if b == "sang"))]
     if args.gt_latent and not args.gt_k:
         sys.exit("--gt-latent needs --gt-k")
     if args.demo > args.start:

@@ -87,6 +87,7 @@ def test_calibrated_rows_are_labelled_and_paired_gives_a_bootstrap_dfvd(tmp_path
     args = argparse.Namespace(name="spc", sampler="g=2,steps=6", gt_latent=None, gt_k=None)
     assert ev.label("sang+own", args) == "SANG-M (spc: g=2,steps=6), calibrated renderer: own"
     assert ev.label("gt_motion", args) == "Real motion → LivePortrait (ceiling)"
+    assert ev.label("sang+lo=1.25,sigma=3", args) == "SANG-M (spc: g=2,steps=6,lo=1.25,sigma=3)"
     pd = _load("paired")
     g = np.random.default_rng(0)
     feats = {c: (g.normal(size=(6, 4)), g.normal(size=(6, 4))) for c in "xyz"}
