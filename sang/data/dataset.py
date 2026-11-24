@@ -1,4 +1,5 @@
 """The motion cache as training and evaluation read it: the speaker split, the photo normalisation and windows."""
+import copy
 import hashlib
 import random
 import time
@@ -149,6 +150,25 @@ class MotionWindows(Dataset):
                 mask[:n] = True
             out.update(demo_motion=dm, demo_audio=da, demo_mask=mask, demo_keep=torch.tensor(peer is not None))
         return out
+
+
+def chained(ds: MotionWindows, K: int) -> MotionWindows:
+    """ds's clips as windows of P + K L frames: the K windows inference chains (sang.model.scoring.window_of splits
+    them). Shares ds's preloaded clips, so nothing is read twice.
+    shortcut: footage peers are long clips too, so a person needs two clips of P + K L frames; keep short peers if
+    too few persons remain."""
+    span = ds.P + K * ds.L
+    keep = [i for i, r in enumerate(ds.rows) if r["n"] >= span]
+    if not keep:
+        raise ValueError(f"no clip has {span} frames")
+    new = {i: j for j, i in enumerate(keep)}
+    c = copy.copy(ds)
+    c.L, c.rows = K * ds.L, [ds.rows[i] for i in keep]
+    c.mem = [ds.mem[i] for i in keep] if ds.mem is not None else None
+    c.peers = [[new[p] for p in ds.peers[i] if p in new] for i in keep]
+    print(f"  chains of {K} windows ({span} frames): {len(keep)}/{len(ds.rows)} clips, "
+          f"{len({Path(r['path']).parent.name for r in c.rows})} persons", flush=True)
+    return c
 
 
 class PersonSets(Dataset):

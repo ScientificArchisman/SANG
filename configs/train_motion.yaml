@@ -30,6 +30,13 @@ p_prefix: 0.5
 t_dist: logit_normal
 t_mean: 0.3
 t_scale: 1.0
+wave2: null
+t_mean2: null
+lam_vel2: null
+self_from: null
+p_self: [0.1, 0.5]
+self_depth: 3
+self_steps: 6
 
 lr: 3.0e-4
 min_lr: 1.0e-5

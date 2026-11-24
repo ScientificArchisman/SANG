@@ -1,6 +1,8 @@
 """Proper scoring rules that fine-tune SANG's deployed sampler (scripts/train/train_set.py). There is no critic and no
 reward model: each loss is minimised only by the real motion law.
 """
+import random
+
 import torch
 
 from sang.model.flow import MotionFlowTransformer, flow_times, sample
@@ -14,6 +16,40 @@ def gen_fakes(gen: MotionFlowTransformer, batch: dict, steps: int = 6, g: float 
     keep = batch["demo_keep"].bool() if demo is not None else None
     return sample(gen, batch["audio"], batch["ref"], batch["target"].shape[1], prefix=batch["prefix"], steps=steps,
                   cfg_audio=g, demo=demo, demo_keep=keep, generator=generator)
+
+
+def window_of(batch: dict, i: int, L: int) -> dict:
+    """Window i of a chain batch (prefix [B, P], target [B, K L], audio over P + K L frames, sang.data.dataset.chained):
+    the real frames and audio flow.generate gives window i. Window 0 of a one-window batch is the batch itself."""
+    P = batch["prefix"].shape[1]
+    seq = torch.cat([batch["prefix"], batch["target"]], 1)
+    tpf, s = batch["audio"].shape[1] // seq.shape[1], i * L
+    return {**batch, "prefix": seq[:, s:s + P], "target": seq[:, s + P:s + P + L],
+            "audio": batch["audio"][:, tpf * s:tpf * (s + P + L)]}
+
+
+@torch.no_grad()
+def roll_chain(model: MotionFlowTransformer, batch: dict, n: int, L: int, steps: int = 6, g: float = 2.0,
+               generator: torch.Generator | None = None) -> list[torch.Tensor]:
+    """Windows 0..n-1 of a chain batch generated as flow.generate chains them: window 0 continues the chain's real
+    prefix, every later one the last P frames of the window before it."""
+    P, xs = batch["prefix"].shape[1], []
+    for k in range(n):
+        w = window_of(batch, k, L)
+        if xs:
+            w["prefix"] = xs[-1][:, -P:]
+        xs.append(gen_fakes(model, w, steps, g, generator))
+    return xs
+
+
+def self_prefix(model: MotionFlowTransformer, batch: dict, i: int, L: int, steps: int = 6, g: float = 2.0,
+                generator: torch.Generator | None = None) -> dict:
+    """Window i of a chain batch with the real target and audio but the model's own prefix: the end of its no-grad
+    roll_chain of windows 0..i-1. i = 0 keeps the real prefix."""
+    w = window_of(batch, i, L)
+    if i:
+        w["prefix"] = roll_chain(model, batch, i, L, steps, g, generator)[-1][:, -w["prefix"].shape[1]:]
+    return w
 
 
 def rollout(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, batch: dict, steps: int = 6,
@@ -100,23 +136,30 @@ def mbes(x: torch.Tensor, y: torch.Tensor, start: torch.Tensor, decode, c0: torc
 
 def set_loss(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, batch: dict, m: int = 8,
              steps: int = 6, g: float = 2.0, kl: float = 1.0, w_set: float = 1.0,
-             generator: torch.Generator | None = None, blocks: tuple | None = None) -> tuple[torch.Tensor, dict]:
+             generator: torch.Generator | None = None, blocks: tuple | None = None,
+             chain: int = 0) -> tuple[torch.Tensor, dict]:
     """Proper multi-sample fine-tuning of the sampler: every window of the batch is rolled out m times.
       ed     energy distance between the m samples and the real window, on the standardised codes minus the window's
              last prefix frame
       mbes   with blocks = (decode, c0, cb): the multiscale-block energy score in place of ed
-    loss = w_set score + kl path KL. The score has no reward model to exploit: its minimiser is the data."""
+    loss = w_set score + kl path KL. The score has no reward model to exploit: its minimiser is the data.
+    chain = L > 0: the batch is a chain of K = target frames / L windows and one window i, drawn uniformly, is scored
+    (the active recap). Its prefix is the policy's own no-grad rollout of windows 0..i-1, one independent chain per
+    sample, as inference chains them (Self-Forcing++). The m samples are then draws of window i given only the
+    chain's real start and audio, which the score compares with the real window i: drift from the take counts."""
     B = batch["target"].shape[0]
     rep = {k: v.repeat_interleave(m, 0) for k, v in batch.items()}
+    if chain:
+        rep = self_prefix(policy, rep, random.randrange(batch["target"].shape[1] // chain), chain, steps, g, generator)
     x, path_kl = rollout(policy, ref_model, rep, steps, g, generator)
     loss, parts = kl * path_kl.mean(), {"path_kl": path_kl.mean().detach()}
     x = x.view(B, m, *x.shape[1:])
-    start = batch["prefix"][:, -1:]
+    y, start = rep["target"][::m], batch["prefix"][:, -1:]
     if blocks is not None:
-        e = mbes(x, batch["target"], start, *blocks).mean()
+        e = mbes(x, y, start, *blocks).mean()
         parts["mbes"] = e.detach()
     else:
         s = start.float()
-        e = energy((x.float() - s[:, None]).flatten(2), (batch["target"].float() - s).flatten(1)[:, None]).mean()
+        e = energy((x.float() - s[:, None]).flatten(2), (y.float() - s).flatten(1)[:, None]).mean()
         parts["ed"] = e.detach()
     return loss + w_set * e, parts

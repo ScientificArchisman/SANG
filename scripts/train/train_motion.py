@@ -34,11 +34,12 @@ from torch.utils.data import DataLoader
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from sang.data.dataset import MotionWindows, fit_norm, load_cfg, split_by_speaker
+from sang.data.dataset import MotionWindows, chained, fit_norm, load_cfg, split_by_speaker
 from sang.data.paths import load_index
 from sang.data.sync import SyncOffsets, clip_key
 from sang.model.flow import Norm, build, flow_loss, sample
 from sang.model.latent import MotionLatent
+from sang.model.scoring import self_prefix
 from sang.model.target import WIDE_REGIONS
 
 
@@ -60,13 +61,13 @@ def evaluate(model, loader, cfg, dev, max_batches: int, encode, decode) -> dict:
             break
         batch = encode({k: v.to(dev) for k, v in batch.items()})
         torch.manual_seed(bi)
-        loss, _ = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0, p_demo=0,
-                            t_dist="uniform")
+        lam = objective(cfg)["lam_vel"]
+        loss, _ = flow_loss(model, batch, lam_vel=lam, p_audio=0, p_ref=0, p_prefix=0, p_demo=0, t_dist="uniform")
         fm += float(loss)
         demo = model.encode_demo(batch)
         if demo is not None:
             torch.manual_seed(bi)
-            loss0, _ = flow_loss(model, batch, lam_vel=cfg["lam_vel"], p_audio=0, p_ref=0, p_prefix=0, p_demo=1,
+            loss0, _ = flow_loss(model, batch, lam_vel=lam, p_audio=0, p_ref=0, p_prefix=0, p_demo=1,
                                  t_dist="uniform")
             stats.setdefault("val_loss_nodemo", []).append(float(loss0))
         n += 1
@@ -88,11 +89,40 @@ def evaluate(model, loader, cfg, dev, max_batches: int, encode, decode) -> dict:
     return {"val_loss": fm / max(1, n), **{k: sum(v) / max(1, len(v)) for k, v in stats.items()}}
 
 
+def forever(dl):
+    while True:
+        yield from dl
+
+
 def lr_at(step, cfg):
+    """Linear warm-up, then cosine to min_lr. Two-wave training (wave2 set) holds lr flat until wave 2, which is the
+    decay."""
     if step < cfg["warmup_steps"]:
         return cfg["lr"] * (step + 1) / cfg["warmup_steps"]
-    p = min(1.0, (step - cfg["warmup_steps"]) / max(1, cfg["max_steps"] - cfg["warmup_steps"]))
+    s0 = max(cfg["warmup_steps"], cfg.get("wave2") or 0)
+    p = min(1.0, max(0, step - s0) / max(1, cfg["max_steps"] - s0))
     return cfg["min_lr"] + 0.5 * (cfg["lr"] - cfg["min_lr"]) * (1 + math.cos(math.pi * p))
+
+
+def objective(cfg: dict, step: int | None = None) -> dict:
+    """flow_loss keyword arguments at a step (None = the final objective). From wave2 on, t_mean2 and lam_vel2
+    replace t_mean and lam_vel: wave 1 can train coarse motion first and wave 2 restores the fine timing."""
+    kw = {k: cfg[k] for k in ("lam_vel", "p_audio", "p_ref", "p_prefix", "t_dist")}
+    kw.update(p_demo=cfg.get("p_demo", 0.2), t_mean=cfg.get("t_mean", 0.0), t_scale=cfg.get("t_scale", 1.0))
+    if cfg.get("wave2") is not None and (step is None or step >= cfg["wave2"]):
+        kw.update({k: cfg[f"{k}2"] for k in ("t_mean", "lam_vel") if cfg.get(f"{k}2") is not None})
+    return kw
+
+
+def self_share(step: int, cfg: dict) -> tuple[float, int]:
+    """Two-wave training: the share of a batch whose prefix is the EMA's own rollout (p_self, before / from wave2)
+    and the deepest chain position so far, growing 1 -> self_depth from self_from to max_steps."""
+    s0 = cfg.get("self_from")
+    if s0 is None or step < s0:
+        return 0.0, 0
+    D = int(cfg["self_depth"])
+    p = cfg["p_self"][1 if cfg.get("wave2") is not None and step >= cfg["wave2"] else 0]
+    return p, min(D, 1 + D * (step - s0) // max(1, cfg["max_steps"] - s0))
 
 
 def setup_data(cfg: dict, dev: str) -> SimpleNamespace:
@@ -188,10 +218,21 @@ def main() -> None:
 
     step, best = 0, float("inf")
 
-    kw = {k_: cfg[k_] for k_ in ("lam_vel", "p_audio", "p_ref", "p_prefix", "t_dist")}
-    kw["p_demo"] = cfg.get("p_demo", 0.2)
-    kw.update(t_mean=cfg.get("t_mean", 0.0), t_scale=cfg.get("t_scale", 1.0))
-    print(f"objective: t_dist {kw['t_dist']} (mean {kw['t_mean']}, scale {kw['t_scale']})", flush=True)
+    kw = objective(cfg, 0)
+    print(f"objective: t_dist {kw['t_dist']} (mean {kw['t_mean']}, scale {kw['t_scale']}), lam_vel {kw['lam_vel']}",
+          flush=True)
+    chains = None
+    if cfg.get("self_from") is not None:
+        cds = chained(train_ds, int(cfg["self_depth"]) + 1)
+        chains = forever(DataLoader(cds, batch_size=round(max(cfg["p_self"]) * cfg["batch_size"]), shuffle=True,
+                                    num_workers=cfg["workers"], drop_last=True, pin_memory=dev == "cuda",
+                                    persistent_workers=cfg["workers"] > 0))
+        print(f"two-wave: from step {cfg['self_from']} a share {cfg['p_self']} (before / from wave2 "
+              f"{cfg.get('wave2')}) of each batch continues the EMA's own windows, up to {cfg['self_depth']} deep",
+              flush=True)
+    if cfg.get("wave2") is not None:
+        print(f"two-wave: wave 2 at step {cfg['wave2']}: lr decays from there to {cfg['min_lr']:g}, objective "
+              f"{ {k_: v for k_, v in objective(cfg).items() if k_ in ('t_mean', 'lam_vel')} }", flush=True)
     t0 = time.time()
     t_data = t_gpu = 0.0
     t_prev = time.perf_counter()
@@ -202,8 +243,19 @@ def main() -> None:
             batch = encode({k_: v.to(dev, non_blocking=True) for k_, v in batch.items()})
             for gr in opt.param_groups:
                 gr["lr"] = lr_at(step, cfg)
+            kw = objective(cfg, step)
+            share, depth = self_share(step, cfg)
+            n_self = round(share * cfg["batch_size"])
             with torch.autocast(dev, dtype=torch.bfloat16, enabled=cfg["bf16"]):
+                if n_self:
+                    batch = {k_: v[n_self:] for k_, v in batch.items()}
                 loss, parts = flow_loss(model, batch, **kw)
+                if n_self:
+                    cb = encode({k_: v[:n_self].to(dev, non_blocking=True) for k_, v in next(chains).items()})
+                    w = self_prefix(ema, cb, random.randint(1, depth), L, int(cfg["self_steps"]), cfg["cfg_audio"])
+                    ls, _ = flow_loss(model, w, **{**kw, "p_prefix": 0.0})
+                    loss = (loss * (cfg["batch_size"] - n_self) + ls * n_self) / cfg["batch_size"]
+                    parts = {**parts, "self": ls.detach(), "loss": loss.detach()}
             opt.zero_grad(set_to_none=True)
             loss.backward()
             gnorm = torch.nn.utils.clip_grad_norm_(model.parameters(), cfg["grad_clip"])
