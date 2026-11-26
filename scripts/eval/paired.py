@@ -76,7 +76,17 @@ def main() -> None:
                "head %": 100 * np.nanmean(col(r, "rot_std")) / np.nanmean(real),
                "speed %": 100 * np.nanmean(col(r, "rot_vel")) / np.nanmean(col(r, "real_rot_vel")),
                "blinks": np.nanmean(col(r, "blinks_per_min")), "copy_ratio": np.nanmedian(col(r, "copy_ratio")),
-               "head err": np.nanmean(err), "t_motion": np.nanmedian(col(r, "t_motion"))}
+               "head err": np.nanmean(err), "t_motion": np.nanmedian(col(r, "t_motion")),
+               "bg dDrag px": np.nanmean(col(r, "bg_drag") - col(r, "bg_real_drag")),
+               "bg dNear px": np.nanmean(col(r, "bg_drag_near") - col(r, "bg_real_drag_near")),
+               "bg real px": np.nanmean(col(r, "bg_real_drag")), "bg def px": np.nanmean(col(r, "bg_def")),
+               "bg reject": np.nanmean(col(r, "bg_reject")),
+               "bg n/a": float(np.sum(np.isfinite(col(r, "bg_px")) & ~np.isfinite(col(r, "bg_drag")))) or np.nan}
+        x, y = col(r, "bg_def"), col(r, "bg_drag")
+        ok = np.isfinite(x) & np.isfinite(y)
+        if ok.sum() > 3:  # phase 0a gate: the renderer's own drag must rank clips as the flow does (rho >= 0.7)
+            rank = lambda v: np.argsort(np.argsort(v))
+            out["rho def~drag"] = float(np.corrcoef(rank(x[ok]), rank(y[ok]))[0, 1])
         name, _, row = r.partition(":")
         sj = Path(args.root) / name / "summary.json"
         vid = json.loads(sj.read_text())["rows"].get(row or "sang", {}).get("m", {}) if sj.exists() else {}

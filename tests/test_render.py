@@ -89,6 +89,58 @@ def test_render_does_not_depend_on_the_batch_size(monkeypatch):
         assert torch.equal(codec.render(state, m, batch=batch), one)
 
 
+class FakeDense(torch.nn.Module):
+    """LivePortrait's dense motion: slot logits from its `mask` layer, a softmax over [still, 21 keypoints], the
+    slot-weighted flows as the deformation, and an occlusion map."""
+
+    def __init__(self):
+        super().__init__()
+        self.mask = torch.nn.Identity()
+
+    def forward(self, feature, kp_driving, kp_source):
+        b = len(kp_driving)
+        flows = torch.cat([torch.zeros(b, 1, 3), kp_source - kp_driving], 1)[:, :, None, None, None]  # [b,22,1,1,1,3]
+        mask = self.mask(torch.ones(b, 22, 2, 64, 64)).softmax(1)
+        return {"mask": mask, "deformation": (flows * mask[..., None]).sum(1),
+                "occlusion_map": torch.full((b, 1, 64, 64), 0.7)}
+
+
+class FakeWarping(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.dense_motion_network = FakeDense()
+
+    def forward(self, feature_3d, kp_source, kp_driving):
+        o = self.dense_motion_network(feature=feature_3d, kp_driving=kp_driving, kp_source=kp_source)
+        return {"out": o["deformation"][:, :, :4, :4, 0].repeat(1, 4, 1, 1) + o["occlusion_map"][:, :, :4, :4]}
+
+
+def test_probe_sees_every_batch_and_the_lock_forces_the_identity_flow(monkeypatch):
+    codec, state, m = fake_codec(monkeypatch)
+    codec.lp.warping_module = FakeWarping()
+    seen = []
+    plain = codec.render(state, m, batch=4)
+    probed = torch.cat(list(codec.render_iter(state, m, batch=4, probe=lambda o, i: seen.append((i, o)))))
+    assert torch.equal(plain, probed) and [i for i, _ in seen] == [0, 4, 8]
+    cells = torch.zeros(10, 64, 64)
+    cells[:, :, :32] = 1  # the left half of every frame is still
+    occ_ref = torch.full((1, 1, 64, 64), 0.2)
+    locked = []
+    list(codec.render_iter(state, m, batch=4, probe=lambda o, i: locked.append(o), lock=(cells, occ_ref)))
+    dm = codec.lp.warping_module.dense_motion_network
+    assert not dm._forward_hooks and not dm.mask._forward_hooks
+    d = torch.cat([o["deformation"] for o in locked])
+    free = torch.cat([o["deformation"] for _, o in seen])
+    assert d[:, :, :, :32].abs().max() < 1e-6 and torch.allclose(d[:, :, :, 32:], free[:, :, :, 32:])
+    occ = torch.cat([o["occlusion_map"] for o in locked])
+    assert torch.allclose(occ[..., :32], torch.tensor(0.2)) and torch.allclose(occ[..., 32:], torch.tensor(0.7))
+
+
+def test_background_metrics_self_check():
+    from sang.eval.background import self_check
+    self_check()
+
+
 def test_timer_adds_up():
     t = Timer(cuda=False)
     with t("a"):

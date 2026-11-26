@@ -50,6 +50,14 @@ Protocol (also written to <out>/protocol.json):
             gt_motion and sang: the same motion (the same seed) rendered with the calibrated decoder. gated copies
             +own where the held-out footage loss fell (cal_accept), else the frozen row; swap uses the next clip's
             own offsets (is the gain personal?). Compare rows with scripts/eval/paired.py run:row.
+  background --bg (reports/SANG static background control.md, phase 0): the gt_motion and sang rows are rendered
+            with LivePortrait's dense motion probed (sang.eval.background): BG-Drag, the background's DIS-flow
+            displacement in px from the zero-motion render (real clip: from its first frame) on pixels the paste
+            covers, the real clip shows still, no generated head covers and that have texture; bg_real_* the real
+            clip on the same pixels (the floor); BG-Def / Leak / Occ the same read off the renderer's deformation,
+            slot weights and occlusion map. --bg-arms adds rows <row>+<arm> with the same motion: expr (pose, scale and
+            translation held at the photo's), pose (expression held), noscale, notrans (attribution), lock (identity
+            flow forced where the real clip is still and no head is: the oracle lock).
 --n-clips N stops after the first N clips that score (a quick paired test).
 Resumable: per-clip results go to <out>/clips/<row>/<clip>.{json,npz}; a rerun skips them.
 """
@@ -75,9 +83,13 @@ from sang.data.audio import load_wav
 SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
 ARMS = ("own", "gated", "swap", "oracle")
+BG_ARMS = ("expr", "pose", "noscale", "notrans", "lock")
+HOLD = {"expr": slice(0, 7), "pose": slice(7, None), "noscale": slice(0, 1), "notrans": slice(4, 7)}  # held at the photo
+BG_KEYS = tuple(f"bg_{k}" for k in ("px", "offset", "drag", "drag95", "drag_near", "jitter", "reject", "real_drag",
+                                     "real_drag95", "real_drag_near", "real_jitter", "real_reject", "def", "leak", "occ"))
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std", "real_rot_std",
                "rot_vel", "real_rot_vel", "copy_ratio", "demo_rot_std", "demo_rot_vel", "demo_blinks_per_min",
-               "pre_ok", "cal_accept", "cal_held0", "cal_held", "cal_theta", "cal_s", "gated_own")
+               "pre_ok", "cal_accept", "cal_held0", "cal_held", "cal_theta", "cal_s", "gated_own") + BG_KEYS
 METRICS = ("FID", "FVD", "CSIM", "LSE-C", "LSE-D", "PSNR", "SSIM")
 
 
@@ -112,7 +124,7 @@ class Evaluator:
         self.codec = MotionCodec(device=self.dev)
         self.arc = ArcFace(device=self.dev)
         self.incep, self.i3d = InceptionFeats(self.dev), I3DFeats(self.dev)
-        self.last_t, self.last_stats, self.read = {}, {}, None
+        self.last_t, self.last_stats, self.last_bg, self.read = {}, {}, {}, None
         if "sang" in args.rows or ("ditto" in args.rows and args.real_stats):
             cache = Path(load_cfg(str(REPO / "configs/train_motion.yaml"), [])["cache_dir"])
             try:
@@ -130,12 +142,18 @@ class Evaluator:
             self.gt_latent = MotionLatent.unpack(torch.load(args.gt_latent, map_location="cpu",
                                                             weights_only=False)).to(self.dev)
 
-    def gen_sang(self, frames, wav, demo=None, stats=True):
+    def gen_sang(self, frames, wav, demo=None, stats=True, arm=""):
         """sang.render.pipeline.Talker; the stage times (source, demo, audio, motion, render, paste; CUDA-synchronised)
-        go into the clip's json. stats=False skips the motion statistics (a calibrated row: the same motion)."""
+        go into the clip's json. stats=False skips the motion statistics (a calibrated row: the same motion).
+        With --bg the motion is rendered by render_bg (the same calls as Talker.run, probed; arm: a BG arm)."""
         a = self.args
         real = self.real_motion(frames) if a.real_stats and stats else None
-        gen, m, timer = self.talker.run(frames[0], wav, len(frames), seed=a.seed, demo=demo, render=not a.motion_only)
+        gen, m, timer = self.talker.run(frames[0], wav, len(frames), seed=a.seed, demo=demo,
+                                        render=not (a.motion_only or a.bg))
+        if a.bg and not a.motion_only:
+            crop = self.codec.crop_image(np.ascontiguousarray(frames[0]))
+            gen = self.render_bg(self.codec.source_state(crop["img_crop_256x256"]), crop["M_c2o"], frames[0], m,
+                                 self.codec.source_motion(frames[0], crop=crop)["m"], frames, arm)
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
         if demo is not None:
             self.last_t["demo_frames"] = self.talker.demo_frames
@@ -225,17 +243,58 @@ class Evaluator:
             log |= {f"oracle_{k}": v for k, v in fl.items()}
         return out | {"log": log}
 
-    def gen_gt_motion(self, frames, wav):
+    def gen_gt_motion(self, frames, wav, arm=""):
         from sang.render.pipeline import GpuPaster
         a = self.args
         d = self.codec.extract(frames)
         m = d["m"].float().to(self.dev)
         if a.gt_latent:
             m = self.gt_latent.to_motion(self.gt_latent.from_motion(m, m[:1], a.gt_k), m[:1])
-        crops = self.codec.render(self.codec.source_state(d["crops"][0]), m.cpu())
         s0 = d["span"][0]
-        gt = frames[s0:s0 + len(crops)]
+        gt = frames[s0:s0 + len(m)]
+        state = self.codec.source_state(d["crops"][0])
+        if a.bg:
+            return self.render_bg(state, d["M_c2o"], gt[0], m, m[:1], gt, arm), gt
+        crops = self.codec.render(state, m.cpu())
         return GpuPaster(d["M_c2o"], gt[0], crops.shape[1], device=self.dev)(crops), gt
+
+    def render_bg(self, state, M_c2o, photo, m, m0, real, arm="") -> np.ndarray:
+        """Absolute motion m [n,70] rendered as Talker.run renders it (FP16, 16 frames a call, pasted into photo with
+        M_c2o), with the dense motion probed; sets self.last_bg (sang.eval.background). m0 [1,70], the photo's own
+        motion, is the anchor render and what the attribution arms hold (HOLD); lock forces the identity flow, per
+        frame, where the real clip is still and no head envelope (x_s and x_d hull) is: the oracle lock."""
+        import cv2
+        from sang.eval import background as bgm
+        from sang.render.liveportrait import as3x3
+        from sang.render.pipeline import GpuPaster, crop_mask
+        codec, S = self.codec, 512
+        m, m0 = m.float().cpu().clone(), m0.float().cpu().reshape(1, -1)
+        if arm in HOLD:
+            m[:, HOLD[arm]] = m0[:, HOLD[arm]]
+        M = as3x3(M_c2o)[:2]
+        H, W = photo.shape[:2]
+        px = lambda x: ((x[..., :2] + 1) / 2 * (S - 1)).float().cpu().numpy()  # grid coords -> crop px
+        x_d = px(codec.driving_keypoints(state, m))
+        heads = bgm.head_masks(np.concatenate([np.repeat(px(state["x_s"]), len(x_d), 0), x_d], 1), S)
+        still = (crop_mask(S) >= 0.5) & cv2.warpAffine(bgm.still_mask(real).astype(np.uint8), M, (S, S),
+                                                       flags=cv2.INTER_NEAREST | cv2.WARP_INVERSE_MAP).astype(bool)
+        head = heads.any(0)
+        B64 = bgm.cells(still & ~head).to(self.dev)
+        ref = {}
+        paster = GpuPaster(M_c2o, photo, S, device=self.dev)
+        anchor = paster(torch.cat(list(codec.render_iter(state, m0, half=True, probe=lambda o, i: ref.update(o)))))[0]
+        w, rows = state["f_s"][0].abs().float().mean(0), []
+        lock = (bgm.cells(still[None] & ~heads), ref["occlusion_map"]) if arm == "lock" else None
+        gen = np.concatenate([paster(b) for b in codec.render_iter(
+            state, m, batch=16, half=True, probe=lambda o, i: rows.append(bgm.def_stats(o, ref, B64, w)), lock=lock)])
+        foot = np.zeros((H, W), bool)
+        if not paster.empty:
+            foot[paster.y0:paster.y1, paster.x0:paster.x1] = paster.mask[0, 0].cpu().numpy() >= 0.5
+        head_f = cv2.warpAffine(head.astype(np.uint8), M, (W, H), flags=cv2.INTER_NEAREST).astype(bool)
+        self.last_bg = bgm.bg_metrics(gen, real, anchor, foot, head_f, self.args.bg_texture)
+        if B64.sum() > 0:
+            self.last_bg |= {f"bg_{k}": float(torch.cat([r[k] for r in rows]).mean()) for k in rows[0]}
+        return gen
 
     def score(self, row: str, clip: Path, out_dir: Path, gen, gt, src, start: int = 0):
         from sang.data.audio import save_wav
@@ -366,11 +425,12 @@ def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0, calib=N
             (d / f"{clip.stem}.json").write_text(json.dumps(res))
             print(f"[{i}/{n}] {clip.stem:<28} {row:<9} = {src.name}", flush=True)
             continue
-        with offsets(ev.codec.lp.spade_generator, calib[arm] if arm else None):
+        ev.last_bg = {}
+        with offsets(ev.codec.lp.spade_generator, calib[arm] if arm in ARMS else None):
             if base == "real":
                 gen, gt = frames, frames
             elif base == "gt_motion":
-                gen, gt = ev.gen_gt_motion(frames, wav)
+                gen, gt = ev.gen_gt_motion(frames, wav, arm)
             elif base == "ditto":
                 vid = Path(args.ditto_dir) / f"{clip.stem}.mp4"
                 if not vid.exists():
@@ -380,7 +440,7 @@ def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0, calib=N
                 ev.last_stats = (ev.motion_stats(ev.codec.extract(gen)["m"], ev.real_motion(frames))
                                  if args.real_stats else {})
             else:
-                gen, gt = ev.gen_sang(frames, wav, demo, stats=not arm)
+                gen, gt = ev.gen_sang(frames, wav, demo, stats=not arm, arm=arm)
         if args.motion_only:
             res, feats = {"clip": clip.stem, "frames": len(frames)}, {}
         else:
@@ -391,6 +451,7 @@ def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0, calib=N
             res.update(ev.last_stats)
         if arm == "own":
             res.update(calib["log"])
+        res.update(ev.last_bg)
         if feats:
             np.savez_compressed(d / f"{clip.stem}.npz", **feats)
         (d / f"{clip.stem}.json").write_text(json.dumps(res))
@@ -406,6 +467,9 @@ def label(row: str, args) -> str:
         s = "Real motion → LivePortrait (ceiling)" + (f" through {args.gt_k} codes" if args.gt_latent else "")
     else:
         s = {"real": "Real video", "ditto": "Ditto"}[base]
+    if arm in BG_ARMS:
+        return s + {"expr": ", expression only", "pose": ", pose only", "noscale": ", scale held",
+                    "notrans": ", translation held", "lock": ", oracle background lock"}[arm]
     return s + (f", calibrated renderer: {arm}" if arm else "")
 
 
@@ -420,7 +484,7 @@ def markdown(rows: dict, args) -> str:
 def summarise(out: Path, args) -> dict:
     from sang.eval.metrics import frechet
     rows = {}
-    for row in [r for b in ROWS for r in (b, *(f"{b}+{a}" for a in ARMS))]:
+    for row in [r for b in ROWS for r in (b, *(f"{b}+{a}" for a in ARMS + BG_ARMS))]:
         d = out / "clips" / row
         js = [json.loads(p.read_text()) for p in sorted(d.glob("*.json"))] if d.exists() else []
         if not js:
@@ -488,6 +552,11 @@ def main() -> None:
                          "LivePortrait's decoder calibrated per clip; needs --demo")
     ap.add_argument("--calib-stages", nargs=3, type=float, default=[1.0, 0.5, 0.25],
                     help="--calib: loss weights of the appearance extractor's three stages, finest first")
+    ap.add_argument("--bg", action="store_true", help="background stillness metrics on the gt_motion and sang rows")
+    ap.add_argument("--bg-arms", nargs="+", default=[], choices=BG_ARMS,
+                    help="rows <row>+<arm> of gt_motion and sang with the same motion (implies --bg)")
+    ap.add_argument("--bg-texture", type=float, default=5e-5,
+                    help="--bg: smallest structure-tensor eigenvalue of a measured pixel (sang.eval.background.textured)")
     ap.add_argument("--n-clips", type=int, default=0, help="stop after this many scored clips (0 = all)")
     ap.add_argument("--motion-only", action="store_true", help="sang row motion stats only (no rendering)")
     args = ap.parse_args()
@@ -502,6 +571,14 @@ def main() -> None:
             sys.exit("--calib renders the gt_motion and sang rows: pass one of them")
         args.rows = [r for b in args.rows for r in (b, *(f"{b}+{a}" for a in ARMS
                                                           if a in args.calib and b in ("gt_motion", "sang")))]
+    args.bg = args.bg or bool(args.bg_arms)
+    if args.bg and (args.calib or args.motion_only):
+        sys.exit("--bg renders the rows itself: not with --calib or --motion-only")
+    if args.bg_arms:
+        if not {"gt_motion", "sang"} & set(args.rows):
+            sys.exit("--bg-arms renders the gt_motion and sang rows: pass one of them")
+        args.rows = [r for b in args.rows for r in (b, *(f"{b}+{a}" for a in args.bg_arms
+                                                          if b in ("gt_motion", "sang")))]
     if args.gt_latent and not args.gt_k:
         sys.exit("--gt-latent needs --gt-k")
     if args.demo > args.start:

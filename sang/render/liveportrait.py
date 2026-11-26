@@ -329,15 +329,48 @@ class MotionCodec:
         return d["scale"].reshape(-1, 1, 1) * (s["x_c"] @ R_d + d["exp"]) + t.reshape(-1, 1, 3)
 
     @torch.no_grad()
-    def render_iter(self, s: dict, m: torch.Tensor, batch: int = 16, half: bool = False):
+    def render_iter(self, s: dict, m: torch.Tensor, batch: int = 16, half: bool = False, probe=None,
+                    lock: tuple | None = None):
         """Yields [b, 512, 512, 3] uint8 GPU frames, `batch` at a time (see `render`). Stitching keeps the background
-        still."""
+        still. probe(dm, i) gets each batch's dense-motion outputs (sang.eval.background.def_stats) and its first frame.
+        lock = (cells [T, 64, 64] in 0..1, occ_ref [1, 1, 64, 64]): those cells of frame t take slot 0, the identity
+        flow (logit +20), and the reference occlusion map (the oracle lock)."""
         x_d_all = self.driving_keypoints(s, m)
         for i in range(0, len(x_d_all), batch):
-            f = self.warped(s, x_d_all[i:i + batch], half)
+            with self.dense_hooks(probe, i, None if lock is None else (lock[0][i:i + batch], lock[1])):
+                f = self.warped(s, x_d_all[i:i + batch], half)
             with torch.autocast("cuda", dtype=torch.float16, enabled=half and self.device != "cpu"):
                 img = self.lp.spade_generator(feature=f)
             yield (img.float().clamp(0, 1) * 255).clamp(0, 255).to(torch.uint8).permute(0, 2, 3, 1)
+
+    @contextlib.contextmanager
+    def dense_hooks(self, probe, i: int, lock: tuple | None):
+        """render_iter's probe and lock as forward hooks on LivePortrait's dense motion (its `mask` conv gives the 22 slot
+        logits; its output dict holds mask, deformation and occlusion_map), removed on exit."""
+        if probe is None and lock is None:
+            yield
+            return
+        dm = self.lp.warping_module.dense_motion_network
+        hooks = []
+        if lock is not None:
+            c = lock[0].to(self.device)
+            hooks.append(dm.mask.register_forward_hook(
+                lambda mod, inp, z: torch.cat([z[:, :1] + 20 * c[:, None, None].to(z.dtype), z[:, 1:]], 1)))
+
+        def on_out(mod, inp, o):
+            if lock is not None and "occlusion_map" in o:
+                w = c[:, None].to(o["occlusion_map"].dtype)
+                o["occlusion_map"] = o["occlusion_map"] * (1 - w) + lock[1].to(self.device, w.dtype) * w
+            if probe is not None:
+                probe(o, i)
+            return o
+
+        hooks.append(dm.register_forward_hook(on_out))
+        try:
+            yield
+        finally:
+            for h in hooks:
+                h.remove()
 
     def warped(self, s: dict, x_d: torch.Tensor, half: bool = False) -> torch.Tensor:
         """The source's features warped to driving keypoints x_d [b, 21, 3], after stitching: the decoder's input
