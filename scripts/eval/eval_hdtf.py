@@ -83,10 +83,13 @@ from sang.data.audio import load_wav
 SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
 ARMS = ("own", "gated", "swap", "oracle")
-BG_ARMS = ("expr", "pose", "noscale", "notrans", "lock")
-HOLD = {"expr": slice(0, 7), "pose": slice(7, None), "noscale": slice(0, 1), "notrans": slice(4, 7)}  # held at the photo
+BG_ARMS = ("expr", "pose", "noscale", "notrans", "norot", "noshape", "lock")
+SHAPE_KP = (0, 3, 4, 5, 7, 8, 9, 10)  # keypoints outside LivePortrait's lip and eye sets: the head contour
+HOLD = {"expr": slice(0, 7), "pose": slice(7, None), "noscale": slice(0, 1), "notrans": slice(4, 7),
+        "norot": slice(1, 4), "noshape": [7 + 3 * k + j for k in SHAPE_KP for j in range(3)]}  # held at the photo
 BG_KEYS = tuple(f"bg_{k}" for k in ("px", "offset", "drag", "drag95", "drag_near", "jitter", "reject", "real_drag",
-                                     "real_drag95", "real_drag_near", "real_jitter", "real_reject", "def", "leak", "occ"))
+                                     "real_drag95", "real_drag_near", "real_jitter", "real_reject", "def", "leak", "occ",
+                                     "rot_std_px"))
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std", "real_rot_std",
                "rot_vel", "real_rot_vel", "copy_ratio", "demo_rot_std", "demo_rot_vel", "demo_blinks_per_min",
                "pre_ok", "cal_accept", "cal_held0", "cal_held", "cal_theta", "cal_s", "gated_own", "jump", "jump_rot",
@@ -303,7 +306,12 @@ class Evaluator:
         paster = GpuPaster(M_c2o, photo, S, device=self.dev)
         anchor = paster(torch.cat(list(codec.render_iter(state, m0, half=True, probe=lambda o, i: ref.update(o)))))[0]
         w, rows = state["f_s"][0].abs().float().mean(0), []
-        lock = (bgm.cells(still[None] & ~heads), ref["occlusion_map"]) if arm == "lock" else None
+        if arm == "lock":  # feathered over one cell inward, so a hard lock edge does not decide the family
+            c = bgm.cells(still[None] & ~heads)
+            lock = (c * torch.nn.functional.avg_pool2d(c[:, None], 3, 1, 1, count_include_pad=False)[:, 0],
+                    ref["occlusion_map"])
+        else:
+            lock = None
         gen = np.concatenate([paster(b) for b in codec.render_iter(
             state, m, batch=16, half=True, probe=lambda o, i: rows.append(bgm.def_stats(o, ref, B64, w)), lock=lock)])
         foot = np.zeros((H, W), bool)
@@ -312,7 +320,11 @@ class Evaluator:
         head_f = cv2.warpAffine(head.astype(np.uint8), M, (W, H), flags=cv2.INTER_NEAREST).astype(bool)
         self.last_bg = bgm.bg_metrics(gen, real, anchor, foot, head_f, self.args.bg_texture)
         if B64.sum() > 0:
-            self.last_bg |= {f"bg_{k}": float(torch.cat([r[k] for r in rows]).mean()) for k in rows[0]}
+            self.last_bg |= {f"bg_{k}": float(torch.cat([r[k] for r in rows]).mean()) for k in rows[0] if k != "slot"}
+            self.last_bg["bg_slot"] = torch.cat([r["slot"] for r in rows]).mean(0).tolist()  # background mass per keypoint
+        from sang.model.target import to_target
+        y = to_target(codec.extract(gen)["m"].float())[:, :3]  # head rotation as the rendered frames show it
+        self.last_bg["bg_rot_std_px"] = float(y.std(0).mean())
         return gen
 
     def score(self, row: str, clip: Path, out_dir: Path, gen, gt, src, start: int = 0):

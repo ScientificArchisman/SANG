@@ -82,6 +82,7 @@ def main() -> None:
                "bg dNear px": np.nanmean(col(r, "bg_drag_near") - col(r, "bg_real_drag_near")),
                "bg real px": np.nanmean(col(r, "bg_real_drag")), "bg def px": np.nanmean(col(r, "bg_def")),
                "bg reject": np.nanmean(col(r, "bg_reject")),
+               "head px %": 100 * np.nanmean(col(r, "bg_rot_std_px")) / np.nanmean(real),
                "bg n/a": float(np.sum(np.isfinite(col(r, "bg_px")) & ~np.isfinite(col(r, "bg_drag")))) or np.nan}
         x, y = col(r, "bg_def"), col(r, "bg_drag")
         ok = np.isfinite(x) & np.isfinite(y)

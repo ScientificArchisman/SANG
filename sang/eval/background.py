@@ -120,7 +120,8 @@ def def_stats(dm: dict, ref: dict, B64: torch.Tensor, w: torch.Tensor) -> dict:
     tot = W.sum().clamp_min(1e-8)
     disp = 256 * (dm["deformation"][..., :2].float() - ref["deformation"][..., :2].float()).norm(dim=-1)
     out = {"def": (disp * W).sum((1, 2, 3)) / tot,
-           "leak": ((1 - dm["mask"][:, 0].float()) * W).sum((1, 2, 3)) / tot}
+           "leak": ((1 - dm["mask"][:, 0].float()) * W).sum((1, 2, 3)) / tot,
+           "slot": (dm["mask"][:, 1:].float() * W).sum((2, 3, 4)) / tot}  # [b, 21]: which keypoints own the leak
     if "occlusion_map" in dm:
         occ = (dm["occlusion_map"].float() - ref["occlusion_map"].float()).abs()[:, 0]
         out["occ"] = (occ * B64).sum((1, 2)) / B64.sum().clamp_min(1)
