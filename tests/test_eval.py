@@ -106,3 +106,7 @@ def test_jump_is_the_window_start_step_over_the_ordinary_step():
     assert abs(ev.jump(y, [64, 128, 192]) - 1.0) < 1e-9
     y[128:] += 1.0  # one window starts 1.0 off in every code
     assert abs(ev.jump(y, [64, 128, 192]) - (2 * 0.1 + 1.1) / 3 / 0.1) < 1e-9
+
+
+def test_window_fvd_self_check():
+    _load("window_fvd").self_check()
