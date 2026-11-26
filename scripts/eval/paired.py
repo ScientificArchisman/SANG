@@ -77,6 +77,7 @@ def main() -> None:
                "speed %": 100 * np.nanmean(col(r, "rot_vel")) / np.nanmean(col(r, "real_rot_vel")),
                "blinks": np.nanmean(col(r, "blinks_per_min")), "copy_ratio": np.nanmedian(col(r, "copy_ratio")),
                "head err": np.nanmean(err), "t_motion": np.nanmedian(col(r, "t_motion")),
+               "jump rot x": np.nanmean(col(r, "jump_rot")), "real jump rot x": np.nanmean(col(r, "real_jump_rot")),
                "bg dDrag px": np.nanmean(col(r, "bg_drag") - col(r, "bg_real_drag")),
                "bg dNear px": np.nanmean(col(r, "bg_drag_near") - col(r, "bg_real_drag_near")),
                "bg real px": np.nanmean(col(r, "bg_real_drag")), "bg def px": np.nanmean(col(r, "bg_def")),

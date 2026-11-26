@@ -39,7 +39,7 @@ from sang.data.paths import load_index
 from sang.data.sync import SyncOffsets, clip_key
 from sang.model.flow import Norm, build, flow_loss, sample
 from sang.model.latent import MotionLatent
-from sang.model.scoring import self_prefix
+from sang.model.scoring import self_prefix, transport, window_of
 from sang.model.target import WIDE_REGIONS
 
 
@@ -108,7 +108,8 @@ def objective(cfg: dict, step: int | None = None) -> dict:
     """flow_loss keyword arguments at a step (None = the final objective). From wave2 on, t_mean2 and lam_vel2
     replace t_mean and lam_vel: wave 1 can train coarse motion first and wave 2 restores the fine timing."""
     kw = {k: cfg[k] for k in ("lam_vel", "p_audio", "p_ref", "p_prefix", "t_dist")}
-    kw.update(p_demo=cfg.get("p_demo", 0.2), t_mean=cfg.get("t_mean", 0.0), t_scale=cfg.get("t_scale", 1.0))
+    kw.update(p_demo=cfg.get("p_demo", 0.2), t_mean=cfg.get("t_mean", 0.0), t_scale=cfg.get("t_scale", 1.0),
+              junction=bool(cfg.get("junction", False)))
     if cfg.get("wave2") is not None and (step is None or step >= cfg["wave2"]):
         kw.update({k: cfg[f"{k}2"] for k in ("t_mean", "lam_vel") if cfg.get(f"{k}2") is not None})
     return kw
@@ -252,7 +253,10 @@ def main() -> None:
                 loss, parts = flow_loss(model, batch, **kw)
                 if n_self:
                     cb = encode({k_: v[:n_self].to(dev, non_blocking=True) for k_, v in next(chains).items()})
-                    w = self_prefix(ema, cb, random.randint(1, depth), L, int(cfg["self_steps"]), cfg["cfg_audio"])
+                    i = random.randint(1, depth)
+                    w = self_prefix(ema, cb, i, L, int(cfg["self_steps"]), cfg["cfg_audio"])
+                    if cfg.get("transport"):
+                        w = transport(ema, w, window_of(cb, i, L)["prefix"])
                     ls, _ = flow_loss(model, w, **{**kw, "p_prefix": 0.0})
                     loss = (loss * (cfg["batch_size"] - n_self) + ls * n_self) / cfg["batch_size"]
                     parts = {**parts, "self": ls.detach(), "loss": loss.detach()}

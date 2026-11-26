@@ -37,6 +37,8 @@ self_from: null
 p_self: [0.1, 0.5]
 self_depth: 3
 self_steps: 6
+transport: false  # self-prefix windows: target + m(generated prefix) - m(real prefix), sang.model.scoring.transport
+junction: false   # velocity loss also on the prefix -> window step (flow_loss junction)
 
 lr: 3.0e-4
 min_lr: 1.0e-5

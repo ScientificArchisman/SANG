@@ -13,7 +13,8 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "scripts" / "train"))
 from sang.data.dataset import chained
 from sang.model.flow import REF_DIM, generate
-from sang.model.scoring import gen_fakes, roll_chain, self_prefix, set_loss, window_of
+from sang.model.flow import flow_loss
+from sang.model.scoring import gen_fakes, roll_chain, self_prefix, set_loss, transport, window_of
 from test_motion_model import _model, _unzero
 from test_train_eval import make_cache, train
 
@@ -92,7 +93,8 @@ def test_two_wave_base_and_chain_recap_run(tmp_path, monkeypatch, capsys):
     cache = tmp_path / "cache"
     make_cache(cache, T=160)
     out = train(cache, tmp_path / "gen", "train_eval=false", "demo_tokens=4", "demo_frames=30", "demo_min_frames=10",
-                "wave2=2", "t_mean2=0.3", "lam_vel2=0.5", "self_from=1", "self_depth=1", "p_self=[0.5,0.5]")
+                "wave2=2", "t_mean2=0.3", "lam_vel2=0.5", "self_from=1", "self_depth=1", "p_self=[0.5,0.5]",
+                "transport=true", "junction=true")
     assert "chains of 2 windows" in out and " self " in out and "wave 2 at step 2" in out
     import train_set
     monkeypatch.setattr(sys, "argv", ["train_set.py", f"gen={tmp_path / 'gen' / 'last.pt'}",
@@ -103,3 +105,29 @@ def test_two_wave_base_and_chain_recap_run(tmp_path, monkeypatch, capsys):
     log = capsys.readouterr().out
     assert "chain_w1" in log and "gap_w1" in log and "chain_rot_r" in log and " replay " in log
     assert (tmp_path / "set" / "round1.pt").exists()
+
+
+def test_transport_moves_the_target_by_the_models_mean_difference():
+    m = _model().eval()
+    _unzero(m)
+    b = _chain()
+    w = self_prefix(m, b, 1, L, steps=2, generator=torch.Generator().manual_seed(3))
+    real = window_of(b, 1, L)["prefix"]
+    same = transport(m, w, w["prefix"], generator=torch.Generator().manual_seed(5))
+    assert torch.allclose(same["target"], w["target"]) and torch.equal(same["prefix"], w["prefix"])
+    moved = transport(m, w, real, generator=torch.Generator().manual_seed(5))
+    x1 = torch.randn(w["target"].shape, generator=torch.Generator().manual_seed(5))
+    kw = dict(prefix_keep=torch.ones(B, dtype=torch.bool), beta=torch.ones(B))
+    with torch.no_grad():
+        v = lambda p: m(x1, torch.ones(B), w["audio"], w["ref"], prefix=p, **kw)
+        want = w["target"] + v(real) - v(w["prefix"])
+    assert torch.allclose(moved["target"], want, atol=1e-5) and not torch.allclose(moved["target"], w["target"])
+
+
+def test_the_junction_term_counts_only_kept_prefixes():
+    m = _model()
+    _unzero(m)
+    w = window_of(_chain(), 0, L)
+    run = lambda **k: (torch.manual_seed(0), flow_loss(m, w, lam_vel=1.0, **k)[1]["vel"])[1]
+    assert torch.allclose(run(p_prefix=1.0), run(p_prefix=1.0, junction=True))  # every prefix dropped: the old loss
+    assert not torch.allclose(run(p_prefix=0.0), run(p_prefix=0.0, junction=True))

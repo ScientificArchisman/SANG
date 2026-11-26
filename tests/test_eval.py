@@ -99,3 +99,10 @@ def test_calibrated_rows_are_labelled_and_paired_gives_a_bootstrap_dfvd(tmp_path
     assert pd.dfvd(d("ref"), d("same"), list("xyz"), n=20) == (0.0, 0.0, 0.0)
     delta, lo, hi = pd.dfvd(d("ref"), d("off"), list("xyz"), n=20)
     assert delta > 0 and lo <= delta <= hi
+
+
+def test_jump_is_the_window_start_step_over_the_ordinary_step():
+    y = np.cumsum(np.full((250, 3), 0.1), 0)
+    assert abs(ev.jump(y, [64, 128, 192]) - 1.0) < 1e-9
+    y[128:] += 1.0  # one window starts 1.0 off in every code
+    assert abs(ev.jump(y, [64, 128, 192]) - (2 * 0.1 + 1.1) / 3 / 0.1) < 1e-9

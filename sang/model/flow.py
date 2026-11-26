@@ -245,7 +245,8 @@ def sample_t(B: int, device, dist: str = "uniform", mean: float = 0.0, scale: fl
 
 def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
               p_audio: float = 0.1, p_ref: float = 0.1, p_prefix: float = 0.5, p_demo: float = 0.2,
-              t_dist: str = "uniform", t_mean: float = 0.0, t_scale: float = 1.0) -> tuple[torch.Tensor, dict]:
+              t_dist: str = "uniform", t_mean: float = 0.0, t_scale: float = 1.0,
+              junction: bool = False) -> tuple[torch.Tensor, dict]:
     """batch: target [B,L,t_dim], audio [B,2(P+L),1024], ref [B,REF_DIM], prefix [B,P,t_dim] (optional), and for a
     demo model demo_motion [B,N,t_dim], demo_audio [B,2N,1024], demo_mask [B,N], demo_keep [B] (optional).
 
@@ -254,7 +255,10 @@ def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
     The demo is dropped with p_demo, so the same model also runs with no footage at all.
 
     GFT: beta ~ U(0, 1) per sample, and the loss is on beta v(x | audio, beta) + (1 - beta) v_u, where
-    v_u = v(x | no audio, 1) from the same network in eval mode without gradient (the paper's Algorithm 1)."""
+    v_u = v(x | no audio, 1) from the same network in eval mode without gradient (the paper's Algorithm 1).
+
+    junction: the velocity loss also covers the step from the prefix's last frame into the window (where the prefix is
+    kept), the frame chained inference joins windows at. A weight on frame 0 only, so the optimum is unchanged."""
     x0 = batch["target"]
     B, dev = x0.shape[0], x0.device
     t = sample_t(B, dev, t_dist, t_mean, t_scale)
@@ -281,7 +285,15 @@ def flow_loss(model: MotionFlowTransformer, batch: dict, lam_vel: float = 1.0,
     out = {"fm": loss.detach()}
     if lam_vel > 0:
         x0_hat = x_t - tb * v
-        vel = mse(x0_hat[:, 1:] - x0_hat[:, :-1], x0[:, 1:] - x0[:, :-1])
+        if junction and prefix is not None:
+            edge = prefix[:, -1:]
+            a, b = torch.cat([edge, x0_hat], 1), torch.cat([edge, x0], 1)
+            w = torch.ones(B, a.shape[1] - 1, 1, device=dev)
+            w[:, 0, 0] = kw["prefix_keep"].float()
+            d = ((a[:, 1:] - a[:, :-1]).float() - (b[:, 1:] - b[:, :-1]).float()) ** 2
+            vel = (d * w).sum() / (w.sum() * d.shape[-1])
+        else:
+            vel = mse(x0_hat[:, 1:] - x0_hat[:, :-1], x0[:, 1:] - x0[:, :-1])
         loss = loss + lam_vel * vel
         out["vel"] = vel.detach()
     out["loss"] = loss.detach()

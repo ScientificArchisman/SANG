@@ -52,6 +52,25 @@ def self_prefix(model: MotionFlowTransformer, batch: dict, i: int, L: int, steps
     return w
 
 
+@torch.no_grad()
+def transport(model: MotionFlowTransformer, w: dict, prefix_real: torch.Tensor,
+              generator: torch.Generator | None = None) -> dict:
+    """Window w (its prefix generated, its target the real next window) with the target moved to continue the generated
+    prefix: target + m(generated prefix) - m(real prefix), m(c) = E[window | c, audio, photo, footage] read off the
+    model at t = 1, where x1 = noise carries nothing about the window, so x1 - v(x1, 1) is the conditional mean (one
+    shared x1 for both). Without it a (generated prefix, real target) pair teaches a continuation of the REAL past
+    (scheduled sampling is improper, Huszar 2015): a jump at the junction and a prefix the head learns to ignore. With
+    it the target is DAgger's: what the real motion does from the visited state, exact when a window is a fixed
+    residual around a prefix-dependent mean."""
+    x1 = torch.randn(w["target"].shape, device=w["target"].device, generator=generator)
+    B, dev = x1.shape[0], x1.device
+    keep = w.get("demo_keep")
+    kw = dict(prefix_keep=torch.ones(B, dtype=torch.bool, device=dev), beta=torch.ones(B, device=dev),
+              demo=model.encode_demo(w), demo_keep=None if keep is None else keep.bool())
+    mean = lambda p: x1 - model(x1, torch.ones(B, device=dev), w["audio"], w["ref"], prefix=p, **kw).float()
+    return {**w, "target": w["target"] + mean(w["prefix"]) - mean(prefix_real)}
+
+
 def rollout(policy: MotionFlowTransformer, ref_model: MotionFlowTransformer, batch: dict, steps: int = 6,
             g: float = 2.0, generator: torch.Generator | None = None) -> tuple[torch.Tensor, torch.Tensor]:
     """The deployed one-pass Euler sampler with gradients (DRaFT-style) -> clean windows [B, L, k] and the path KL

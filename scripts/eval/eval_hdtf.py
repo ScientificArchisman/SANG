@@ -89,8 +89,19 @@ BG_KEYS = tuple(f"bg_{k}" for k in ("px", "offset", "drag", "drag95", "drag_near
                                      "real_drag95", "real_drag_near", "real_jitter", "real_reject", "def", "leak", "occ"))
 MOTION_KEYS = ("blinks_per_min", "real_blinks_per_min", "lip_std", "lip_corr", "lip_ccc", "rot_std", "real_rot_std",
                "rot_vel", "real_rot_vel", "copy_ratio", "demo_rot_std", "demo_rot_vel", "demo_blinks_per_min",
-               "pre_ok", "cal_accept", "cal_held0", "cal_held", "cal_theta", "cal_s", "gated_own") + BG_KEYS
+               "pre_ok", "cal_accept", "cal_held0", "cal_held", "cal_theta", "cal_s", "gated_own", "jump", "jump_rot",
+               "real_jump", "real_jump_rot") + BG_KEYS
 METRICS = ("FID", "FVD", "CSIM", "LSE-C", "LSE-D", "PSNR", "SSIM")
+
+
+def jump(y: np.ndarray, cuts: list) -> float:
+    """Mean |y[c] - y[c-1]| at the window starts `cuts` over the mean frame-to-frame step elsewhere: 1 = the chain
+    joins windows as smoothly as frames move inside them (the real clip, at the same frames, is the noise floor)."""
+    d = np.linalg.norm(np.diff(y, axis=0), axis=1)
+    b = np.array([c - 1 for c in cuts if 1 <= c < len(y)], int)
+    if not len(b) or len(b) == len(d):
+        return float("nan")
+    return float(d[b].mean() / np.delete(d, b).mean())
 
 
 def read_list(path: str, data: Path) -> list[Path]:
@@ -193,6 +204,11 @@ class Evaluator:
         y = to_target(m.float())
         lip, eye = self.read["lip"](y).cpu().numpy(), self.read["eye"](y).cpu().numpy()
         out = {"blinks_per_min": len(blink_events(eye)) * 60.0 * FPS / len(eye), "lip_std": float(lip.std())}
+        W = self.talker.cfg["frames"] if hasattr(self, "talker") else 0
+        cuts = list(range(W, len(y), W)) if W else []  # flow.generate starts a window every W frames
+        yn = y.cpu().numpy()
+        if cuts:
+            out.update(jump=jump(yn, cuts), jump_rot=jump(yn[:, :3], cuts))
         if real is not None:
             s0, r = real["span"][0], real["lip"]
             g = lip[s0:s0 + len(r)]
@@ -200,6 +216,9 @@ class Evaluator:
             r = r[:k]
             rot = lambda v: (float(v.std(0).mean()), float(np.abs(np.diff(v, axis=0)).mean()))
             (s_1, v_1), (s_r, v_r) = rot(y[s0:s0 + k, :3].cpu().numpy()), rot(real["y"][:k, :3].numpy())
+            if cuts:
+                ry = real["y"].numpy()
+                out.update(real_jump=jump(ry, [c - s0 for c in cuts]), real_jump_rot=jump(ry[:, :3], [c - s0 for c in cuts]))
             out.update(real_blinks_per_min=len(blink_events(real["eye"])) * 60.0 * FPS / len(real["eye"]),
                        lip_ccc=ccc(g, r), lip_corr=float(np.corrcoef(g, r)[0, 1]),
                        rot_std=s_1, real_rot_std=s_r, rot_vel=v_1, real_rot_vel=v_r)
