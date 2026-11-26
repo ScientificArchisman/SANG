@@ -56,8 +56,9 @@ Protocol (also written to <out>/protocol.json):
             covers, the real clip shows still, no generated head covers and that have texture; bg_real_* the real
             clip on the same pixels (the floor); BG-Def / Leak / Occ the same read off the renderer's deformation,
             slot weights and occlusion map. --bg-arms adds rows <row>+<arm> with the same motion: expr (pose, scale and
-            translation held at the photo's), pose (expression held), noscale, notrans (attribution), lock (identity
-            flow forced where the real clip is still and no head is: the oracle lock).
+            translation held at the photo's), pose (expression held), noscale, notrans, norot, noshape (attribution),
+            lock (identity flow forced where the real clip is still and no head is: the oracle lock), lockf (the same
+            lock with stillness from the --demo footage instead of the test clip: what inference can do).
 --n-clips N stops after the first N clips that score (a quick paired test).
 Resumable: per-clip results go to <out>/clips/<row>/<clip>.{json,npz}; a rerun skips them.
 """
@@ -83,7 +84,7 @@ from sang.data.audio import load_wav
 SR, FPS, HOP = 16000, 25, 640
 ROWS = ("real", "gt_motion", "sang", "ditto")
 ARMS = ("own", "gated", "swap", "oracle")
-BG_ARMS = ("expr", "pose", "noscale", "notrans", "norot", "noshape", "lock")
+BG_ARMS = ("expr", "pose", "noscale", "notrans", "norot", "noshape", "lock", "lockf")
 SHAPE_KP = (0, 3, 4, 5, 7, 8, 9, 10)  # keypoints outside LivePortrait's lip and eye sets: the head contour
 HOLD = {"expr": slice(0, 7), "pose": slice(7, None), "noscale": slice(0, 1), "notrans": slice(4, 7),
         "norot": slice(1, 4), "noshape": [7 + 3 * k + j for k in SHAPE_KP for j in range(3)]}  # held at the photo
@@ -167,7 +168,8 @@ class Evaluator:
         if a.bg and not a.motion_only:
             crop = self.codec.crop_image(np.ascontiguousarray(frames[0]))
             gen = self.render_bg(self.codec.source_state(crop["img_crop_256x256"]), crop["M_c2o"], frames[0], m,
-                                 self.codec.source_motion(frames[0], crop=crop)["m"], frames, arm)
+                                 self.codec.source_motion(frames[0], crop=crop)["m"], frames, arm,
+                                 None if demo is None else demo[0])
         self.last_t = {f"t_{k}": v for k, v in timer.t.items()}
         if demo is not None:
             self.last_t["demo_frames"] = self.talker.demo_frames
@@ -265,7 +267,7 @@ class Evaluator:
             log |= {f"oracle_{k}": v for k, v in fl.items()}
         return out | {"log": log}
 
-    def gen_gt_motion(self, frames, wav, arm=""):
+    def gen_gt_motion(self, frames, wav, arm="", demo=None):
         from sang.render.pipeline import GpuPaster
         a = self.args
         d = self.codec.extract(frames)
@@ -276,15 +278,16 @@ class Evaluator:
         gt = frames[s0:s0 + len(m)]
         state = self.codec.source_state(d["crops"][0])
         if a.bg:
-            return self.render_bg(state, d["M_c2o"], gt[0], m, m[:1], gt, arm), gt
+            return self.render_bg(state, d["M_c2o"], gt[0], m, m[:1], gt, arm, None if demo is None else demo[0]), gt
         crops = self.codec.render(state, m.cpu())
         return GpuPaster(d["M_c2o"], gt[0], crops.shape[1], device=self.dev)(crops), gt
 
-    def render_bg(self, state, M_c2o, photo, m, m0, real, arm="") -> np.ndarray:
+    def render_bg(self, state, M_c2o, photo, m, m0, real, arm="", footage=None) -> np.ndarray:
         """Absolute motion m [n,70] rendered as Talker.run renders it (FP16, 16 frames a call, pasted into photo with
         M_c2o), with the dense motion probed; sets self.last_bg (sang.eval.background). m0 [1,70], the photo's own
         motion, is the anchor render and what the attribution arms hold (HOLD); lock forces the identity flow, per
-        frame, where the real clip is still and no head envelope (x_s and x_d hull) is: the oracle lock."""
+        frame, where the real clip is still and no head envelope (x_s and x_d hull) is: the oracle lock; lockf takes the
+        stillness from the footage frames instead (protocol B: nothing from the test clip)."""
         import cv2
         from sang.eval import background as bgm
         from sang.render.liveportrait import as3x3
@@ -298,16 +301,17 @@ class Evaluator:
         px = lambda x: ((x[..., :2] + 1) / 2 * (S - 1)).float().cpu().numpy()  # grid coords -> crop px
         x_d = px(codec.driving_keypoints(state, m))
         heads = bgm.head_masks(np.concatenate([np.repeat(px(state["x_s"]), len(x_d), 0), x_d], 1), S)
-        still = (crop_mask(S) >= 0.5) & cv2.warpAffine(bgm.still_mask(real).astype(np.uint8), M, (S, S),
-                                                       flags=cv2.INTER_NEAREST | cv2.WARP_INVERSE_MAP).astype(bool)
+        to_crop = lambda fr: (crop_mask(S) >= 0.5) & cv2.warpAffine(
+            bgm.still_mask(fr).astype(np.uint8), M, (S, S), flags=cv2.INTER_NEAREST | cv2.WARP_INVERSE_MAP).astype(bool)
+        still = to_crop(real)
         head = heads.any(0)
         B64 = bgm.cells(still & ~head).to(self.dev)
         ref = {}
         paster = GpuPaster(M_c2o, photo, S, device=self.dev)
         anchor = paster(torch.cat(list(codec.render_iter(state, m0, half=True, probe=lambda o, i: ref.update(o)))))[0]
         w, rows = state["f_s"][0].abs().float().mean(0), []
-        if arm == "lock":  # feathered over one cell inward, so a hard lock edge does not decide the family
-            c = bgm.cells(still[None] & ~heads)
+        if arm in ("lock", "lockf"):  # feathered over one cell inward, so a hard lock edge does not decide the family
+            c = bgm.cells((still if arm == "lock" else to_crop(footage[::5]))[None] & ~heads)  # every 5th: 150 of 750
             lock = (c * torch.nn.functional.avg_pool2d(c[:, None], 3, 1, 1, count_include_pad=False)[:, 0],
                     ref["occlusion_map"])
         else:
@@ -389,7 +393,7 @@ def run(args) -> None:
                 raise ValueError(f"only {len(frames) / FPS:.1f} s after {args.start:g} s")
             wav = load_wav(clip, s0, len(frames))
             demo = None
-            if n_demo and any(r.partition("+")[0] == "sang" for r in todo):
+            if n_demo and any(r.partition("+")[0] == "sang" or r.endswith("+lockf") for r in todo):
                 dfr = decode_clip(str(clip), n_demo, start=s0 - n_demo)
                 demo = (dfr, load_wav(clip, s0 - n_demo, len(dfr)))
             calib = None
@@ -461,7 +465,7 @@ def rows_of_clip(ev, args, clip, out, i, n, todo, frames, wav, demo, s0, calib=N
             if base == "real":
                 gen, gt = frames, frames
             elif base == "gt_motion":
-                gen, gt = ev.gen_gt_motion(frames, wav, arm)
+                gen, gt = ev.gen_gt_motion(frames, wav, arm, demo)
             elif base == "ditto":
                 vid = Path(args.ditto_dir) / f"{clip.stem}.mp4"
                 if not vid.exists():
@@ -500,7 +504,8 @@ def label(row: str, args) -> str:
         s = {"real": "Real video", "ditto": "Ditto"}[base]
     if arm in BG_ARMS:
         return s + {"expr": ", expression only", "pose": ", pose only", "noscale": ", scale held",
-                    "notrans": ", translation held", "lock": ", oracle background lock"}[arm]
+                    "notrans": ", translation held", "norot": ", rotation held", "noshape": ", head-contour keypoints held",
+                    "lock": ", oracle background lock", "lockf": ", background lock from the footage"}[arm]
     return s + (f", calibrated renderer: {arm}" if arm else "")
 
 
@@ -606,6 +611,8 @@ def main() -> None:
     if args.bg and (args.calib or args.motion_only):
         sys.exit("--bg renders the rows itself: not with --calib or --motion-only")
     if args.bg_arms:
+        if "lockf" in args.bg_arms and not args.demo:
+            sys.exit("--bg-arms lockf takes the stillness from the footage: pass --demo")
         if not {"gt_motion", "sang"} & set(args.rows):
             sys.exit("--bg-arms renders the gt_motion and sang rows: pass one of them")
         args.rows = [r for b in args.rows for r in (b, *(f"{b}+{a}" for a in args.bg_arms
